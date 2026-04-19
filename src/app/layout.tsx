@@ -8,7 +8,7 @@ import { AuthProvider } from "@/lib/firebase/AuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ALLin-Timer",
+  title: "ALLin-PokerTimer",
   description: "NLH サークル向けトーナメント進行支援",
 };
 
@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AuthProvider>
           <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/80 px-4 py-2 backdrop-blur">
             <Link href="/" className="text-sm font-semibold">
-              ALLin-Timer
+              ALLin-PokerTimer
             </Link>
             <AuthBadge />
           </header>

@@ -1,4 +1,4 @@
-# ALLin-Timer
+# ALLin-PokerTimer
 
 ノーリミットテキサスホールデム（NLH）の小規模サークル向けトーナメント進行支援 Web アプリケーション。
 

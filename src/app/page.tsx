@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 export default function Page() {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center gap-6 p-8 text-center">
-      <h1 className="text-4xl font-bold">ALLin-Timer</h1>
+      <h1 className="text-4xl font-bold">ALLin-PokerTimer</h1>
       <p className="text-sm text-muted-foreground">
         NLH（ノーリミットテキサスホールデム）小規模サークル向けトーナメント進行支援アプリ。
       </p>

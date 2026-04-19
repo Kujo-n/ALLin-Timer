@@ -10,7 +10,7 @@ import { AppError } from "@/lib/errors";
 // Literal `process.env.NEXT_PUBLIC_*` access is required — Next.js only
 // inlines these at build time when the key is a static property access, so
 // dynamic lookup (`process.env[key]`) returns undefined in the client bundle.
-const PLACEHOLDER = "allin-timer-dev-missing";
+const PLACEHOLDER = "allin-pokertimer-dev-missing";
 
 const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
