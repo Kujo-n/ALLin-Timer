@@ -31,7 +31,8 @@ export async function createTournament(
 ): Promise<string> {
   try {
     const ref = await addDoc(tournamentsRef, {
-      ownerUid: input.ownerUid,
+      groupId: input.groupId,
+      createdByUid: input.createdByUid,
       name: input.name,
       structureSnapshot: input.structureSnapshot,
       state: "setup",
@@ -41,7 +42,7 @@ export async function createTournament(
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    logger.info("tournament create ok", { tid: ref.id });
+    logger.info("tournament create ok", { tid: ref.id, gid: input.groupId });
     return ref.id;
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント作成に失敗しました");
@@ -64,17 +65,22 @@ export async function getTournament(tid: string): Promise<TournamentDoc> {
   }
 }
 
-export async function listMyTournaments(uid: string): Promise<TournamentDoc[]> {
+/**
+ * 指定 group のトーナメント一覧。`where("groupId","==")` のみで取得し
+ * client 側で createdAt 降順に並べる。
+ */
+export async function listTournamentsByGroup(
+  groupId: string,
+): Promise<TournamentDoc[]> {
   try {
-    const q = query(tournamentsRef, where("ownerUid", "==", uid));
+    const q = query(tournamentsRef, where("groupId", "==", groupId));
     const snap = await getDocs(q);
     const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    // 複合インデックス不要化のため client 側で降順ソート
     items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
     return items;
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/read_failed", "トーナメント一覧取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
+    logger.warn(wrapped.message, { code: wrapped.code, groupId });
     throw wrapped;
   }
 }
@@ -98,14 +104,17 @@ export async function updateTournament(
 
 /**
  * トーナメントを開始する（state: setup → running）。
- * Phase 2 では state 遷移のみ。タイマー／レベル自動繰り上げは Phase 3。
- * 呼び出し元（UI）で owner チェック + state==="setup" チェックを済ませる前提。
+ * Phase 2.5: owner ベース→group メンバーベース。
+ *  - クライアント側早期失敗のため `userGroupIds` を受け取り、対象 tournament の
+ *    groupId に対してメンバーかどうかチェックする。最終防衛は Firestore Rules。
  */
-export async function startTournament(tid: string, uid: string): Promise<void> {
-  // getTournament は内部で try/catch 済みで firestore/not-found 等を AppError として throw する。
-  // ここで再 try/catch しない（read 失敗は write_failed に誤分類したくない）。
+export async function startTournament(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+): Promise<void> {
   const t = await getTournament(tid);
-  if (t.ownerUid !== uid) {
+  if (!t.groupId || !userGroupIds.includes(t.groupId)) {
     throw new AppError("not allowed", "firestore/permission-denied");
   }
   if (t.state !== "setup") {
@@ -121,7 +130,7 @@ export async function startTournament(tid: string, uid: string): Promise<void> {
       currentLevel: 1,
       updatedAt: serverTimestamp(),
     });
-    logger.info("tournament start ok", { tid });
+    logger.info("tournament start ok", { tid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント開始に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
@@ -132,9 +141,10 @@ export async function startTournament(tid: string, uid: string): Promise<void> {
 export async function deleteTournamentIfSetup(
   tid: string,
   uid: string,
+  userGroupIds: string[],
 ): Promise<void> {
   const t = await getTournament(tid);
-  if (t.ownerUid !== uid) {
+  if (!t.groupId || !userGroupIds.includes(t.groupId)) {
     throw new AppError("not allowed", "firestore/permission-denied");
   }
   if (t.state !== "setup") {
@@ -145,7 +155,7 @@ export async function deleteTournamentIfSetup(
   }
   try {
     await deleteDoc(doc(tournamentsRef, tid));
-    logger.info("tournament delete ok", { tid });
+    logger.info("tournament delete ok", { tid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント削除に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });

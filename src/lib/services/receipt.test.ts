@@ -50,7 +50,8 @@ const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
   return {
     id: "t1",
-    ownerUid: "owner",
+    groupId: "g1",
+    createdByUid: "owner",
     name: "Monthly",
     structureSnapshot: {
       name: "Default",
@@ -165,6 +166,7 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
       uid: "u1",
       displayName: "ProfileName",
       email: "alice@example.com",
+      groupIds: [],
       createdAt: now,
     });
 
@@ -185,6 +187,7 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
       uid: "u1",
       displayName: "ProfileName",
       email: "alice@example.com",
+      groupIds: [],
       createdAt: now,
     });
 

@@ -15,10 +15,12 @@ import type {
   StructureDoc,
 } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function StructureEditClient({ sid }: { sid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const { groupIds } = useCurrentGroup();
   const [data, setData] = useState<StructureDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +61,16 @@ export function StructureEditClient({ sid }: { sid: string }) {
     );
   }
 
+  if (!groupIds.includes(data.groupId)) {
+    return (
+      <main className="mx-auto max-w-3xl p-8">
+        <p className="text-sm text-destructive" role="alert">
+          firestore/permission-denied: このサークルのメンバーのみ編集できます。
+        </p>
+      </main>
+    );
+  }
+
   async function handleSubmit(input: CreateStructureInput) {
     await updateStructure(sid, {
       name: input.name,
@@ -73,7 +85,8 @@ export function StructureEditClient({ sid }: { sid: string }) {
     <main className="mx-auto max-w-3xl space-y-6 p-8">
       <h1 className="text-2xl font-bold">ストラクチャを編集</h1>
       <StructureForm
-        ownerUid={user.uid}
+        groupId={data.groupId}
+        createdByUid={user.uid}
         initialValue={{
           name: data.name,
           initialStack: data.initialStack,

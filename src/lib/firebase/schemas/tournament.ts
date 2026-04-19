@@ -20,8 +20,13 @@ export const structureSnapshotSchema = z.object({
 });
 export type StructureSnapshot = z.infer<typeof structureSnapshotSchema>;
 
+/**
+ * Phase 2.5: 所有権を `ownerUid` から `groupId` + `createdByUid` に変更（破壊的）。
+ * 編集権限は group メンバー全員。
+ */
 export const tournamentBodySchema = z.object({
-  ownerUid: z.string().min(1),
+  groupId: z.string().min(1),
+  createdByUid: z.string().min(1),
   name: z.string().min(1),
   structureSnapshot: structureSnapshotSchema,
   state: tournamentStateSchema,
@@ -36,7 +41,8 @@ export type TournamentBody = z.infer<typeof tournamentBodySchema>;
 export type TournamentDoc = TournamentBody & { id: string };
 
 export const createTournamentInputSchema = z.object({
-  ownerUid: z.string().min(1),
+  groupId: z.string().min(1),
+  createdByUid: z.string().min(1),
   name: z.string().min(1, "名前を入力してください"),
   structureSnapshot: structureSnapshotSchema,
 });

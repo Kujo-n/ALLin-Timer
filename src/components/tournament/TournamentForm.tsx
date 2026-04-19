@@ -13,13 +13,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppError } from "@/lib/errors";
-import { listMyStructures } from "@/lib/firebase/repositories/structures";
+import { listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 
 interface Props {
-  ownerUid: string;
+  groupId: string;
   initialName?: string;
   initialSnapshot?: StructureSnapshot;
   submitLabel?: string;
@@ -37,7 +37,7 @@ function snapshotFromStructure(s: StructureDoc): StructureSnapshot {
 }
 
 export function TournamentForm({
-  ownerUid,
+  groupId,
   initialName = "",
   initialSnapshot,
   submitLabel = "作成",
@@ -58,7 +58,7 @@ export function TournamentForm({
     let cancelled = false;
     (async () => {
       try {
-        const list = await listMyStructures(ownerUid);
+        const list = await listStructuresByGroup(groupId);
         if (!cancelled) {
           setStructures(list);
           if (!initialSnapshot && list.length > 0) {
@@ -77,7 +77,7 @@ export function TournamentForm({
     return () => {
       cancelled = true;
     };
-  }, [ownerUid, initialSnapshot]);
+  }, [groupId, initialSnapshot]);
 
   function onPickStructure(sid: string) {
     setSelectedSid(sid);

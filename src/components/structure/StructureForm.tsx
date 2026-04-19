@@ -37,7 +37,8 @@ const DEFAULT_INITIAL: StructureFormInitialValue = {
 interface Props {
   initialValue?: StructureFormInitialValue;
   submitLabel?: string;
-  ownerUid: string;
+  groupId: string;
+  createdByUid: string;
   onSubmit: (input: CreateStructureInput) => Promise<void>;
   onCancel?: () => void;
 }
@@ -45,7 +46,8 @@ interface Props {
 export function StructureForm({
   initialValue = DEFAULT_INITIAL,
   submitLabel = "保存",
-  ownerUid,
+  groupId,
+  createdByUid,
   onSubmit,
   onCancel,
 }: Props) {
@@ -62,7 +64,8 @@ export function StructureForm({
     e.preventDefault();
     setError(null);
     const input: CreateStructureInput = {
-      ownerUid,
+      groupId,
+      createdByUid,
       name,
       initialStack,
       lateEntryDeadlineLevel,

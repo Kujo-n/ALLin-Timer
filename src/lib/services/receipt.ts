@@ -207,7 +207,8 @@ export async function cancelOwnEntry(tid: string): Promise<void> {
 }
 
 /**
- * 運営者によるエントリー取消。rules 側では tournament の ownerUid 一致を検査する。
+ * 運営者によるエントリー取消。Phase 2.5 以降、rules 側では tournament の groupId に対する
+ * group メンバーシップ（`isGroupMember(tournament.groupId)`）で書込権限を判定する。
  */
 export async function cancelPlayerEntry(
   tid: string,

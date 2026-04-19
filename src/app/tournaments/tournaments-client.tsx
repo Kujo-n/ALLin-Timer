@@ -12,24 +12,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AppError } from "@/lib/errors";
-import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import { listMyTournaments } from "@/lib/firebase/repositories/tournaments";
+import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function TournamentsClient() {
-  const { user } = useAuthUser();
+  const { currentGroupId, groups } = useCurrentGroup();
   const [items, setItems] = useState<TournamentDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!currentGroupId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const list = await listMyTournaments(user.uid);
+        const list = await listTournamentsByGroup(currentGroupId);
         if (!cancelled) setItems(list);
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
@@ -42,7 +42,9 @@ export function TournamentsClient() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [currentGroupId]);
+
+  const currentGroup = groups.find((g) => g.id === currentGroupId);
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-8">
@@ -50,10 +52,14 @@ export function TournamentsClient() {
         <div>
           <h1 className="text-2xl font-bold">トーナメント</h1>
           <p className="text-sm text-muted-foreground">
-            自分が運営するトーナメント一覧。
+            {currentGroup ? `サークル「${currentGroup.name}」のトーナメント。` : "現在のサークルのトーナメント。"}
+            メンバー全員が編集／開始／削除できます。
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/groups">
+            <Button variant="outline">サークル</Button>
+          </Link>
           <Link href="/structures">
             <Button variant="outline">ストラクチャ</Button>
           </Link>

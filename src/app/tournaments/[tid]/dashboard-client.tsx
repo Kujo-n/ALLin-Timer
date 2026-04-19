@@ -31,10 +31,12 @@ import {
 } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const { groupIds } = useCurrentGroup();
   const [data, setData] = useState<TournamentDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -61,7 +63,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   async function onDelete() {
     if (!user) return;
     try {
-      await deleteTournamentIfSetup(tid, user.uid);
+      await deleteTournamentIfSetup(tid, user.uid, groupIds);
       router.push("/tournaments");
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "削除失敗");
@@ -74,7 +76,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     if (!user) return;
     setStarting(true);
     try {
-      await startTournament(tid, user.uid);
+      await startTournament(tid, user.uid, groupIds);
       const next = await getTournament(tid);
       setData(next);
       setStartOpen(false);
@@ -106,8 +108,8 @@ export function DashboardClient({ tid }: { tid: string }) {
     );
   }
 
-  const isOwner = data.ownerUid === user.uid;
-  const canEdit = isOwner && data.state === "setup";
+  const canManage = groupIds.includes(data.groupId);
+  const canEdit = canManage && data.state === "setup";
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-8">
@@ -154,7 +156,7 @@ export function DashboardClient({ tid }: { tid: string }) {
 
       <div className="grid gap-6 md:grid-cols-2">
         <QrPanel tid={tid} />
-        <PlayerList tid={tid} canManage={isOwner} />
+        <PlayerList tid={tid} canManage={canManage} />
       </div>
 
       <Card>
