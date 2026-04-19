@@ -44,3 +44,6 @@ next-env.d.ts
 # 作業フォルダ
 tmp/
 
+# Claude Code user-local settings（個人用の上書き設定）
+.claude/settings.local.json
+
