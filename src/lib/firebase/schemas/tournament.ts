@@ -3,13 +3,7 @@ import { z } from "zod";
 
 import { levelSchema } from "./structure";
 
-export const tournamentStateSchema = z.enum([
-  "setup",
-  "seating",
-  "running",
-  "paused",
-  "finished",
-]);
+export const tournamentStateSchema = z.enum(["setup", "seating", "running", "paused", "finished"]);
 export type TournamentState = z.infer<typeof tournamentStateSchema>;
 
 export const structureSnapshotSchema = z.object({

@@ -26,9 +26,7 @@ const tournamentsRef = collection(firestore, "tournaments").withConverter(
   zodConverter(tournamentBodySchema, "tournaments"),
 );
 
-export async function createTournament(
-  input: CreateTournamentInput,
-): Promise<string> {
+export async function createTournament(input: CreateTournamentInput): Promise<string> {
   try {
     const ref = await addDoc(tournamentsRef, {
       groupId: input.groupId,
@@ -69,9 +67,7 @@ export async function getTournament(tid: string): Promise<TournamentDoc> {
  * 指定 group のトーナメント一覧。`where("groupId","==")` のみで取得し
  * client 側で createdAt 降順に並べる。
  */
-export async function listTournamentsByGroup(
-  groupId: string,
-): Promise<TournamentDoc[]> {
+export async function listTournamentsByGroup(groupId: string): Promise<TournamentDoc[]> {
   try {
     const q = query(tournamentsRef, where("groupId", "==", groupId));
     const snap = await getDocs(q);
@@ -85,10 +81,7 @@ export async function listTournamentsByGroup(
   }
 }
 
-export async function updateTournament(
-  tid: string,
-  patch: UpdateTournamentInput,
-): Promise<void> {
+export async function updateTournament(tid: string, patch: UpdateTournamentInput): Promise<void> {
   try {
     await updateDoc(doc(tournamentsRef, tid), {
       ...patch,
@@ -118,10 +111,7 @@ export async function startTournament(
     throw new AppError("not allowed", "firestore/permission-denied");
   }
   if (t.state !== "setup") {
-    throw new AppError(
-      "このトーナメントは既に開始されています",
-      "tournament/already-started",
-    );
+    throw new AppError("このトーナメントは既に開始されています", "tournament/already-started");
   }
   try {
     await updateDoc(doc(tournamentsRef, tid), {
@@ -148,10 +138,7 @@ export async function deleteTournamentIfSetup(
     throw new AppError("not allowed", "firestore/permission-denied");
   }
   if (t.state !== "setup") {
-    throw new AppError(
-      "既に開始済みのトーナメントは削除できません",
-      "tournament/already-started",
-    );
+    throw new AppError("既に開始済みのトーナメントは削除できません", "tournament/already-started");
   }
   try {
     await deleteDoc(doc(tournamentsRef, tid));

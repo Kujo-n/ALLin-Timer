@@ -20,10 +20,9 @@ import {
 } from "@/lib/firebase/schemas/groupJoinCode";
 import { logger } from "@/lib/logger";
 
-export const groupJoinCodesRef = collection(
-  firestore,
-  "groupJoinCodes",
-).withConverter(zodConverter(groupJoinCodeBodySchema, "groupJoinCodes"));
+export const groupJoinCodesRef = collection(firestore, "groupJoinCodes").withConverter(
+  zodConverter(groupJoinCodeBodySchema, "groupJoinCodes"),
+);
 
 export function joinCodeDocRef(code: string) {
   return doc(groupJoinCodesRef, code);
@@ -41,10 +40,7 @@ const CODE_LENGTH = 16;
 export function generateCodeString(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
   if (typeof crypto === "undefined" || !crypto.getRandomValues) {
-    throw new AppError(
-      "crypto.getRandomValues が利用できません",
-      "runtime/no-crypto",
-    );
+    throw new AppError("crypto.getRandomValues が利用できません", "runtime/no-crypto");
   }
   crypto.getRandomValues(bytes);
   let result = "";
@@ -57,9 +53,7 @@ export function generateCodeString(): string {
 /**
  * 招待コードを生成して Firestore に保存する。code 衝突は最大 3 回リトライ。
  */
-export async function createJoinCode(
-  input: CreateGroupJoinCodeInput,
-): Promise<string> {
+export async function createJoinCode(input: CreateGroupJoinCodeInput): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = generateCodeString();
     try {
@@ -76,34 +70,21 @@ export async function createJoinCode(
       logger.info("join code create ok", { gid: input.gid, code });
       return code;
     } catch (e) {
-      const wrapped = AppError.from(
-        e,
-        "firestore/write_failed",
-        "招待コード作成に失敗しました",
-      );
+      const wrapped = AppError.from(e, "firestore/write_failed", "招待コード作成に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
       throw wrapped;
     }
   }
-  throw new AppError(
-    "招待コードの生成に失敗しました（衝突が連続）",
-    "firestore/write_failed",
-  );
+  throw new AppError("招待コードの生成に失敗しました（衝突が連続）", "firestore/write_failed");
 }
 
-export async function getJoinCode(
-  code: string,
-): Promise<GroupJoinCodeDoc | null> {
+export async function getJoinCode(code: string): Promise<GroupJoinCodeDoc | null> {
   try {
     const snap = await getDoc(joinCodeDocRef(code));
     if (!snap.exists()) return null;
     return { id: snap.id, ...snap.data() };
   } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/read_failed",
-      "招待コード取得に失敗しました",
-    );
+    const wrapped = AppError.from(e, "firestore/read_failed", "招待コード取得に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }
@@ -132,11 +113,7 @@ export async function deleteJoinCode(code: string): Promise<void> {
     await deleteDoc(joinCodeDocRef(code));
     logger.info("join code delete ok", { code });
   } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "招待コード削除に失敗しました",
-    );
+    const wrapped = AppError.from(e, "firestore/write_failed", "招待コード削除に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }
@@ -146,10 +123,7 @@ export async function deleteJoinCode(code: string): Promise<void> {
  * 期限と最大使用回数で招待コードが現在使えるかを判定する。
  * クライアント側の早期失敗用。最終防衛は Firestore Rules。
  */
-export function isJoinCodeUsable(
-  codeDoc: GroupJoinCodeDoc,
-  now: Date = new Date(),
-): boolean {
+export function isJoinCodeUsable(codeDoc: GroupJoinCodeDoc, now: Date = new Date()): boolean {
   if (codeDoc.expiresAt.toMillis() <= now.getTime()) return false;
   if (codeDoc.maxUses !== null && codeDoc.usesCount >= codeDoc.maxUses) {
     return false;

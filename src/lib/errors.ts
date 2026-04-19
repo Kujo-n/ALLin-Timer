@@ -10,9 +10,7 @@ export class AppError extends Error {
 
   static from(error: unknown, code: string, message?: string): AppError {
     if (error instanceof AppError) return error;
-    const msg =
-      message ??
-      (error instanceof Error ? error.message : "Unknown error");
+    const msg = message ?? (error instanceof Error ? error.message : "Unknown error");
     return new AppError(msg, code, error);
   }
 }

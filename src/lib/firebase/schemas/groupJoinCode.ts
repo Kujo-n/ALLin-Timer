@@ -23,6 +23,4 @@ export const createGroupJoinCodeInputSchema = z.object({
   expiresAt: z.instanceof(Timestamp),
   maxUses: z.number().int().positive().nullable(),
 });
-export type CreateGroupJoinCodeInput = z.infer<
-  typeof createGroupJoinCodeInputSchema
->;
+export type CreateGroupJoinCodeInput = z.infer<typeof createGroupJoinCodeInputSchema>;

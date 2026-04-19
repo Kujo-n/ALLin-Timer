@@ -15,10 +15,6 @@ export type PlayerDoc = PlayerBody & { id: string };
 
 export const joinInputSchema = z.object({
   tid: z.string().min(1),
-  displayName: z
-    .string()
-    .trim()
-    .min(1, "表示名を入力してください")
-    .max(40, "表示名は 40 文字以内"),
+  displayName: z.string().trim().min(1, "表示名を入力してください").max(40, "表示名は 40 文字以内"),
 });
 export type JoinInput = z.infer<typeof joinInputSchema>;

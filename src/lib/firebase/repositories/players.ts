@@ -13,10 +13,7 @@ import {
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
-import {
-  playerBodySchema,
-  type PlayerDoc,
-} from "@/lib/firebase/schemas/player";
+import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
 import { logger } from "@/lib/logger";
 
 function playersRef(tid: string) {
@@ -25,10 +22,7 @@ function playersRef(tid: string) {
   );
 }
 
-export async function getPlayer(
-  tid: string,
-  uid: string,
-): Promise<PlayerDoc | null> {
+export async function getPlayer(tid: string, uid: string): Promise<PlayerDoc | null> {
   try {
     const snap = await getDoc(doc(playersRef(tid), uid));
     if (!snap.exists()) return null;
@@ -64,11 +58,7 @@ export async function upsertPlayer(
   try {
     const existing = await getPlayer(tid, uid);
     if (existing) {
-      await setDoc(
-        doc(playersRef(tid), uid),
-        { displayName: input.displayName },
-        { merge: true },
-      );
+      await setDoc(doc(playersRef(tid), uid), { displayName: input.displayName }, { merge: true });
       logger.info("player merge ok", { tid, uid });
       return;
     }

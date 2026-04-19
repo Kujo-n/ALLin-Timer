@@ -26,9 +26,7 @@ const structuresRef = collection(firestore, "structures").withConverter(
   zodConverter(structureBodySchema, "structures"),
 );
 
-export async function createStructure(
-  input: CreateStructureInput,
-): Promise<string> {
+export async function createStructure(input: CreateStructureInput): Promise<string> {
   try {
     const ref = await addDoc(structuresRef, {
       ...input,
@@ -61,9 +59,7 @@ export async function getStructure(sid: string): Promise<StructureDoc> {
  * 指定 group のストラクチャ一覧。複合インデックス追加を避けるため
  * `where("groupId","==")` のみで取得して client 側で createdAt 降順に並べる。
  */
-export async function listStructuresByGroup(
-  groupId: string,
-): Promise<StructureDoc[]> {
+export async function listStructuresByGroup(groupId: string): Promise<StructureDoc[]> {
   try {
     const q = query(structuresRef, where("groupId", "==", groupId));
     const snap = await getDocs(q);
@@ -77,10 +73,7 @@ export async function listStructuresByGroup(
   }
 }
 
-export async function updateStructure(
-  sid: string,
-  patch: UpdateStructureInput,
-): Promise<void> {
+export async function updateStructure(sid: string, patch: UpdateStructureInput): Promise<void> {
   try {
     await updateDoc(doc(structuresRef, sid), patch);
     logger.info("structure update ok", { sid });

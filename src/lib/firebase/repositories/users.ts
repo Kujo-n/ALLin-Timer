@@ -23,9 +23,7 @@ const usersRef = collection(firestore, "users").withConverter(
   zodConverter(userProfileBodySchema, "users"),
 );
 
-export async function getUserProfile(
-  uid: string,
-): Promise<UserProfileDoc | null> {
+export async function getUserProfile(uid: string): Promise<UserProfileDoc | null> {
   try {
     const snap = await getDoc(doc(usersRef, uid));
     if (!snap.exists()) return null;
@@ -37,9 +35,7 @@ export async function getUserProfile(
   }
 }
 
-export async function upsertUserProfile(
-  input: UpsertUserProfileInput,
-): Promise<void> {
+export async function upsertUserProfile(input: UpsertUserProfileInput): Promise<void> {
   try {
     const existing = await getUserProfile(input.uid);
     if (existing) {
@@ -84,10 +80,7 @@ export async function addGroupIdToUser(uid: string, gid: string): Promise<void> 
   }
 }
 
-export async function removeGroupIdFromUser(
-  uid: string,
-  gid: string,
-): Promise<void> {
+export async function removeGroupIdFromUser(uid: string, gid: string): Promise<void> {
   try {
     await updateDoc(doc(usersRef, uid), { groupIds: arrayRemove(gid) });
     logger.info("user groupIds remove ok", { uid, gid });
