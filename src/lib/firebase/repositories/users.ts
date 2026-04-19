@@ -1,4 +1,13 @@
-import { collection, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
@@ -46,12 +55,49 @@ export async function upsertUserProfile(
       uid: input.uid,
       displayName: input.displayName,
       email: input.email,
+      groupIds: [],
       createdAt: serverTimestamp(),
     });
     logger.info("user profile create ok", { uid: input.uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "プロフィール保存に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, uid: input.uid });
+    throw wrapped;
+  }
+}
+
+/**
+ * users/{uid}.groupIds に gid を追加（重複は arrayUnion が処理）。
+ */
+export async function addGroupIdToUser(uid: string, gid: string): Promise<void> {
+  try {
+    await updateDoc(doc(usersRef, uid), { groupIds: arrayUnion(gid) });
+    logger.info("user groupIds add ok", { uid, gid });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "プロフィールへのサークル追加に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, uid, gid });
+    throw wrapped;
+  }
+}
+
+export async function removeGroupIdFromUser(
+  uid: string,
+  gid: string,
+): Promise<void> {
+  try {
+    await updateDoc(doc(usersRef, uid), { groupIds: arrayRemove(gid) });
+    logger.info("user groupIds remove ok", { uid, gid });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "プロフィールからのサークル除外に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, uid, gid });
     throw wrapped;
   }
 }
