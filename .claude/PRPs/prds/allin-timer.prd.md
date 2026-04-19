@@ -109,6 +109,7 @@
 | Must | 参加者スマホでタイマー閲覧 | Case 2 の直接解決 |
 | Must | ストラクチャ編集 UI（ブラインド構造・初期スタック・レイトエントリー締切） | サークル固有ルール対応の最小単位 |
 | Must | 運営者スマホからの全操作 | 運営者 3 人中誰でも即応できる |
+| Must | **サークル（Group）単位での共有**（複数運営者で structures / tournaments を共有） | 運営者 3 人前提。個人所有モデルでは実運用にならない（Phase 2.5 で追加） |
 | Must | 接続切断時の UI 表示（最終時刻＋「接続切れ」） | 混乱を防ぐ最低ライン |
 | Must | 初回席決めは運営者トリガー、進行中レイトエントリーは自動配席 | 参加登録順の偏り防止と、運営者負担最小化の両立 |
 | Should | 賞金計算（単純分配） | AI 支援で低コスト実装可能 |
@@ -206,9 +207,10 @@
 | # | Phase | Description | Status | Parallel | Depends | PRP Plan |
 |---|-------|-------------|--------|----------|---------|----------|
 | 1 | Foundation | Next.js + Firebase + Vercel 初期構築、認証（3択対応）、Firestore データモデル定義、MIT ライセンス、セキュリティルール | complete | - | - | [completed/phase-1-foundation.plan.md](../plans/completed/phase-1-foundation.plan.md) — 実装レポート: [phase-1-foundation-report.md](../reports/phase-1-foundation-report.md) |
-| 2 | Tournament Setup & Receipt | ストラクチャ編集 UI、トーナメント CRUD、参加者受付（URL/QR・3択フロー：ログイン／ゲスト／アカウント登録） | complete | with 3 | 1 | [completed/phase-2-tournament-setup-receipt.plan.md](../plans/completed/phase-2-tournament-setup-receipt.plan.md) — 実装レポート: [phase-2-tournament-setup-receipt-report.md](../reports/phase-2-tournament-setup-receipt-report.md) |
-| 3 | Timer & Realtime & Viewer | タイマーコア、Firestore `onSnapshot` 同期、接続切断 UI、参加者閲覧画面 | pending | with 2 | 1 | - |
-| 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | pending | - | 2 | - |
+| 2 | Tournament Setup & Receipt | ストラクチャ編集 UI、トーナメント CRUD、参加者受付（URL/QR・3択フロー：ログイン／ゲスト／アカウント登録） | complete | - | 1 | [completed/phase-2-tournament-setup-receipt.plan.md](../plans/completed/phase-2-tournament-setup-receipt.plan.md) — 実装レポート: [phase-2-tournament-setup-receipt-report.md](../reports/phase-2-tournament-setup-receipt-report.md) |
+| 2.5 | Group (サークル) Management | `groups/{gid}` コレクション新設、複数運営者共有、招待コードでメンバー加入、structures/tournaments を group 配下に破壊的移行 | pending | - | 2 | - |
+| 3 | Timer & Realtime & Viewer | タイマーコア、Firestore `onSnapshot` 同期、接続切断 UI、参加者閲覧画面 | pending | with 4 | 2.5 | - |
+| 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | pending | with 3 | 2.5 | - |
 | 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4 | - |
 
 ### Phase Details
@@ -235,6 +237,21 @@
     - (b) ゲスト参加（匿名 Auth + 表示名入力）
     - (c) アカウント登録（Email Link でマジックリンク認証・そのまま参加完了）
 - **Success signal**: 運営者がサンプルトーナメントを作成し、参加者役の端末から 3 ルート全てで受付完了できる
+
+**Phase 2.5: Group (サークル) Management**
+- **Goal**: サークルを第一級エンティティ化し、2〜3 人の運営者で structures / tournaments を共有できるようにする
+- **背景**: 実サークルは運営者が複数人いるため、Phase 2 の個人所有モデル（`ownerUid`）では共有できず実運用にならない
+- **Scope**:
+  - `groups/{gid}` コレクション（name / ownerUid / memberUids / createdAt）
+  - `groupJoinCodes/{code}` 招待コード（有効期限付き、1 回 or 複数回使用可）
+  - `users/{uid}.groupIds` 逆引きフィールド
+  - `structures/{sid}`・`tournaments/{tid}` を **`ownerUid` → `groupId` + `createdByUid` に破壊的変更**
+  - `/groups` 一覧 / `/groups/new` 作成 / `/groups/[gid]` 詳細（メンバー一覧・招待コード発行・脱退）
+  - `/groups/join/[code]` 加入ページ
+  - Phase 2 既存 UI（`/structures` / `/tournaments` など）を「現在選択中の group」をコンテキストとして扱うよう修正
+  - Firestore Security Rules: group メンバーシップ（`request.auth.uid in get(...).data.memberUids`）に基づく read/write
+  - **既存データは手動削除／マイグレーション前提**（破壊的変更）
+- **Success signal**: 運営者 2 人が同じ group に所属した状態で、片方が作った structure / tournament をもう片方が編集・使用できる
 
 **Phase 3: Timer & Realtime & Viewer**
 - **Goal**: 全端末で同期されたタイマー表示を実現する
@@ -272,8 +289,8 @@
 
 ### Parallelism Notes
 
-- Phase 2（セットアップ系 UI）と Phase 3（タイマー／同期）は、共に Phase 1 のデータモデルに依存するが相互には独立しているため並列可能
-- Phase 4（席管理）は Phase 2 で参加者が登録されている前提が必要なため、Phase 2 の完了を待つ
+- **Phase 2.5（Group Management）は破壊的スキーマ変更**のため、Phase 3 / 4 をブロックする。Phase 2 完了後に単独で進める
+- Phase 3（タイマー／同期）と Phase 4（席管理）は、Phase 2.5 完了後は相互独立なので並列可能
 - Phase 5（実地テスト）は全機能結合が前提のため、3 と 4 の双方完了後
 
 ---
@@ -291,6 +308,8 @@
 | BB 同着時の移動対象選定 | 席番号昇順 | ランダム | 決定論的で再現性があり、運営者が説明しやすい |
 | リバイ／アドオン | v1 対象外 | v1 同梱 | データモデル影響大・実地フィードバック後に判断 |
 | 運営者デバイス | PC・スマホ両対応 | PC のみ | 運営者 3 人の誰でも即応できる必要性 |
+| サークル運営者の共有モデル（Phase 2.5 追加） | **Group を第一級エンティティ化**（`groups/{gid}` + `memberUids`）| (A) `sharedWithUids` の ACL 追加のみ / (B) 個人所有のまま | サークル単位で structures / tournaments を一括共有。メンバー追加 1 回で全 doc 共有が自動化され、運営コスト低。将来のロール／統計拡張にも備えられる |
+| Phase 2.5 の既存データ互換 | **破壊的変更**（`ownerUid` → `groupId` + `createdByUid`）| 両方式併存（`groupId` を optional） | Phase 2 は内部検証段階で本番データなし、互換レイヤを残すとコード／ルールが複雑化するため破壊的を選択 |
 | 接続切断時 UI | 最終時刻＋「接続切れ」 | 完全ブラックアウト / 警告音 | 混乱最小・誤情報表示を防ぎつつ画面遷移させない |
 | 広告収益化 | v1 対象外、v1.1 以降で検討 | v1 同梱 | まず仮説検証優先、収益化は継続使用確認後 |
 | ライセンス | MIT | プロプライエタリ / GPL 系 | GitHub 公開前提・サークル外への再利用促進。サークル固有情報は DB に隔離しリポジトリに含めない |
