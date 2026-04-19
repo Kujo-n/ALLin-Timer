@@ -10,8 +10,11 @@ export default function Page() {
         NLH（ノーリミットテキサスホールデム）小規模サークル向けトーナメント進行支援アプリ。
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
+        <Link href="/groups">
+          <Button>サークル一覧へ</Button>
+        </Link>
         <Link href="/tournaments">
-          <Button>トーナメント一覧へ</Button>
+          <Button variant="outline">トーナメント一覧へ</Button>
         </Link>
         <Link href="/login">
           <Button variant="outline">ログイン / 新規登録</Button>
