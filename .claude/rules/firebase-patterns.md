@@ -19,6 +19,7 @@ Phase 1 で確立した Firebase 利用パターン。Phase 2 以降も必ず従
 - Firestore の read / write は **`converter<T>()`（`src/lib/firebase/converters.ts`）経由**で型安全に
 - 生の `DocumentData` を UI まで持ち込まない
 - collection / doc 参照は converter 適用済みヘルパ関数にまとめる
+- **Phase 2 時点で runtime validator（zod 等）を `fromFirestore` に統合**する。Phase 1 の converter は `as T` キャストのみで型保証が弱い（converters.ts に `TODO(phase-2)` あり）。コレクション別に zod schema を定義し、`snap.data()` を validate してから返す設計に差し替えること
 
 ## セキュリティルール
 
