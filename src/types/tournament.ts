@@ -1,11 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type TournamentState =
-  | "setup"
-  | "seating"
-  | "running"
-  | "paused"
-  | "finished";
+export type TournamentState = "setup" | "seating" | "running" | "paused" | "finished";
 
 export interface Level {
   level: number;
