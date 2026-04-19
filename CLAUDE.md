@@ -55,7 +55,8 @@ Phase 1 で確立した規約を以下に分離。
 |---|---|---|
 | Firebase / Firestore | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
 | エラー / ログ | [.claude/rules/error-logging.md](.claude/rules/error-logging.md) | `AppError` ラップ、ドメインコード付与、`logger` 経由出力 |
-| セキュリティ / 機密情報 | [.claude/rules/security.md](.claude/rules/security.md) | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用 |
+| セキュリティ / 機密情報 | [.claude/rules/security.md](.claude/rules/security.md) | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則 |
+| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md) | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 実装中に充実させる |
 
 ### ルール参照の義務
 
@@ -65,8 +66,10 @@ Phase 1 で確立した規約を以下に分離。
   → [firebase-patterns.md](.claude/rules/firebase-patterns.md)
 - `try`/`catch`・エラークラス・ログ出力を含むコードの追加・編集
   → [error-logging.md](.claude/rules/error-logging.md)
-- `.env*` / 環境変数参照 / 認証情報 / Firebase 設定値を扱うコードの追加・編集
+- `.env*` / 環境変数参照 / 認証情報 / Firebase 設定値 / 招待コード関連の追加・編集
   → [security.md](.claude/rules/security.md)
+- `groups/` / `groupJoinCodes/` コレクション、`groupId` / `memberUids` / `createdByUid` フィールド、group コンテキスト hook の追加・編集（Phase 2.5 以降）
+  → [group-membership.md](.claude/rules/group-membership.md)
 - 上記に該当するかユーザーから指定のルールを参照するよう指示があった場合
 
 複数領域にまたがる変更は該当するすべてのルールを読むこと。ルールと PRD の実装方針が矛盾する場合は作業を止めてユーザーに確認する。

@@ -25,3 +25,16 @@
 
 - `npm install` / `pnpm add` 等のインストール系コマンドは **ask モード**（settings.local.json で設定済み）
 - 依存追加時は用途・ライセンス・メンテナンス状況を確認してから承認
+
+## 招待コード設計原則（Phase 2.5 以降）
+
+`groupJoinCodes/{code}` による group 加入フローで遵守すること:
+
+- **推測困難性**: code は **Web Crypto API で生成した 128bit 以上のランダム値**を base62 等で短縮。連番・時刻ベース・UUID v1 など予測可能な方式禁止
+- **有効期限**: `expiresAt` 必須。default 7 日・最大 30 日。期限切れコードは rule で read 拒否
+- **使用回数制限**: `maxUses` / `usedCount` を持ち、`usedCount >= maxUses` のコードは rule で加入拒否
+- **失効操作**: group オーナーは任意時点でコードを削除（失効）できること
+- **ログ**: 加入成功・失敗イベントは `logger.info` / `logger.warn` で記録（[error-logging.md](error-logging.md) 準拠）
+- **rule 側の保護**: 加入書込は `groupJoinCodes/{code}` の有効性チェックを rule に必ず含める（クライアント検証のみに依存しない）
+
+詳細モデルは [group-membership.md](group-membership.md) 参照。

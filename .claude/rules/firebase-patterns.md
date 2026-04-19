@@ -29,7 +29,9 @@ Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層�
 ## セキュリティルール
 
 - **deny-by-default**（`allow read, write: if false;` から開始）
-- 書込条件の基本形: `request.auth.uid == resource.data.ownerUid`
+- 書込条件の基本形:
+  - Phase 2 まで: `request.auth.uid == resource.data.ownerUid`（個人所有）
+  - Phase 2.5 以降: `request.auth.uid in get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.memberUids`（group メンバーシップ）
 - 参加者の読取は対象トーナメントドキュメントのみに限定
 - **参加者ドキュメント（`tournaments/{tid}/players/{pid}`）** は以下を満たすこと:
   - create: `pid == auth.uid`、`uid == auth.uid`、`isBusted == false` 必須
@@ -43,3 +45,13 @@ Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層�
 - Firestore スキーマ変更は schema（zod） / repository / security rules の **3 点を同時更新**
 - 新規 collection 追加時は必ず deny ルールから書き始める
 - `where("field", "==") + orderBy("other")` のクエリは Firestore 複合インデックスが必要。規模が小さい場合は **client 側ソート** を採用して index 追加を回避する設計を優先（詳細は [converters.ts](src/lib/firebase/converters.ts) / `repositories/*.ts` の `listMyXxx` パターン参照）
+
+## Phase 2.5 以降の注意: `get()` による参照は rule read を消費
+
+- Security rule 内の `get(/documents/...)` は **1 回の評価につき Firestore の読取クォータを 1 件消費**する
+- 同一トランザクションでの連続書込やリアルタイム購読（`onSnapshot`）の接続時に毎回評価される
+- 対策:
+  - rule 内でメンバーシップ判定に使う path は**同じ document を参照**するよう統一し、Firebase の rule 内 cache を活かす
+  - 可能なら書込時に `request.auth.uid` と `resource.data.memberUids`（冗長フィールド）を突き合わせる設計も検討
+  - 20 人 × 月 1〜2 回規模では総量的に問題は出ないが、UI 側で無駄な re-subscribe を避ける
+- group ベース権限モデルの全容は [group-membership.md](group-membership.md) を参照
