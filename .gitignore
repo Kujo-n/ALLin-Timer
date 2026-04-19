@@ -43,3 +43,6 @@ next-env.d.ts
 
 # 作業フォルダ
 tmp/
+
+# コードレビュー成果物（ローカル参照のみ、公開しない）
+/.claude/PRPs/reviews/

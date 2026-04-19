@@ -57,7 +57,7 @@ npm run dev
 - <http://localhost:3000/> で「ALLin-Timer」見出しが表示されれば OK
 - <http://localhost:3000/debug/fs> で [書込] → [一覧] を押し、作成したドキュメント ID が表示されれば Firestore 疎通 OK
 
-> `_debug/fs` は Phase 1 の疎通確認用ページです。Phase 5 で削除予定。
+> `/debug/fs` は Phase 1 の疎通確認用ページです。本番公開を避けるため `NEXT_PUBLIC_ENABLE_DEBUG=1` が設定されている環境でのみ表示されます（未設定なら 404）。Phase 5 で削除予定。
 
 ### 5. Firestore セキュリティルールのデプロイ
 
@@ -73,8 +73,9 @@ firebase deploy --only firestore:rules
 1. GitHub に本リポジトリを push
 2. [Vercel](https://vercel.com/) で「Import Git Repository」から選択
 3. 環境変数 `NEXT_PUBLIC_FIREBASE_*` と `NEXT_PUBLIC_LOG_LEVEL` を **Production / Preview** の両方に設定
-4. デプロイ後、Firebase Console → Authentication → 承認済みドメインに本番 URL を追加
-5. Vercel 本番 URL の `/debug/fs` で同様に動作確認
+4. `NEXT_PUBLIC_ENABLE_DEBUG=1` は **Preview のみ**に設定（Production は未設定で放置）。これにより本番 URL では `/debug/fs` が 404 になる
+5. デプロイ後、Firebase Console → Authentication → 承認済みドメインに本番 URL を追加
+6. Vercel Preview URL の `/debug/fs` で動作確認（本番 URL ではなく）
 
 ## よく使うコマンド
 
@@ -95,7 +96,7 @@ firebase deploy --only firestore:rules
 ```
 src/
 ├─ app/                 # Next.js App Router
-│  ├─ _debug/fs/        # Firestore 疎通確認ページ（Phase 5 で削除）
+│  ├─ debug/fs/         # Firestore 疎通確認ページ（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ globals.css
 │  ├─ layout.tsx        # AuthProvider でラップ
 │  └─ page.tsx
