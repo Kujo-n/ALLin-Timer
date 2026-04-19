@@ -36,6 +36,7 @@ Interpret `$ARGUMENTS` to determine what to stage:
 | `only new files` | Stage untracked files only | `git ls-files --others --exclude-standard \| grep . && git ls-files --others --exclude-standard \| xargs git add` |
 | `the auth changes` | Interpret from status/diff — find auth-related files | `git add <matched files>` |
 | Specific filenames | Stage those files | `git add <files>` |
+| `機能単位` / `task 別` / `feature-based` / `split` / `分割` | **マルチコミット分割モード** — Phase 2b へ | *(後述)* |
 
 For natural language inputs (like "the auth changes"), cross-reference the `git status` output and `git diff` to identify relevant files. Show the user which files you're staging and why.
 
@@ -49,6 +50,81 @@ git diff --cached --stat
 ```
 
 If nothing staged, stop: "No files matched your description."
+
+---
+
+## Phase 2b — MULTI-COMMIT SPLIT（機能単位・依存順）
+
+`$ARGUMENTS` に `機能単位` / `task 別` / `feature-based` / `split` / `分割` が含まれる場合は、単一コミットではなく**変更を複数コミットに分割**する。それ以外なら Phase 3 へ。
+
+### 分割計画
+
+1. `git status --short` と `git diff`（必要なら `git diff --stat`）で全変更を把握
+2. 役割が近いファイル同士を 1 コミットにまとめる（凝集性ルール）:
+   - `package.json` / `package-lock.json` → deps 単位で 1 コミット
+   - スキーマ / converter / repository → Firestore foundation 1 コミット
+   - `firestore.rules` / `firestore.indexes.json` → Security Rules 1 コミット
+   - shadcn UI 追加（`src/components/ui/*`）→ UI プリミティブ 1 コミット
+   - 認証サービス（`src/lib/services/auth-*`, `redirect`）→ 認証サービス 1 コミット
+   - 認証コンポーネント（`src/components/auth/*`）→ 認証 UI 1 コミット
+   - ドメインサービス（`receipt` など）→ サービス別に 1 コミット
+   - ページ（`src/app/<feature>/`）→ feature 単位で 1 コミット
+   - レイアウト／トップ（`layout.tsx` / `page.tsx`）→ 1 コミット
+   - ドキュメント（`README.md`, `.claude/PRPs/`）→ 最後に 1 コミット
+
+3. **依存順**に並べる（下位層 → 上位層 → docs）:
+
+   ```
+   chore: deps
+     ↓
+   foundation（schema / converter / repositories / rules / UI プリミティブ）
+     ↓
+   services（認証 / ドメイン）
+     ↓
+   components（認証 UI / 機能別共通コンポーネント）
+     ↓
+   pages（各 feature 画面、依存する service/components より後）
+     ↓
+   layout / トップページ（すべての共通 UI に依存）
+     ↓
+   docs（最後）
+   ```
+
+   ガイドライン: 各コミット単体で **tsc が通る状態に近づける**（best-effort、完全保証は不要）。例えば古い API を削除したコミットは、その API を使うコード修正を含める。
+
+4. 実行前に分割プランを 1 行ずつ提示せず、**そのまま順次実行**する（auto mode では待たない）。ただしコミットを実行するたびにコミットハッシュとメッセージは都度表示する。
+
+### 実行ループ
+
+各グループについて順に:
+
+```bash
+git add <files-for-this-group>
+git diff --cached --stat   # 何を stage したか確認
+git commit -m "{type}: {日本語の説明}"
+```
+
+### ガードレール
+
+- **.gitignore 衝突**: `git add` が `paths are ignored` で失敗したら、対象パスをプランから除外して再実行（ユーザーへは「.gitignore により除外」とだけ報告）
+- **空 stage**: 既に前のコミットに含まれていて stage 対象が 0 件なら、そのグループはスキップしログで通知
+- **順序再検討**: 計画の途中で「A が B に依存していた」と気付いた場合は、未コミットのグループ順を入れ替える
+- **最終検証**: 全コミット後に `git status --short` が空であること、`git log --oneline -N` で作成したコミットが並んでいることを確認
+- **ビルド検証は任意**: 最終状態での `typecheck` / `build` が pass していれば OK（中間コミット単位の pass は best-effort）
+
+### 出力（マルチコミットモード時）
+
+```
+Committed N commits on {branch}:
+  {hash1} {type}: {desc1}   ({files1} files)
+  {hash2} {type}: {desc2}   ({files2} files)
+  ...
+
+Working tree: clean
+Skipped: {ignored paths, if any}
+```
+
+その後 Phase 4 の単一コミット出力は省略する。
 
 ---
 
@@ -123,6 +199,7 @@ Next steps:
 | `/prp-commit except tests` | テスト以外を stage |
 | `/prp-commit 認証関連の変更だけ` | status / diff から認証関連ファイルを抽出 |
 | `/prp-commit 新規ファイルのみ` | 未追跡ファイルのみ stage |
+| `/prp-commit 機能単位` / `task 別` / `split` | **Phase 2b マルチコミット分割モード**（依存順に複数コミット） |
 
 自動生成されるメッセージの例:
 
