@@ -15,7 +15,36 @@ service cloud.firestore {
       allow update, delete: if request.auth != null
                     && resource.data.ownerUid == request.auth.uid;
 
-      // サブコレクションは親の所有者のみ書込可、認証済みユーザーは読取可
+      // 参加者ドキュメント: 本人による自己作成／更新／取消を許容（Phase 2: 受付フロー）
+      // 条件: pid == auth.uid、uid フィールドも auth.uid、isBusted は false 固定
+      match /players/{pid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                      && pid == request.auth.uid
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.isBusted == false;
+        // 本人 update は displayName の書き換えのみに限定。
+        // uid / isBusted / entryAt / bustedAt は変更不可（Phase 4 で運営側がバスト管理）。
+        allow update: if request.auth != null
+                      && pid == request.auth.uid
+                      && resource.data.uid == request.auth.uid
+                      && request.resource.data.uid == resource.data.uid
+                      && request.resource.data.isBusted == resource.data.isBusted
+                      && request.resource.data.entryAt == resource.data.entryAt
+                      && request.resource.data.bustedAt == resource.data.bustedAt;
+        // self-delete（自己取消）と owner-delete（運営取消）の双方を許容。
+        // owner-delete は tournaments/{tid} が存在する場合のみ評価する（exists ガード）。
+        allow delete: if request.auth != null
+                      && (
+                        pid == request.auth.uid
+                        || (
+                          exists(/databases/$(database)/documents/tournaments/$(tid))
+                          && get(/databases/$(database)/documents/tournaments/$(tid)).data.ownerUid == request.auth.uid
+                        )
+                      );
+      }
+
+      // その他サブコレクションは親の所有者のみ書込可、認証済みユーザーは読取可
       match /{sub=**} {
         allow read: if request.auth != null;
         allow write: if request.auth != null
