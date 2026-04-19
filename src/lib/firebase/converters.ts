@@ -3,16 +3,37 @@ import {
   type FirestoreDataConverter,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import type { ZodType } from "zod";
 
-// TODO(phase-2): `fromFirestore` currently casts `snap.data()` to `T` without
-// runtime validation. This is acceptable only while Phase 1 has a single debug
-// writer. Before Phase 2 introduces real tournament / player / structure
-// converters, wrap the cast with a runtime validator (zod schema per collection)
-// so malformed Firestore documents fail loudly instead of producing undefined
-// field access deep in the UI. See .claude/rules/firebase-patterns.md.
-export function converter<T extends DocumentData>(): FirestoreDataConverter<T> {
+import { AppError } from "@/lib/errors";
+
+/**
+ * Firestore `withConverter` に渡す zod ベースのコンバーター。
+ *
+ * - schema はドキュメント本体（`id` を含まない）を validate する。
+ * - `fromFirestore` 失敗時は `AppError("firestore/invalid-data")` を throw。
+ * - 呼び出し側（repositories）で `{ id: snap.id, ...snap.data() }` のように `id` を合成する。
+ *
+ * `FirestoreDataConverter<T>`（単一型引数）を返すことで SDK の overload 制約を満たす。
+ */
+export function zodConverter<T extends DocumentData>(
+  schema: ZodType<T>,
+  collectionName: string,
+): FirestoreDataConverter<T> {
   return {
-    toFirestore: (data: T) => data,
-    fromFirestore: (snap: QueryDocumentSnapshot) => snap.data() as T,
+    toFirestore(modelObject): DocumentData {
+      return modelObject as DocumentData;
+    },
+    fromFirestore(snap: QueryDocumentSnapshot): T {
+      const parsed = schema.safeParse(snap.data());
+      if (!parsed.success) {
+        throw new AppError(
+          `Firestore document failed schema validation: ${collectionName}/${snap.id}`,
+          "firestore/invalid-data",
+          parsed.error,
+        );
+      }
+      return parsed.data;
+    },
   };
 }

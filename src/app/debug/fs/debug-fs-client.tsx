@@ -7,25 +7,26 @@ import {
   collection,
   getDocs,
   serverTimestamp,
-  type FieldValue,
+  Timestamp,
 } from "firebase/firestore";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
-import { converter } from "@/lib/firebase/converters";
+import { zodConverter } from "@/lib/firebase/converters";
 import { logger } from "@/lib/logger";
 
-type DebugDoc = {
-  ownerUid: string;
-  name: string;
-  state: string;
-  createdAt: FieldValue;
-  updatedAt: FieldValue;
-};
+const debugDocSchema = z.object({
+  ownerUid: z.string().min(1),
+  name: z.string().min(1),
+  state: z.string().min(1),
+  createdAt: z.instanceof(Timestamp).optional(),
+  updatedAt: z.instanceof(Timestamp).optional(),
+});
 
 const tournamentsRef = collection(firestore, "tournaments").withConverter(
-  converter<DebugDoc>(),
+  zodConverter(debugDocSchema, "tournaments"),
 );
 
 async function ensureSignedIn(): Promise<User> {
@@ -61,7 +62,9 @@ export function DebugFsClient() {
     setError(null);
     try {
       const snap = await getDocs(tournamentsRef);
-      setDocs(snap.docs.map((d) => `${d.id}: ${d.data().name ?? "(no name)"}`));
+      setDocs(
+        snap.docs.map((d) => `${d.id}: ${d.data().name ?? "(no name)"}`),
+      );
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });
