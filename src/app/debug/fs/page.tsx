@@ -1,18 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { signInAnonymously } from "firebase/auth";
+import { signInAnonymously, type User } from "firebase/auth";
 import {
   addDoc,
   collection,
   getDocs,
   serverTimestamp,
+  type FieldValue,
 } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
+import { converter } from "@/lib/firebase/converters";
 import { logger } from "@/lib/logger";
+
+type DebugDoc = {
+  ownerUid: string;
+  name: string;
+  state: string;
+  createdAt: FieldValue;
+  updatedAt: FieldValue;
+};
+
+const tournamentsRef = collection(firestore, "tournaments").withConverter(
+  converter<DebugDoc>(),
+);
+
+async function ensureSignedIn(): Promise<User> {
+  if (firebaseAuth.currentUser) return firebaseAuth.currentUser;
+  const credential = await signInAnonymously(firebaseAuth);
+  return credential.user;
+}
 
 export default function DebugFsPage() {
   const [docs, setDocs] = useState<string[]>([]);
@@ -21,17 +41,8 @@ export default function DebugFsPage() {
   async function handleWrite() {
     setError(null);
     try {
-      if (!firebaseAuth.currentUser) {
-        await signInAnonymously(firebaseAuth);
-      }
-      const uid = firebaseAuth.currentUser?.uid;
-      if (!uid) {
-        throw new AppError(
-          "Anonymous sign-in did not yield a user",
-          "auth/no-current-user",
-        );
-      }
-      const ref = await addDoc(collection(firestore, "tournaments"), {
+      const { uid } = await ensureSignedIn();
+      const ref = await addDoc(tournamentsRef, {
         ownerUid: uid,
         name: "debug",
         state: "setup",
@@ -49,8 +60,8 @@ export default function DebugFsPage() {
   async function handleList() {
     setError(null);
     try {
-      const snap = await getDocs(collection(firestore, "tournaments"));
-      setDocs(snap.docs.map((d) => `${d.id}: ${d.get("name") ?? "(no name)"}`));
+      const snap = await getDocs(tournamentsRef);
+      setDocs(snap.docs.map((d) => `${d.id}: ${d.data().name ?? "(no name)"}`));
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });

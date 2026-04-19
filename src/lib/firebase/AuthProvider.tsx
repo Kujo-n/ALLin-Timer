@@ -1,14 +1,16 @@
 "use client";
 
+import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useState,
   type ReactNode,
 } from "react";
+
+import { logger } from "@/lib/logger";
 
 import { firebaseAuth } from "./client";
 
@@ -20,14 +22,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ user: null, loading: true });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-      setState({ user, loading: false });
-    });
+    const unsubscribe = onAuthStateChanged(
+      firebaseAuth,
+      (user) => setState({ user, loading: false }),
+      (error) => {
+        const code = error instanceof FirebaseError ? error.code : "auth/unknown";
+        logger.error("auth state change error", { code, message: error.message });
+        setState({ user: null, loading: false });
+      },
+    );
     return unsubscribe;
   }, []);
 
-  const value = useMemo(() => state, [state]);
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthUser(): AuthState {
