@@ -189,7 +189,16 @@
       "Bash(gh repo view*)",
       "Bash(gh api*)",
       "Bash(gh run view*)",
-      "Bash(gh run list*)"
+      "Bash(gh run list*)",
+
+      "Bash(firebase --version)",
+      "Bash(firebase projects:list)",
+      "Bash(firebase login:list)",
+      "Bash(firebase target*)",
+      "Bash(firebase emulators:start*)",
+      "Bash(firebase emulators:exec*)",
+      "Bash(firebase firestore:indexes*)",
+      "Bash(npx shadcn*)"
     ],
     "ask": [
       "WebSearch",
@@ -253,7 +262,17 @@
       "Bash(terraform apply*)",
       "Bash(gcloud*)",
       "Bash(aws*)",
-      "Bash(az*)"
+      "Bash(az*)",
+
+      "Bash(firebase deploy*)",
+      "Bash(firebase login*)",
+      "Bash(firebase logout*)",
+      "Bash(firebase init*)",
+      "Bash(firebase use*)",
+      "Bash(firebase functions:*)",
+      "Bash(firebase firestore:delete*)",
+      "Bash(firebase hosting:*)",
+      "Bash(vercel*)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
