@@ -6,13 +6,7 @@ import { useEffect, useState } from "react";
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
 import { LinkAccountDialog } from "@/components/auth/LinkAccountDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
@@ -97,11 +91,7 @@ export function JoinClient({ tid }: { tid: string }) {
     setError(null);
     const parsed = joinInputSchema.safeParse({ tid, displayName });
     if (!parsed.success) {
-      setError(
-        `validation/join: ${parsed.error.issues
-          .map((i) => i.message)
-          .join(", ")}`,
-      );
+      setError(`validation/join: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
       return;
     }
     setSubmitting(true);
@@ -123,11 +113,7 @@ export function JoinClient({ tid }: { tid: string }) {
     setError(null);
     const parsed = joinInputSchema.safeParse({ tid, displayName });
     if (!parsed.success) {
-      setError(
-        `validation/join: ${parsed.error.issues
-          .map((i) => i.message)
-          .join(", ")}`,
-      );
+      setError(`validation/join: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
       return;
     }
     setSubmitting(true);
@@ -254,21 +240,15 @@ export function JoinClient({ tid }: { tid: string }) {
     <main className="mx-auto max-w-md space-y-6 p-8">
       <Card>
         <CardHeader>
-          <CardTitle>
-            {tournament ? tournament.name : "トーナメント受付"}
-          </CardTitle>
-          <CardDescription>
-            以下 3 つのいずれかで受付してください。
-          </CardDescription>
+          <CardTitle>{tournament ? tournament.name : "トーナメント受付"}</CardTitle>
+          <CardDescription>以下 3 つのいずれかで受付してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {authLoading ? (
             <p className="text-sm text-muted-foreground">読込中…</p>
           ) : user && !user.isAnonymous ? (
             <div className="space-y-2 rounded-md border p-3">
-              <p className="text-sm">
-                {user.displayName ?? user.email} としてログイン済みです。
-              </p>
+              <p className="text-sm">{user.displayName ?? user.email} としてログイン済みです。</p>
               <Button
                 onClick={() => {
                   void onContinueAsSignedIn();

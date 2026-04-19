@@ -17,13 +17,13 @@
 
 ### スタック（確定）
 
-| 層 | 採用 |
-|---|---|
-| フロントエンド | Next.js 15（App Router / TypeScript） |
-| UI | Tailwind CSS + shadcn/ui |
-| DB / 認証 | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Email Link／Google の 4 方式） |
-| リアルタイム同期 | Firestore `onSnapshot` |
-| デプロイ | Vercel Hobby（GitHub 連携） |
+| 層               | 採用                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| フロントエンド   | Next.js 15（App Router / TypeScript）                                                          |
+| UI               | Tailwind CSS + shadcn/ui                                                                       |
+| DB / 認証        | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Email Link／Google の 4 方式） |
+| リアルタイム同期 | Firestore `onSnapshot`                                                                         |
+| デプロイ         | Vercel Hobby（GitHub 連携）                                                                    |
 
 詳細は [.claude/PRPs/prds/allin-timer.prd.md](.claude/PRPs/prds/allin-timer.prd.md) を参照。
 
@@ -34,7 +34,7 @@
   - 進行中の計画は `.claude/PRPs/plans/` 直下、完了した計画は `.claude/PRPs/plans/completed/` に移動
   - Phase 1（Foundation）: [completed/phase-1-foundation.plan.md](.claude/PRPs/plans/completed/phase-1-foundation.plan.md) — `complete`
   - Phase 2（Tournament Setup & Receipt）: [completed/phase-2-tournament-setup-receipt.plan.md](.claude/PRPs/plans/completed/phase-2-tournament-setup-receipt.plan.md) — `complete`
-  - Phase 2.5（Group Management）: `pending` — 複数運営者によるサークル単位の structures / tournaments 共有。破壊的スキーマ変更
+  - Phase 2.5（Group Management）: [completed/phase-2.5-group-management.plan.md](.claude/PRPs/plans/completed/phase-2.5-group-management.plan.md) — `complete` — group ベース所有権モデルへ破壊的移行
 - **実装レポート**: [.claude/PRPs/reports/](.claude/PRPs/reports/) に Phase 完了毎に生成
 - **PRD 内の Phase 進捗表**が最新状況の真実源。個別リンクは PRD を参照
 
@@ -51,12 +51,12 @@
 
 Phase 1 で確立した規約を以下に分離。
 
-| 対象領域 | ルールファイル | 内容 |
-|---|---|---|
-| Firebase / Firestore | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
-| エラー / ログ | [.claude/rules/error-logging.md](.claude/rules/error-logging.md) | `AppError` ラップ、ドメインコード付与、`logger` 経由出力 |
-| セキュリティ / 機密情報 | [.claude/rules/security.md](.claude/rules/security.md) | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則 |
-| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md) | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 実装中に充実させる |
+| 対象領域                            | ルールファイル                                                           | 内容                                                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Firebase / Firestore                | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
+| エラー / ログ                       | [.claude/rules/error-logging.md](.claude/rules/error-logging.md)         | `AppError` ラップ、ドメインコード付与、`logger` 経由出力                                                                                                 |
+| セキュリティ / 機密情報             | [.claude/rules/security.md](.claude/rules/security.md)                   | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則                                                         |
+| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md)   | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 実装中に充実させる                                                                             |
 
 ### ルール参照の義務
 
@@ -75,4 +75,5 @@ Phase 1 で確立した規約を以下に分離。
 複数領域にまたがる変更は該当するすべてのルールを読むこと。ルールと PRD の実装方針が矛盾する場合は作業を止めてユーザーに確認する。
 
 # 注意事項
+
 - 作成された成果物は Codex によってレビューされます。

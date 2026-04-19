@@ -13,13 +13,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppError } from "@/lib/errors";
-import { listMyStructures } from "@/lib/firebase/repositories/structures";
+import { listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 
 interface Props {
-  ownerUid: string;
+  groupId: string;
   initialName?: string;
   initialSnapshot?: StructureSnapshot;
   submitLabel?: string;
@@ -37,7 +37,7 @@ function snapshotFromStructure(s: StructureDoc): StructureSnapshot {
 }
 
 export function TournamentForm({
-  ownerUid,
+  groupId,
   initialName = "",
   initialSnapshot,
   submitLabel = "作成",
@@ -47,9 +47,7 @@ export function TournamentForm({
   const [name, setName] = useState(initialName);
   const [structures, setStructures] = useState<StructureDoc[]>([]);
   const [selectedSid, setSelectedSid] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<StructureSnapshot | null>(
-    initialSnapshot ?? null,
-  );
+  const [snapshot, setSnapshot] = useState<StructureSnapshot | null>(initialSnapshot ?? null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
@@ -58,7 +56,7 @@ export function TournamentForm({
     let cancelled = false;
     (async () => {
       try {
-        const list = await listMyStructures(ownerUid);
+        const list = await listStructuresByGroup(groupId);
         if (!cancelled) {
           setStructures(list);
           if (!initialSnapshot && list.length > 0) {
@@ -77,7 +75,7 @@ export function TournamentForm({
     return () => {
       cancelled = true;
     };
-  }, [ownerUid, initialSnapshot]);
+  }, [groupId, initialSnapshot]);
 
   function onPickStructure(sid: string) {
     setSelectedSid(sid);
@@ -111,12 +109,7 @@ export function TournamentForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="t-name">トーナメント名</Label>
-        <Input
-          id="t-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
+        <Input id="t-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div className="space-y-2">
         <Label>ストラクチャ</Label>
@@ -127,10 +120,7 @@ export function TournamentForm({
             ストラクチャがありません。先に /structures/new で作成してください。
           </p>
         ) : (
-          <Select
-            value={selectedSid ?? undefined}
-            onValueChange={onPickStructure}
-          >
+          <Select value={selectedSid ?? undefined} onValueChange={onPickStructure}>
             <SelectTrigger>
               <SelectValue placeholder="選択してください" />
             </SelectTrigger>
@@ -146,8 +136,8 @@ export function TournamentForm({
         {snapshot ? (
           <p className="text-xs text-muted-foreground">
             初期 {snapshot.initialStack} / 締切 Lv
-            {snapshot.lateEntryDeadlineLevel} / {snapshot.levels.length} レベル
-            が snapshot として保存されます
+            {snapshot.lateEntryDeadlineLevel} / {snapshot.levels.length} レベル が snapshot
+            として保存されます
           </p>
         ) : null}
       </div>
@@ -157,10 +147,7 @@ export function TournamentForm({
         </p>
       ) : null}
       <div className="flex gap-2">
-        <Button
-          type="submit"
-          disabled={submitting || !snapshot || structures.length === 0}
-        >
+        <Button type="submit" disabled={submitting || !snapshot || structures.length === 0}>
           {submitting ? "保存中…" : submitLabel}
         </Button>
         {onCancel ? (

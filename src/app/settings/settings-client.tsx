@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
@@ -79,11 +73,7 @@ export function SettingsClient() {
   }
 
   if (!user || !initialized) {
-    return (
-      <main className="mx-auto max-w-md p-8 text-sm text-muted-foreground">
-        読込中…
-      </main>
-    );
+    return <main className="mx-auto max-w-md p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 
   return (
@@ -101,9 +91,7 @@ export function SettingsClient() {
               <div>
                 メール: <span className="font-mono">{user.email ?? "（未設定）"}</span>
               </div>
-              <div>
-                方式: {user.isAnonymous ? "ゲスト（匿名）" : "通常アカウント"}
-              </div>
+              <div>方式: {user.isAnonymous ? "ゲスト（匿名）" : "通常アカウント"}</div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="display-name">表示名</Label>

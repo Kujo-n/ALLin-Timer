@@ -6,16 +6,15 @@ import { useEffect, useState } from "react";
 import { TournamentForm } from "@/components/tournament/TournamentForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  getTournament,
-  updateTournament,
-} from "@/lib/firebase/repositories/tournaments";
+import { getTournament, updateTournament } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function TournamentEditClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const { groupIds } = useCurrentGroup();
   const [data, setData] = useState<TournamentDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,27 +47,23 @@ export function TournamentEditClient({ tid }: { tid: string }) {
     );
   }
   if (!data) {
-    return (
-      <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">
-        読込中…
-      </main>
-    );
+    return <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
   if (data.state !== "setup") {
     return (
       <main className="mx-auto max-w-2xl p-8">
         <p className="text-sm text-destructive" role="alert">
-          tournament/already-started:
-          このトーナメントは既に開始されているため編集できません（state={data.state}）。
+          tournament/already-started: このトーナメントは既に開始されているため編集できません（state=
+          {data.state}）。
         </p>
       </main>
     );
   }
-  if (data.ownerUid !== user.uid) {
+  if (!groupIds.includes(data.groupId)) {
     return (
       <main className="mx-auto max-w-2xl p-8">
         <p className="text-sm text-destructive" role="alert">
-          firestore/permission-denied: 自分のトーナメントのみ編集できます。
+          firestore/permission-denied: このサークルのメンバーのみ編集できます。
         </p>
       </main>
     );
@@ -78,7 +73,7 @@ export function TournamentEditClient({ tid }: { tid: string }) {
     <main className="mx-auto max-w-2xl space-y-6 p-8">
       <h1 className="text-2xl font-bold">トーナメントを編集</h1>
       <TournamentForm
-        ownerUid={user.uid}
+        groupId={data.groupId}
         initialName={data.name}
         initialSnapshot={data.structureSnapshot}
         onSubmit={async ({ name, snapshot }) => {

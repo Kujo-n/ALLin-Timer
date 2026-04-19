@@ -2,13 +2,7 @@
 
 import { FirebaseError } from "firebase/app";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { logger } from "@/lib/logger";
 

@@ -37,7 +37,8 @@ const DEFAULT_INITIAL: StructureFormInitialValue = {
 interface Props {
   initialValue?: StructureFormInitialValue;
   submitLabel?: string;
-  ownerUid: string;
+  groupId: string;
+  createdByUid: string;
   onSubmit: (input: CreateStructureInput) => Promise<void>;
   onCancel?: () => void;
 }
@@ -45,7 +46,8 @@ interface Props {
 export function StructureForm({
   initialValue = DEFAULT_INITIAL,
   submitLabel = "保存",
-  ownerUid,
+  groupId,
+  createdByUid,
   onSubmit,
   onCancel,
 }: Props) {
@@ -62,7 +64,8 @@ export function StructureForm({
     e.preventDefault();
     setError(null);
     const input: CreateStructureInput = {
-      ownerUid,
+      groupId,
+      createdByUid,
       name,
       initialStack,
       lateEntryDeadlineLevel,
@@ -82,9 +85,7 @@ export function StructureForm({
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const code =
-        e && typeof e === "object" && "code" in e
-          ? (e as { code: string }).code
-          : "error/unknown";
+        e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "error/unknown";
       setError(`${code}: ${message}`);
     } finally {
       setSubmitting(false);
@@ -95,12 +96,7 @@ export function StructureForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-2">
         <Label htmlFor="s-name">ストラクチャ名</Label>
-        <Input
-          id="s-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
+        <Input id="s-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
@@ -121,9 +117,7 @@ export function StructureForm({
             type="number"
             min={1}
             value={lateEntryDeadlineLevel}
-            onChange={(e) =>
-              setLateEntryDeadlineLevel(parseNonNegativeInt(e.target.value))
-            }
+            onChange={(e) => setLateEntryDeadlineLevel(parseNonNegativeInt(e.target.value))}
             required
           />
         </div>

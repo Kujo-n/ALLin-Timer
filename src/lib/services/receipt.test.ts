@@ -37,10 +37,7 @@ vi.mock("@/lib/services/auth-actions", () => ({
 
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import { getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
-import {
-  getUserProfile,
-  upsertUserProfile,
-} from "@/lib/firebase/repositories/users";
+import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 import { signInAsGuest } from "@/lib/services/auth-actions";
 
 import { joinAsCurrentUser, joinAsGuest } from "./receipt";
@@ -50,7 +47,8 @@ const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
   return {
     id: "t1",
-    ownerUid: "owner",
+    groupId: "g1",
+    createdByUid: "owner",
     name: "Monthly",
     structureSnapshot: {
       name: "Default",
@@ -79,22 +77,18 @@ describe("joinAsGuest", () => {
   });
 
   it("rejects blank displayName with validation/display-name-required", async () => {
-    await expect(
-      joinAsGuest({ tid: "t1", displayName: "   " }),
-    ).rejects.toMatchObject({ code: "validation/display-name-required" });
+    await expect(joinAsGuest({ tid: "t1", displayName: "   " })).rejects.toMatchObject({
+      code: "validation/display-name-required",
+    });
     expect(getTournament).not.toHaveBeenCalled();
   });
 
   it("rejects finished tournament with tournament/late-entry-closed", async () => {
-    vi.mocked(getTournament).mockResolvedValue(
-      makeTournament({ state: "finished" }),
-    );
-    await expect(
-      joinAsGuest({ tid: "t1", displayName: "Alice" }),
-    ).rejects.toBeInstanceOf(AppError);
-    await expect(
-      joinAsGuest({ tid: "t1", displayName: "Alice" }),
-    ).rejects.toMatchObject({ code: "tournament/late-entry-closed" });
+    vi.mocked(getTournament).mockResolvedValue(makeTournament({ state: "finished" }));
+    await expect(joinAsGuest({ tid: "t1", displayName: "Alice" })).rejects.toBeInstanceOf(AppError);
+    await expect(joinAsGuest({ tid: "t1", displayName: "Alice" })).rejects.toMatchObject({
+      code: "tournament/late-entry-closed",
+    });
   });
 
   it("creates player and upserts user profile on happy path", async () => {
@@ -165,6 +159,7 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
       uid: "u1",
       displayName: "ProfileName",
       email: "alice@example.com",
+      groupIds: [],
       createdAt: now,
     });
 
@@ -185,6 +180,7 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
       uid: "u1",
       displayName: "ProfileName",
       email: "alice@example.com",
+      groupIds: [],
       createdAt: now,
     });
 
@@ -218,9 +214,9 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
     };
     vi.mocked(getUserProfile).mockResolvedValue(null);
 
-    await expect(
-      joinAsCurrentUser({ tid: "t1" }),
-    ).rejects.toMatchObject({ code: "validation/display-name-required" });
+    await expect(joinAsCurrentUser({ tid: "t1" })).rejects.toMatchObject({
+      code: "validation/display-name-required",
+    });
     expect(upsertPlayer).not.toHaveBeenCalled();
   });
 });

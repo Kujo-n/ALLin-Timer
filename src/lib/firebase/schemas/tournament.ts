@@ -3,13 +3,7 @@ import { z } from "zod";
 
 import { levelSchema } from "./structure";
 
-export const tournamentStateSchema = z.enum([
-  "setup",
-  "seating",
-  "running",
-  "paused",
-  "finished",
-]);
+export const tournamentStateSchema = z.enum(["setup", "seating", "running", "paused", "finished"]);
 export type TournamentState = z.infer<typeof tournamentStateSchema>;
 
 export const structureSnapshotSchema = z.object({
@@ -20,8 +14,13 @@ export const structureSnapshotSchema = z.object({
 });
 export type StructureSnapshot = z.infer<typeof structureSnapshotSchema>;
 
+/**
+ * Phase 2.5: 所有権を `ownerUid` から `groupId` + `createdByUid` に変更（破壊的）。
+ * 編集権限は group メンバー全員。
+ */
 export const tournamentBodySchema = z.object({
-  ownerUid: z.string().min(1),
+  groupId: z.string().min(1),
+  createdByUid: z.string().min(1),
   name: z.string().min(1),
   structureSnapshot: structureSnapshotSchema,
   state: tournamentStateSchema,
@@ -36,7 +35,8 @@ export type TournamentBody = z.infer<typeof tournamentBodySchema>;
 export type TournamentDoc = TournamentBody & { id: string };
 
 export const createTournamentInputSchema = z.object({
-  ownerUid: z.string().min(1),
+  groupId: z.string().min(1),
+  createdByUid: z.string().min(1),
   name: z.string().min(1, "名前を入力してください"),
   structureSnapshot: structureSnapshotSchema,
 });

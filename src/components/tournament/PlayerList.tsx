@@ -4,13 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -77,9 +71,7 @@ export function PlayerList({ tid, canManage = false }: Props) {
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>参加者 ({players.length})</CardTitle>
-          <CardDescription>
-            Phase 2 は手動リロード。Phase 3 でリアルタイム同期。
-          </CardDescription>
+          <CardDescription>Phase 2 は手動リロード。Phase 3 でリアルタイム同期。</CardDescription>
         </div>
         <Button
           variant="outline"
@@ -104,10 +96,7 @@ export function PlayerList({ tid, canManage = false }: Props) {
         ) : (
           <ul className="divide-y text-sm">
             {players.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between py-2"
-              >
+              <li key={p.id} className="flex items-center justify-between py-2">
                 <span>{p.displayName}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
@@ -144,11 +133,7 @@ export function PlayerList({ tid, canManage = false }: Props) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setCancelTarget(null)}
-              disabled={cancelling}
-            >
+            <Button variant="outline" onClick={() => setCancelTarget(null)} disabled={cancelling}>
               キャンセル
             </Button>
             <Button

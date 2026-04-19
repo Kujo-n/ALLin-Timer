@@ -6,19 +6,15 @@ import { useEffect, useState } from "react";
 import { StructureForm } from "@/components/structure/StructureForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  getStructure,
-  updateStructure,
-} from "@/lib/firebase/repositories/structures";
-import type {
-  CreateStructureInput,
-  StructureDoc,
-} from "@/lib/firebase/schemas/structure";
+import { getStructure, updateStructure } from "@/lib/firebase/repositories/structures";
+import type { CreateStructureInput, StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function StructureEditClient({ sid }: { sid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const { groupIds } = useCurrentGroup();
   const [data, setData] = useState<StructureDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,9 +48,15 @@ export function StructureEditClient({ sid }: { sid: string }) {
   }
 
   if (!data) {
+    return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">読込中…</main>;
+  }
+
+  if (!groupIds.includes(data.groupId)) {
     return (
-      <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">
-        読込中…
+      <main className="mx-auto max-w-3xl p-8">
+        <p className="text-sm text-destructive" role="alert">
+          firestore/permission-denied: このサークルのメンバーのみ編集できます。
+        </p>
       </main>
     );
   }
@@ -73,7 +75,8 @@ export function StructureEditClient({ sid }: { sid: string }) {
     <main className="mx-auto max-w-3xl space-y-6 p-8">
       <h1 className="text-2xl font-bold">ストラクチャを編集</h1>
       <StructureForm
-        ownerUid={user.uid}
+        groupId={data.groupId}
+        createdByUid={user.uid}
         initialValue={{
           name: data.name,
           initialStack: data.initialStack,

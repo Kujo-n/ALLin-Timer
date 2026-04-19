@@ -83,10 +83,7 @@ export async function registerWithEmail(
 ): Promise<User> {
   const trimmed = displayName.trim();
   if (!trimmed) {
-    throw new AppError(
-      "表示名を入力してください",
-      "validation/display-name-required",
-    );
+    throw new AppError("表示名を入力してください", "validation/display-name-required");
   }
   try {
     const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
@@ -149,10 +146,7 @@ export async function signInWithGoogle(): Promise<User> {
     logger.info("google sign-in ok", { uid: cred.user.uid });
     return cred.user;
   } catch (e) {
-    if (
-      e instanceof FirebaseError &&
-      e.code === "auth/account-exists-with-different-credential"
-    ) {
+    if (e instanceof FirebaseError && e.code === "auth/account-exists-with-different-credential") {
       const pending = GoogleAuthProvider.credentialFromError(e);
       const customData = e.customData as { email?: string } | undefined;
       const email = customData?.email;
@@ -163,8 +157,7 @@ export async function signInWithGoogle(): Promise<User> {
         } catch (fetchErr) {
           logger.warn("fetchSignInMethodsForEmail failed", {
             code: "auth/fetch-methods-failed",
-            message:
-              fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+            message: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
           });
         }
         throw new AccountLinkRequired(
@@ -175,11 +168,7 @@ export async function signInWithGoogle(): Promise<User> {
         );
       }
     }
-    const wrapped = wrapAuthError(
-      e,
-      "auth/google-failed",
-      "Google ログインに失敗しました",
-    );
+    const wrapped = wrapAuthError(e, "auth/google-failed", "Google ログインに失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }
@@ -227,10 +216,7 @@ export async function linkGoogleWithPassword(
 export async function signInAsGuest(displayName: string): Promise<User> {
   const trimmed = displayName.trim();
   if (!trimmed) {
-    throw new AppError(
-      "表示名を入力してください",
-      "validation/display-name-required",
-    );
+    throw new AppError("表示名を入力してください", "validation/display-name-required");
   }
   try {
     const cred = await signInAnonymously(firebaseAuth);
@@ -245,8 +231,7 @@ export async function signInAsGuest(displayName: string): Promise<User> {
 }
 
 function buildEmailLinkContinueUrl(redirectPath: string): string {
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
   const url = new URL("/auth/email-link", origin);
   // open redirect 防止は sanitizeRedirect で統一。
   // （decodeURIComponent 経由のエンコードバイパス対策も含む）
@@ -269,10 +254,7 @@ export async function sendEmailLinkForJoin(
     if (typeof window !== "undefined") {
       window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
       if (displayName && displayName.trim()) {
-        window.localStorage.setItem(
-          DISPLAY_NAME_STORAGE_KEY,
-          displayName.trim(),
-        );
+        window.localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName.trim());
       } else {
         window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
       }
@@ -312,33 +294,20 @@ export function isEmailLinkUrl(url: string): boolean {
   return isSignInWithEmailLink(firebaseAuth, url);
 }
 
-export async function completeEmailLink(
-  currentUrl: string,
-  fallbackEmail?: string,
-): Promise<User> {
+export async function completeEmailLink(currentUrl: string, fallbackEmail?: string): Promise<User> {
   if (!isSignInWithEmailLink(firebaseAuth, currentUrl)) {
-    throw new AppError(
-      "メールリンクが不正です",
-      "auth/email-link-invalid",
-    );
+    throw new AppError("メールリンクが不正です", "auth/email-link-invalid");
   }
   const email = fallbackEmail ?? getStoredEmailForSignIn();
   if (!email) {
-    throw new AppError(
-      "メールアドレスを入力してください",
-      "auth/email-missing-on-callback",
-    );
+    throw new AppError("メールアドレスを入力してください", "auth/email-missing-on-callback");
   }
   let user: User;
   try {
     const cred = await signInWithEmailLink(firebaseAuth, email, currentUrl);
     user = cred.user;
   } catch (e) {
-    const wrapped = wrapAuthError(
-      e,
-      "auth/email-link-failed",
-      "メールリンク認証に失敗しました",
-    );
+    const wrapped = wrapAuthError(e, "auth/email-link-failed", "メールリンク認証に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }
@@ -346,9 +315,7 @@ export async function completeEmailLink(
   // サインイン成功後に displayName を反映する処理は best-effort。
   // 失敗しても認証自体は成立しているため下の logger.warn のみで許容する。
   const storedName =
-    typeof window !== "undefined"
-      ? window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)
-      : null;
+    typeof window !== "undefined" ? window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY) : null;
   if (storedName && !user.displayName) {
     try {
       await updateProfile(user, { displayName: storedName });
@@ -374,10 +341,7 @@ export async function updateDisplayName(newName: string): Promise<void> {
   }
   const trimmed = newName.trim();
   if (!trimmed) {
-    throw new AppError(
-      "表示名を入力してください",
-      "validation/display-name-required",
-    );
+    throw new AppError("表示名を入力してください", "validation/display-name-required");
   }
   try {
     await updateProfile(user, { displayName: trimmed });
@@ -388,11 +352,7 @@ export async function updateDisplayName(newName: string): Promise<void> {
     });
     logger.info("display name updated", { uid: user.uid });
   } catch (e) {
-    const wrapped = wrapAuthError(
-      e,
-      "auth/update-profile-failed",
-      "表示名の更新に失敗しました",
-    );
+    const wrapped = wrapAuthError(e, "auth/update-profile-failed", "表示名の更新に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }

@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,27 +14,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
-import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  deleteStructure,
-  listMyStructures,
-} from "@/lib/firebase/repositories/structures";
+import { deleteStructure, listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
+import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function StructuresClient() {
-  const { user } = useAuthUser();
+  const { currentGroupId, groups } = useCurrentGroup();
   const [items, setItems] = useState<StructureDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StructureDoc | null>(null);
 
   const reload = useCallback(async () => {
-    if (!user) return;
+    if (!currentGroupId) return;
     setError(null);
     setLoading(true);
     try {
-      const list = await listMyStructures(user.uid);
+      const list = await listStructuresByGroup(currentGroupId);
       setItems(list);
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
@@ -49,7 +40,7 @@ export function StructuresClient() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [currentGroupId]);
 
   useEffect(() => {
     void reload();
@@ -67,16 +58,24 @@ export function StructuresClient() {
     }
   }
 
+  const currentGroup = groups.find((g) => g.id === currentGroupId);
+
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-8">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">ストラクチャプリセット</h1>
           <p className="text-sm text-muted-foreground">
-            ブラインド構造・初期スタック・レイトエントリー締切を保存して使い回せます。
+            {currentGroup
+              ? `サークル「${currentGroup.name}」のプリセット。`
+              : "現在のサークルのプリセット。"}
+            メンバー全員で共有・編集できます。
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/groups">
+            <Button variant="outline">サークル</Button>
+          </Link>
           <Link href="/tournaments">
             <Button variant="outline">トーナメント一覧へ</Button>
           </Link>
@@ -105,8 +104,8 @@ export function StructuresClient() {
               <CardHeader>
                 <CardTitle>{s.name}</CardTitle>
                 <CardDescription>
-                  初期 {s.initialStack} / 締切 Lv{s.lateEntryDeadlineLevel} /{" "}
-                  {s.levels.length} レベル
+                  初期 {s.initialStack} / 締切 Lv{s.lateEntryDeadlineLevel} / {s.levels.length}{" "}
+                  レベル
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex gap-2">
@@ -115,11 +114,7 @@ export function StructuresClient() {
                     編集
                   </Button>
                 </Link>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteTarget(s)}
-                >
+                <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(s)}>
                   削除
                 </Button>
               </CardContent>
@@ -142,10 +137,7 @@ export function StructuresClient() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               キャンセル
             </Button>
             <Button

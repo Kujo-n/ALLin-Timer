@@ -1,0 +1,19 @@
+# Build / generated
+.next/
+out/
+build/
+coverage/
+node_modules/
+*.tsbuildinfo
+next-env.d.ts
+
+# Lockfiles
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# PRD / 実装計画 / レポート（手で整形したい）
+.claude/PRPs/
+
+# 作業フォルダ
+tmp/

@@ -63,7 +63,8 @@ export function LinkAccountDialog({
           <DialogTitle>Google アカウントを連携</DialogTitle>
           <DialogDescription>
             <strong>{email}</strong> は既にパスワードで登録されています。
-            パスワードを入力して連携すると、次回以降は Google / パスワードどちらでもログインできるようになります。
+            パスワードを入力して連携すると、次回以降は Google /
+            パスワードどちらでもログインできるようになります。
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">

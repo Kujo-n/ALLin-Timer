@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { signInAnonymously, type User } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  getDocs,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp, Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -62,9 +56,7 @@ export function DebugFsClient() {
     setError(null);
     try {
       const snap = await getDocs(tournamentsRef);
-      setDocs(
-        snap.docs.map((d) => `${d.id}: ${d.data().name ?? "(no name)"}`),
-      );
+      setDocs(snap.docs.map((d) => `${d.id}: ${d.data().name ?? "(no name)"}`));
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });

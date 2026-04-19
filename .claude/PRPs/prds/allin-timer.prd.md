@@ -192,6 +192,7 @@
 | 実地テストのフィードバック周期（月 1-2 回開催） | M | 初回投入前にサークル外の有志 2-3 人でドライランを実施 |
 | 生成 AI による実装で仕様理解が甘くなる | M | 特にバランシングロジックは AI 出力を鵜呑みにせず、自分で TDA ルールを読み込んで検証 |
 | GitHub 公開時の秘密情報漏洩 | M | `.env.local` で Firebase 認証情報を管理、`.gitignore` 徹底。サークル固有データは Firestore にのみ保存 |
+| 招待コード `usesCount` の悪意ある第三者による空消費（DoS） | L（現行） / M（`maxUses` UI 追加時） | Phase 2.5 の rule は `usesCount + 1` 更新を全認証ユーザーに許可しており、コードが流出すると加入意図のない第三者が `maxUses` まで空消費して無効化できる。**現行は default `maxUses: null`（無制限）のため顕在化しない**。Phase 3+ で `maxUses` を運営者 UI から設定可能にする際は、`usesCount` 更新と `groups/{gid}.memberUids` への自分追加を atomic に検証する仕組みが必須（Cloud Functions 化が現実解）。詳細は [.claude/rules/group-membership.md](../../rules/group-membership.md) |
 
 ---
 
@@ -208,7 +209,7 @@
 |---|-------|-------------|--------|----------|---------|----------|
 | 1 | Foundation | Next.js + Firebase + Vercel 初期構築、認証（3択対応）、Firestore データモデル定義、MIT ライセンス、セキュリティルール | complete | - | - | [completed/phase-1-foundation.plan.md](../plans/completed/phase-1-foundation.plan.md) — 実装レポート: [phase-1-foundation-report.md](../reports/phase-1-foundation-report.md) |
 | 2 | Tournament Setup & Receipt | ストラクチャ編集 UI、トーナメント CRUD、参加者受付（URL/QR・3択フロー：ログイン／ゲスト／アカウント登録） | complete | - | 1 | [completed/phase-2-tournament-setup-receipt.plan.md](../plans/completed/phase-2-tournament-setup-receipt.plan.md) — 実装レポート: [phase-2-tournament-setup-receipt-report.md](../reports/phase-2-tournament-setup-receipt-report.md) |
-| 2.5 | Group (サークル) Management | `groups/{gid}` コレクション新設、複数運営者共有、招待コードでメンバー加入、structures/tournaments を group 配下に破壊的移行 | in-progress | - | 2 | [phase-2.5-group-management.plan.md](../plans/phase-2.5-group-management.plan.md) |
+| 2.5 | Group (サークル) Management | `groups/{gid}` コレクション新設、複数運営者共有、招待コードでメンバー加入、structures/tournaments を group 配下に破壊的移行 | complete | - | 2 | [completed/phase-2.5-group-management.plan.md](../plans/completed/phase-2.5-group-management.plan.md) — 実装レポート: [phase-2.5-group-management-report.md](../reports/phase-2.5-group-management-report.md) |
 | 3 | Timer & Realtime & Viewer | タイマーコア、Firestore `onSnapshot` 同期、接続切断 UI、参加者閲覧画面 | pending | with 4 | 2.5 | - |
 | 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | pending | with 3 | 2.5 | - |
 | 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4 | - |
@@ -310,6 +311,7 @@
 | 運営者デバイス | PC・スマホ両対応 | PC のみ | 運営者 3 人の誰でも即応できる必要性 |
 | サークル運営者の共有モデル（Phase 2.5 追加） | **Group を第一級エンティティ化**（`groups/{gid}` + `memberUids`）| (A) `sharedWithUids` の ACL 追加のみ / (B) 個人所有のまま | サークル単位で structures / tournaments を一括共有。メンバー追加 1 回で全 doc 共有が自動化され、運営コスト低。将来のロール／統計拡張にも備えられる |
 | Phase 2.5 の既存データ互換 | **破壊的変更**（`ownerUid` → `groupId` + `createdByUid`）| 両方式併存（`groupId` を optional） | Phase 2 は内部検証段階で本番データなし、互換レイヤを残すとコード／ルールが複雑化するため破壊的を選択 |
+| Phase 2.5 group とデータの関係（フラット vs サブコレ） | **フラット + `groupId` フィールド**（`structures/{sid}` / `tournaments/{tid}` に `groupId` を持つ） | `groups/{gid}/structures/{sid}` / `groups/{gid}/tournaments/{tid}` のサブコレクション化 | 参加者向け公開 URL `/join/{tid}` が `tid` 単独でアクセスできる必要があり、サブコレ化すると `tid → gid` の公開ルックアップ index を別途持つ羽目になり実質的な複雑さが移動するだけ。`tournaments/{tid}/players/{pid}` パスを浅く保てる利点もある。レビュアーから「サブコレが Firestore の標準パターン」との指摘ありだが、tournament が「内部管理 + 公開受付」の二面性を持つ本アプリでは例外側に該当するため現行を維持 |
 | 接続切断時 UI | 最終時刻＋「接続切れ」 | 完全ブラックアウト / 警告音 | 混乱最小・誤情報表示を防ぎつつ画面遷移させない |
 | 広告収益化 | v1 対象外、v1.1 以降で検討 | v1 同梱 | まず仮説検証優先、収益化は継続使用確認後 |
 | ライセンス | MIT | プロプライエタリ / GPL 系 | GitHub 公開前提・サークル外への再利用促進。サークル固有情報は DB に隔離しリポジトリに含めない |
