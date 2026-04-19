@@ -75,12 +75,12 @@ npm run dev
 
 ### 受付方式ごとの「次回以降のログイン」と「端末跨ぎ」
 
-| 登録方式 | パスワード | 端末跨ぎ | 次回アクセス方法 |
-|---|---|---|---|
-| Google | なし（Google 側） | **可能**（同じ Google アカウントで各端末からログイン → 同一 uid） | `/login` または `/join/[tid]` の「Google でログイン/参加」ボタン |
-| (a) ログイン（メール+PW） | あり | **可能**（同じメール+PW で PC/スマホ両方ログイン → 同一 uid） | `/login` タブ「ログイン」 |
-| (b) ゲスト（匿名 Auth） | なし | **不可**（端末ごとに別 uid が発行される） | 同一端末のセッション維持のみ。別端末からは別ゲスト扱い |
-| (c) メールリンク | なし | **可能**（別端末でリンクを開いたとき、メール再入力を促される）| `/login` タブ「メールリンク」または `/join/[tid]` メール登録から再発行 |
+| 登録方式                  | パスワード        | 端末跨ぎ                                                          | 次回アクセス方法                                                       |
+| ------------------------- | ----------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Google                    | なし（Google 側） | **可能**（同じ Google アカウントで各端末からログイン → 同一 uid） | `/login` または `/join/[tid]` の「Google でログイン/参加」ボタン       |
+| (a) ログイン（メール+PW） | あり              | **可能**（同じメール+PW で PC/スマホ両方ログイン → 同一 uid）     | `/login` タブ「ログイン」                                              |
+| (b) ゲスト（匿名 Auth）   | なし              | **不可**（端末ごとに別 uid が発行される）                         | 同一端末のセッション維持のみ。別端末からは別ゲスト扱い                 |
+| (c) メールリンク          | なし              | **可能**（別端末でリンクを開いたとき、メール再入力を促される）    | `/login` タブ「メールリンク」または `/join/[tid]` メール登録から再発行 |
 
 > Google は **displayName を自動取得**し、スマホで 1 タップで参加できるので、Phase 2 E2E では最も快適な導線。Firebase Console で Google プロバイダの有効化と Project support email 設定が済んでいることが前提。
 
@@ -140,12 +140,12 @@ Firebase 標準テンプレートは英語で、件名も「Sign in to ...」と
 
 Firebase Console → Authentication → Templates → `メールリンクでのログイン` の編集導線が出ない・グレーアウトする場合のトラブルシュート:
 
-| 症状 | 対処 |
-|---|---|
-| 編集アイコンが見当たらない | Console の表示言語を英語に切替（右上歯車 → Languages → English）。日本語 UI では編集導線が隠れているケースあり |
-| プレビューのみで保存不可 | Authentication → Settings で **Identity Platform にアップグレード**（無料・不可逆）。Auth 機能が拡張されて編集解禁される |
-| 件名／本文が完全グレーアウト | Google Cloud Console → IAM で Owner / Editor 権限があるか確認 |
-| Identity Platform も不可 | カスタム SMTP（Google Workspace 等）を Console に設定し、自社ドメインから送信する。送信元アドレスも自由になる |
+| 症状                         | 対処                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 編集アイコンが見当たらない   | Console の表示言語を英語に切替（右上歯車 → Languages → English）。日本語 UI では編集導線が隠れているケースあり           |
+| プレビューのみで保存不可     | Authentication → Settings で **Identity Platform にアップグレード**（無料・不可逆）。Auth 機能が拡張されて編集解禁される |
+| 件名／本文が完全グレーアウト | Google Cloud Console → IAM で Owner / Editor 権限があるか確認                                                            |
+| Identity Platform も不可     | カスタム SMTP（Google Workspace 等）を Console に設定し、自社ドメインから送信する。送信元アドレスも自由になる            |
 
 件名の例: `【ALLin-PokerTimer】トーナメント参加のログインリンク`
 
@@ -213,22 +213,25 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 ## よく使うコマンド
 
 <!-- AUTO-GENERATED: scripts — source of truth は package.json scripts。追加・変更時はここも同期 -->
-| コマンド | 用途 |
-|---|---|
-| `npm run dev` | 開発サーバ起動 (`next dev`) |
-| `npm run build` | 本番ビルド (`next build`) |
-| `npm run start` | 本番ビルドのローカル起動 (`next start`) |
-| `npm run lint` | ESLint 実行 (`next lint`) |
-| `npm run lint:fix` | 自動修正付き ESLint (`next lint --fix`) |
-| `npm run typecheck` | TypeScript 型チェックのみ (`tsc --noEmit`) |
-| `npm test` | Vitest 実行（単発、`vitest run`） |
-| `npm run test:watch` | Vitest ウォッチモード (`vitest`) |
-| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI）|
+
+| コマンド                                 | 用途                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `npm run dev`                            | 開発サーバ起動 (`next dev`)                                                |
+| `npm run build`                          | 本番ビルド (`next build`)                                                  |
+| `npm run start`                          | 本番ビルドのローカル起動 (`next start`)                                    |
+| `npm run lint`                           | ESLint 実行 (`next lint`)                                                  |
+| `npm run lint:fix`                       | 自動修正付き ESLint (`next lint --fix`)                                    |
+| `npm run typecheck`                      | TypeScript 型チェックのみ (`tsc --noEmit`)                                 |
+| `npm test`                               | Vitest 実行（単発、`vitest run`）                                          |
+| `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                           |
+| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI） |
+
 <!-- /AUTO-GENERATED -->
 
 ## ディレクトリ構成
 
 <!-- AUTO-GENERATED: directory-tree — src/ ツリーの代表ディレクトリのみ。機能追加時はここを同期すること -->
+
 ```
 src/
 ├─ app/                 # Next.js App Router
@@ -263,23 +266,26 @@ src/
 └─ types/
    └─ tournament.ts     # Phase 2 以降は schemas/ 側を真実源とする
 ```
+
 <!-- /AUTO-GENERATED -->
 
 ## 環境変数
 
 <!-- AUTO-GENERATED: env-vars — source of truth は env.local.example。追加・変更時はここも同期 -->
+
 ローカルでは `.env.local`（`env.local.example` をコピー）、本番／プレビューは Vercel の環境変数で管理。すべて `NEXT_PUBLIC_*` のためクライアントバンドルに含まれる前提（公開可能な値のみ）。
 
-| 変数 | 必須 | 説明 |
-|---|---|---|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes | Firebase Web SDK 設定（Console → Project settings → General → Web app）|
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes | 同上 |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes | 同上 |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Yes | 同上 |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | 同上 |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | 同上 |
-| `NEXT_PUBLIC_LOG_LEVEL` | No | ログレベル。`debug` / `info`（既定） / `warn` / `error` |
-| `NEXT_PUBLIC_ENABLE_DEBUG` | No | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定）|
+| 変数                                       | 必須 | 説明                                                                       |
+| ------------------------------------------ | ---- | -------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`             | Yes  | Firebase Web SDK 設定（Console → Project settings → General → Web app）    |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`         | Yes  | 同上                                                                       |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID`          | Yes  | 同上                                                                       |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`      | Yes  | 同上                                                                       |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes  | 同上                                                                       |
+| `NEXT_PUBLIC_FIREBASE_APP_ID`              | Yes  | 同上                                                                       |
+| `NEXT_PUBLIC_LOG_LEVEL`                    | No   | ログレベル。`debug` / `info`（既定） / `warn` / `error`                    |
+| `NEXT_PUBLIC_ENABLE_DEBUG`                 | No   | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定） |
+
 <!-- /AUTO-GENERATED -->
 
 ## 実装規約
