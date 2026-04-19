@@ -63,9 +63,10 @@ npm run dev
 
 > `/debug/fs` は Phase 1 の疎通確認用ページです。本番公開を避けるため `NEXT_PUBLIC_ENABLE_DEBUG=1` が設定されている環境でのみ表示されます（未設定なら 404）。Phase 5 で削除予定。
 
-### 運営者 / 参加者フロー（Phase 2）
+### 運営者 / 参加者フロー（Phase 2.5）
 
-- **運営者**: `/login` でログイン（Google / メール+PW / メールリンク）→ `/structures` でプリセット作成 → `/tournaments/new` でトーナメント作成 → `/tournaments/[tid]` ダッシュボードで受付 URL / QR をコピーし参加者に共有
+- **運営者**: `/login` でログイン → **`/groups/new` でサークル（group）を作成**または **招待コードのリンクを踏んで加入** → 自動的にそのサークルが「現在のサークル」となる → `/structures` でプリセット作成 → `/tournaments/new` でトーナメント作成 → `/tournaments/[tid]` ダッシュボードで受付 URL / QR をコピーし参加者に共有
+- ストラクチャ／トーナメントは「現在のサークル」配下に紐づき、**メンバー全員で共有・編集・開始・削除可能**。当日プレイヤー兼任の運営者が複数いても相互に代替操作できる。
 - **参加者**: 配布された `/join/[tid]` URL から 4 つのいずれかで受付
   - **Google で参加**: ポップアップでアカウント選択するだけで完了（displayName は Google プロフィールを自動利用）
   - (a) ログイン: 既存メール+PW アカウント
@@ -166,7 +167,39 @@ firebase login
 firebase deploy --only firestore:rules
 ```
 
-> **Phase 2 で `firestore.rules` を更新済み**。`tournaments/{tid}/players/{pid}` が参加者本人による自己作成を許容するように変更したため、ルールを再デプロイすること。未反映だと受付が `permission-denied` で失敗する。
+> **Phase 2.5 で `firestore.rules` を全面刷新**。`groups/{gid}` / `groupJoinCodes/{code}` を新規追加し、`structures` / `tournaments` の所有モデルが `ownerUid` 個人所有から **`groupId` ＋ group メンバーシップ共有所有** に変更されている。ルール再デプロイ後は **旧 `ownerUid` ベースのドキュメントは読めなくなる**ので、Firebase Console から旧 collection をクリーンアップすること（後述）。
+
+### サークル（group）運用
+
+Phase 2.5 から、ストラクチャ／トーナメントは **「サークル（group）」単位で共有**されるようになった。複数の運営者でサークルを共有することで、当日プレイヤー兼任の運営者が誰でも開始／削除／編集を実行できる。
+
+#### 標準フロー
+
+1. **オーナーがサークル作成**: `/login` → `/groups/new` でサークル名を入力（最大 60 文字）→ 自動的にそのサークルが選択される
+2. **招待コードを発行**: `/groups/[gid]` の「招待コードを発行」ボタンで 7 日有効の URL（`/groups/join/[code]`）を生成 → 口頭／チャットで運営者に共有
+3. **運営者が加入**: 共有された URL を踏むだけで自動加入。加入後は「現在のサークル」が切り替わる
+4. **共有開始**: `/structures` / `/tournaments` がサークル配下の共有データに切り替わる。誰が作ったストラクチャでもメンバー全員が編集できる
+
+#### サークル切替
+
+複数のサークルに所属する場合は、ヘッダ右上のサークル名（`<select>` UI）から切替可能。`/structures` / `/tournaments` の一覧は「現在のサークル」のものに即座に入れ替わる。  
+ブラウザ内 `localStorage.allinpt.currentGroupId` に永続化される（デバッグ時はこの key を消すと再選択フローに戻る）。
+
+#### Phase 2.5 移行手順（破壊的・運用者向け）
+
+Phase 2 までで作成した `structures` / `tournaments` には `groupId` が無いため、Phase 2.5 の rule をデプロイすると読めなくなる（client から見ると一覧が空、`getDoc` が `firestore/invalid-data` を返す可能性あり）。**互換レイヤは作らない方針** のため、以下を手動で行う。
+
+1. `firebase deploy --only firestore:rules` の前に **Firebase Console → Firestore → データ** から旧コレクション（`structures` と `tournaments` 配下のすべてのドキュメント）を削除
+2. ルールデプロイ
+3. アプリで `/groups/new` から新規サークル作成 → `/structures/new` ／ `/tournaments/new` を最初から作り直す
+
+> 削除前にデータを残したい場合は Firebase Console の `データのエクスポート` で先にバックアップを取得すること。Phase 2.5 開始時点では本番運用が無い前提のため、移行スクリプトは用意していない。
+
+#### 制約事項（Phase 2.5）
+
+- ロール（admin / editor / viewer）は未実装。オーナー以外のメンバーは全員対等に編集可。
+- サークルを削除しても配下の `structures` / `tournaments` は **削除されない**（誰からも見えなくなるだけ）。先に各画面で配下データを削除しておくのが安全。
+- 招待コードはコード文字列の発行のみ。メール招待リンク送信は範囲外（Phase 5 以降の検討）。
 
 ### 6. Vercel にデプロイ
 
@@ -201,16 +234,17 @@ src/
 ├─ app/                 # Next.js App Router
 │  ├─ auth/email-link/  # Email Link コールバック
 │  ├─ debug/fs/         # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
+│  ├─ groups/           # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  ├─ join/[tid]/       # 参加者向け受付（Google / ゲスト / ログイン / メールリンク）
 │  ├─ login/            # 運営者ログイン / 新規登録 / メールリンク
 │  ├─ settings/         # プロフィール編集（displayName 変更）
-│  ├─ structures/       # ストラクチャプリセット CRUD
-│  ├─ tournaments/      # トーナメント一覧 / 作成 / ダッシュボード / 編集
+│  ├─ structures/       # ストラクチャプリセット CRUD（group メンバーで共有）
+│  ├─ tournaments/      # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
 │  ├─ globals.css
-│  ├─ layout.tsx        # AuthProvider でラップし AuthBadge を全画面上部に常設
+│  ├─ layout.tsx        # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
 │  └─ page.tsx
 ├─ components/
-│  ├─ auth/             # RequireAuth / AuthBadge / GoogleIcon / LinkAccountDialog
+│  ├─ auth/             # RequireAuth / RequireGroup / AuthBadge / GoogleIcon / LinkAccountDialog
 │  ├─ qr/               # QrPanel（受付 URL + QR）
 │  ├─ structure/        # StructureForm / LevelTable
 │  ├─ tournament/       # TournamentForm / PlayerList
@@ -225,7 +259,7 @@ src/
 │  │  ├─ converters.ts        # zod ベース withConverter
 │  │  ├─ schemas/             # 各コレクションの zod schema（Firestore 真実源）
 │  │  └─ repositories/        # Firestore CRUD 集約（UI から SDK を直接呼ばない）
-│  └─ services/         # auth-actions / receipt / qr / redirect
+│  └─ services/         # auth-actions / receipt / qr / redirect / group / current-group
 └─ types/
    └─ tournament.ts     # Phase 2 以降は schemas/ 側を真実源とする
 ```
@@ -252,7 +286,8 @@ src/
 
 - [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) — Firebase 初期化、認証購読、Firestore converter、セキュリティルール
 - [.claude/rules/error-logging.md](.claude/rules/error-logging.md) — `AppError` ラップ、`logger` 経由のログ
-- [.claude/rules/security.md](.claude/rules/security.md) — `.env.local` 管理、サークル固有情報の Firestore 限定保存
+- [.claude/rules/security.md](.claude/rules/security.md) — `.env.local` 管理、サークル固有情報の Firestore 限定保存、招待コード設計原則
+- [.claude/rules/group-membership.md](.claude/rules/group-membership.md) — group ベース所有権モデル（Phase 2.5）
 
 ## ライセンス
 

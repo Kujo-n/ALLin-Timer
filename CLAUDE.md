@@ -34,7 +34,7 @@
   - 進行中の計画は `.claude/PRPs/plans/` 直下、完了した計画は `.claude/PRPs/plans/completed/` に移動
   - Phase 1（Foundation）: [completed/phase-1-foundation.plan.md](.claude/PRPs/plans/completed/phase-1-foundation.plan.md) — `complete`
   - Phase 2（Tournament Setup & Receipt）: [completed/phase-2-tournament-setup-receipt.plan.md](.claude/PRPs/plans/completed/phase-2-tournament-setup-receipt.plan.md) — `complete`
-  - Phase 2.5（Group Management）: `pending` — 複数運営者によるサークル単位の structures / tournaments 共有。破壊的スキーマ変更
+  - Phase 2.5（Group Management）: [completed/phase-2.5-group-management.plan.md](.claude/PRPs/plans/completed/phase-2.5-group-management.plan.md) — `complete` — group ベース所有権モデルへ破壊的移行
 - **実装レポート**: [.claude/PRPs/reports/](.claude/PRPs/reports/) に Phase 完了毎に生成
 - **PRD 内の Phase 進捗表**が最新状況の真実源。個別リンクは PRD を参照
 
