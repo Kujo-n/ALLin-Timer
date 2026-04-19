@@ -31,6 +31,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# firebase CLI cache / emulator state
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
