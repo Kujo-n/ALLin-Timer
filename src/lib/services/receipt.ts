@@ -2,16 +2,9 @@ import type { User } from "firebase/auth";
 
 import { AppError } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
-import {
-  deletePlayer,
-  getPlayer,
-  upsertPlayer,
-} from "@/lib/firebase/repositories/players";
+import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
-import {
-  getUserProfile,
-  upsertUserProfile,
-} from "@/lib/firebase/repositories/users";
+import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import {
@@ -27,20 +20,14 @@ export type ReceiptResult = "created" | "already-joined";
 
 function assertAcceptingEntries(t: TournamentDoc): void {
   if (t.state === "finished") {
-    throw new AppError(
-      "このトーナメントは終了しています",
-      "tournament/late-entry-closed",
-    );
+    throw new AppError("このトーナメントは終了しています", "tournament/late-entry-closed");
   }
 }
 
 function requireDisplayName(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) {
-    throw new AppError(
-      "表示名を入力してください",
-      "validation/display-name-required",
-    );
+    throw new AppError("表示名を入力してください", "validation/display-name-required");
   }
   return trimmed;
 }
@@ -54,10 +41,7 @@ function requireDisplayName(name: string | null | undefined): string {
  *
  * 既存プロフィールがある場合、email フォールバック等で上書きしない。
  */
-async function resolveDisplayName(
-  user: User,
-  hint: string | null | undefined,
-): Promise<string> {
+async function resolveDisplayName(user: User, hint: string | null | undefined): Promise<string> {
   const hintTrimmed = hint?.trim();
   if (hintTrimmed) return hintTrimmed;
   const profile = await getUserProfile(user.uid);
@@ -107,11 +91,7 @@ export async function joinAsExistingUser({
   return result;
 }
 
-export async function joinViaGoogle({
-  tid,
-}: {
-  tid: string;
-}): Promise<ReceiptResult> {
+export async function joinViaGoogle({ tid }: { tid: string }): Promise<ReceiptResult> {
   const user = await signInWithGoogle();
   const result = await ensurePlayerCreated(tid, user);
   logger.info("join via google ok", { tid, uid: user.uid, result });
@@ -210,10 +190,7 @@ export async function cancelOwnEntry(tid: string): Promise<void> {
  * 運営者によるエントリー取消。Phase 2.5 以降、rules 側では tournament の groupId に対する
  * group メンバーシップ（`isGroupMember(tournament.groupId)`）で書込権限を判定する。
  */
-export async function cancelPlayerEntry(
-  tid: string,
-  pid: string,
-): Promise<void> {
+export async function cancelPlayerEntry(tid: string, pid: string): Promise<void> {
   await deletePlayer(tid, pid);
   logger.info("cancel player entry ok", { tid, pid });
 }

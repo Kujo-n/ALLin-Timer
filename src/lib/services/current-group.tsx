@@ -12,13 +12,8 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  listMyGroups,
-} from "@/lib/firebase/repositories/groups";
-import {
-  getUserProfile,
-  removeGroupIdFromUser,
-} from "@/lib/firebase/repositories/users";
+import { listMyGroups } from "@/lib/firebase/repositories/groups";
+import { getUserProfile, removeGroupIdFromUser } from "@/lib/firebase/repositories/users";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 

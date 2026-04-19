@@ -1,9 +1,4 @@
-import {
-  arrayUnion,
-  increment,
-  runTransaction,
-  Timestamp,
-} from "firebase/firestore";
+import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
@@ -94,10 +89,7 @@ export async function consumeJoinCode({
       const groupRef = groupDocRef(codeDoc.gid);
       const codeSnap = await tx.get(codeRef);
       if (!codeSnap.exists()) {
-        throw new AppError(
-          "無効な招待コードです",
-          "group/invalid-code",
-        );
+        throw new AppError("無効な招待コードです", "group/invalid-code");
       }
       const fresh = { id: codeSnap.id, ...codeSnap.data() };
       if (!isJoinCodeUsable(fresh)) {
@@ -123,13 +115,7 @@ export async function consumeJoinCode({
 /**
  * group から脱退する。owner は脱退不可（先にオーナー移譲または group 削除）。
  */
-export async function leaveGroup({
-  gid,
-  uid,
-}: {
-  gid: string;
-  uid: string;
-}): Promise<void> {
+export async function leaveGroup({ gid, uid }: { gid: string; uid: string }): Promise<void> {
   const group = await getGroup(gid);
   if (group.ownerUid === uid) {
     throw new AppError(
@@ -164,9 +150,7 @@ export async function generateJoinCode({
   if (!Number.isInteger(expiresInDays) || expiresInDays <= 0) {
     throw new AppError("expiresInDays must be a positive integer", "validation/invalid-input");
   }
-  const expiresAt = Timestamp.fromDate(
-    new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000),
-  );
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
   // default の場合は 7 日：呼び出し側からの override が無ければ defaultExpiresAt と一致
   void defaultExpiresAt;
   return createJoinCode({ gid, createdByUid, expiresAt, maxUses });

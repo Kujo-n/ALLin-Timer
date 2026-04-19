@@ -12,10 +12,7 @@ vi.mock("@/lib/firebase/client", () => ({
 }));
 
 vi.mock("firebase/firestore", async () => {
-  const actual =
-    await vi.importActual<typeof import("firebase/firestore")>(
-      "firebase/firestore",
-    );
+  const actual = await vi.importActual<typeof import("firebase/firestore")>("firebase/firestore");
   return {
     ...actual,
     runTransaction: vi.fn(),
@@ -44,10 +41,7 @@ vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
   incrementUsesCount: vi.fn(),
   deleteJoinCode: vi.fn(),
   generateCodeString: vi.fn(),
-  isJoinCodeUsable: (
-    codeDoc: GroupJoinCodeDoc,
-    now: Date = new Date(),
-  ): boolean => {
+  isJoinCodeUsable: (codeDoc: GroupJoinCodeDoc, now: Date = new Date()): boolean => {
     if (codeDoc.expiresAt.toMillis() <= now.getTime()) return false;
     if (codeDoc.maxUses !== null && codeDoc.usesCount >= codeDoc.maxUses) {
       return false;
@@ -74,10 +68,7 @@ import {
   removeMemberSelf,
   updateGroupName,
 } from "@/lib/firebase/repositories/groups";
-import {
-  createJoinCode,
-  getJoinCode,
-} from "@/lib/firebase/repositories/groupJoinCodes";
+import { createJoinCode, getJoinCode } from "@/lib/firebase/repositories/groupJoinCodes";
 import {
   addGroupIdToUser,
   getUserProfile,
@@ -152,25 +143,23 @@ describe("createGroupWithOwner", () => {
 describe("consumeJoinCode", () => {
   it("rejects with group/invalid-code when code does not exist", async () => {
     vi.mocked(getJoinCode).mockResolvedValue(null);
-    await expect(
-      consumeJoinCode({ code: "missing", uid: "u-new" }),
-    ).rejects.toMatchObject({ code: "group/invalid-code" });
+    await expect(consumeJoinCode({ code: "missing", uid: "u-new" })).rejects.toMatchObject({
+      code: "group/invalid-code",
+    });
   });
 
   it("rejects expired codes", async () => {
     vi.mocked(getJoinCode).mockResolvedValue(makeCode({ expiresAt: past }));
-    await expect(
-      consumeJoinCode({ code: "code123", uid: "u-new" }),
-    ).rejects.toMatchObject({ code: "group/invalid-code" });
+    await expect(consumeJoinCode({ code: "code123", uid: "u-new" })).rejects.toMatchObject({
+      code: "group/invalid-code",
+    });
   });
 
   it("rejects codes that hit maxUses", async () => {
-    vi.mocked(getJoinCode).mockResolvedValue(
-      makeCode({ maxUses: 1, usesCount: 1 }),
-    );
-    await expect(
-      consumeJoinCode({ code: "code123", uid: "u-new" }),
-    ).rejects.toMatchObject({ code: "group/invalid-code" });
+    vi.mocked(getJoinCode).mockResolvedValue(makeCode({ maxUses: 1, usesCount: 1 }));
+    await expect(consumeJoinCode({ code: "code123", uid: "u-new" })).rejects.toMatchObject({
+      code: "group/invalid-code",
+    });
   });
 
   it("returns alreadyMember without running transaction when user.groupIds already contains gid", async () => {
@@ -227,9 +216,9 @@ describe("consumeJoinCode", () => {
 describe("leaveGroup", () => {
   it("rejects when uid is the owner", async () => {
     vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u1", memberUids: ["u1"] }));
-    await expect(
-      leaveGroup({ gid: "g1", uid: "u1" }),
-    ).rejects.toMatchObject({ code: "group/owner-cannot-leave" });
+    await expect(leaveGroup({ gid: "g1", uid: "u1" })).rejects.toMatchObject({
+      code: "group/owner-cannot-leave",
+    });
     expect(removeMemberSelf).not.toHaveBeenCalled();
   });
 
@@ -280,9 +269,9 @@ describe("generateJoinCode", () => {
 describe("deleteGroupByOwner", () => {
   it("rejects non-owner", async () => {
     vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
-    await expect(
-      deleteGroupByOwner({ gid: "g1", uid: "u-other" }),
-    ).rejects.toMatchObject({ code: "group/not-owner" });
+    await expect(deleteGroupByOwner({ gid: "g1", uid: "u-other" })).rejects.toMatchObject({
+      code: "group/not-owner",
+    });
     expect(deleteGroup).not.toHaveBeenCalled();
   });
 
@@ -300,17 +289,17 @@ describe("deleteGroupByOwner", () => {
 
 describe("renameGroup", () => {
   it("rejects when name is blank", async () => {
-    await expect(
-      renameGroup({ gid: "g1", uid: "u-owner", name: "   " }),
-    ).rejects.toMatchObject({ code: "validation/invalid-input" });
+    await expect(renameGroup({ gid: "g1", uid: "u-owner", name: "   " })).rejects.toMatchObject({
+      code: "validation/invalid-input",
+    });
     expect(updateGroupName).not.toHaveBeenCalled();
   });
 
   it("rejects non-owner", async () => {
     vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
-    await expect(
-      renameGroup({ gid: "g1", uid: "u-other", name: "New" }),
-    ).rejects.toMatchObject({ code: "group/not-owner" });
+    await expect(renameGroup({ gid: "g1", uid: "u-other", name: "New" })).rejects.toMatchObject({
+      code: "group/not-owner",
+    });
     expect(updateGroupName).not.toHaveBeenCalled();
   });
 
