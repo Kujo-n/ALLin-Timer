@@ -4,13 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
@@ -47,8 +41,7 @@ export function EmailLinkClient() {
 
   const runComplete = useCallback(
     async (email?: string) => {
-      const currentUrl =
-        typeof window !== "undefined" ? window.location.href : "";
+      const currentUrl = typeof window !== "undefined" ? window.location.href : "";
       if (!isEmailLinkUrl(currentUrl)) {
         setStage({
           kind: "error",
@@ -111,17 +104,13 @@ export function EmailLinkClient() {
       <Card>
         <CardHeader>
           <CardTitle>メールリンク認証</CardTitle>
-          <CardDescription>
-            リンクを処理しています。
-          </CardDescription>
+          <CardDescription>リンクを処理しています。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {stage.kind === "working" ? (
             <p className="text-sm text-muted-foreground">処理中…</p>
           ) : null}
-          {stage.kind === "done" ? (
-            <p className="text-sm">完了しました。遷移します…</p>
-          ) : null}
+          {stage.kind === "done" ? <p className="text-sm">完了しました。遷移します…</p> : null}
           {stage.kind === "need-email" ? (
             <form onSubmit={onRetrySubmit} className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -145,11 +134,7 @@ export function EmailLinkClient() {
               <p className="text-sm text-destructive" role="alert">
                 {stage.code}: {stage.message}
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.replace("/tournaments")}
-              >
+              <Button variant="outline" size="sm" onClick={() => router.replace("/tournaments")}>
                 トーナメント一覧へ
               </Button>
             </div>

@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppError } from "@/lib/errors";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
@@ -52,7 +46,9 @@ export function TournamentsClient() {
         <div>
           <h1 className="text-2xl font-bold">トーナメント</h1>
           <p className="text-sm text-muted-foreground">
-            {currentGroup ? `サークル「${currentGroup.name}」のトーナメント。` : "現在のサークルのトーナメント。"}
+            {currentGroup
+              ? `サークル「${currentGroup.name}」のトーナメント。`
+              : "現在のサークルのトーナメント。"}
             メンバー全員が編集／開始／削除できます。
           </p>
         </div>
@@ -89,9 +85,7 @@ export function TournamentsClient() {
                 <CardHeader>
                   <CardTitle>{t.name}</CardTitle>
                   <CardDescription>
-                    <span className="mr-2 rounded bg-muted px-2 py-0.5 text-xs">
-                      {t.state}
-                    </span>
+                    <span className="mr-2 rounded bg-muted px-2 py-0.5 text-xs">{t.state}</span>
                     {t.structureSnapshot.levels.length} レベル / 初期{" "}
                     {t.structureSnapshot.initialStack}
                   </CardDescription>

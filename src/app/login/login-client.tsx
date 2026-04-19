@@ -8,13 +8,7 @@ import type { AuthCredential } from "firebase/auth";
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
 import { LinkAccountDialog } from "@/components/auth/LinkAccountDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
@@ -86,11 +80,7 @@ export function LoginClient() {
         setLinkRequest({ email: e.email, credential: e.pendingCredential });
         return;
       }
-      const wrapped = AppError.from(
-        e,
-        "auth/google-failed",
-        "Google ログインに失敗しました",
-      );
+      const wrapped = AppError.from(e, "auth/google-failed", "Google ログインに失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
       setError(`${wrapped.code}: ${wrapped.message}`);
     } finally {
@@ -105,11 +95,7 @@ export function LoginClient() {
     try {
       // redirect 先はログイン後の遷移先。/auth/email-link からクエリ経由で渡る。
       // displayName は任意 — 新規の場合はコールバックで Auth プロフィールに反映。
-      await sendEmailLinkForJoin(
-        email,
-        redirect,
-        displayName.trim() || undefined,
-      );
+      await sendEmailLinkForJoin(email, redirect, displayName.trim() || undefined);
       setLinkSentTo(email);
     } catch (e) {
       const wrapped = AppError.from(e, "auth/unknown", "メール送信に失敗しました");
@@ -127,7 +113,8 @@ export function LoginClient() {
           <CardHeader>
             <CardTitle>メールを送信しました</CardTitle>
             <CardDescription>
-              {linkSentTo} 宛にログインリンクを送信しました。届かない場合は迷惑メールフォルダも確認してください。
+              {linkSentTo}{" "}
+              宛にログインリンクを送信しました。届かない場合は迷惑メールフォルダも確認してください。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -148,11 +135,7 @@ export function LoginClient() {
   }
 
   const title =
-    mode === "login"
-      ? "ログイン"
-      : mode === "register"
-        ? "新規登録"
-        : "メールリンクでログイン";
+    mode === "login" ? "ログイン" : mode === "register" ? "新規登録" : "メールリンクでログイン";
 
   return (
     <main className="mx-auto max-w-md space-y-6 p-8">
@@ -181,9 +164,7 @@ export function LoginClient() {
               <span className="w-full border-t" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                または
-              </span>
+              <span className="bg-background px-2 text-muted-foreground">または</span>
             </div>
           </div>
 
@@ -284,9 +265,7 @@ export function LoginClient() {
                 <Input
                   id="password"
                   type="password"
-                  autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
-                  }
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
                   required
                   minLength={6}
                   value={password}
@@ -299,11 +278,7 @@ export function LoginClient() {
                 </p>
               ) : null}
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting
-                  ? "送信中…"
-                  : mode === "login"
-                    ? "ログイン"
-                    : "新規登録"}
+                {submitting ? "送信中…" : mode === "login" ? "ログイン" : "新規登録"}
               </Button>
             </form>
           )}

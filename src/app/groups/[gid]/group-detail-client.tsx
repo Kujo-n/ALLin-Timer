@@ -5,13 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -63,9 +57,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       const g = await getGroup(gid);
       setGroup(g);
       setRenameValue(g.name);
-      const settled = await Promise.allSettled(
-        g.memberUids.map((uid) => getUserProfile(uid)),
-      );
+      const settled = await Promise.allSettled(g.memberUids.map((uid) => getUserProfile(uid)));
       const lines: MemberLine[] = g.memberUids.map((uid, i) => {
         const r = settled[i];
         if (r.status === "fulfilled" && r.value) {
@@ -101,11 +93,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   }
 
   if (!group) {
-    return (
-      <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">
-        読込中…
-      </main>
-    );
+    return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 
   const isOwner = group.ownerUid === user.uid;
@@ -178,9 +166,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     }
   }
 
-  const inviteUrl = issuedCode
-    ? `${originSafe()}/groups/join/${issuedCode}`
-    : null;
+  const inviteUrl = issuedCode ? `${originSafe()}/groups/join/${issuedCode}` : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-8">
@@ -198,28 +184,16 @@ export function GroupDetailClient({ gid }: { gid: string }) {
             </Button>
           </Link>
           {isOwner ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setRenameOpen(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setRenameOpen(true)}>
               名前変更
             </Button>
           ) : null}
           {isOwner ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setConfirmDeleteOpen(true)}
-            >
+            <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
               削除
             </Button>
           ) : (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setConfirmLeaveOpen(true)}
-            >
+            <Button variant="destructive" size="sm" onClick={() => setConfirmLeaveOpen(true)}>
               脱退
             </Button>
           )}
@@ -230,7 +204,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         <CardHeader>
           <CardTitle>メンバー</CardTitle>
           <CardDescription>
-            このサークルに所属する運営者一覧。Phase 2.5 ではロールはありません（オーナー以外は対等）。
+            このサークルに所属する運営者一覧。Phase 2.5
+            ではロールはありません（オーナー以外は対等）。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -256,7 +231,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         <CardHeader>
           <CardTitle>招待コード</CardTitle>
           <CardDescription>
-            メンバー全員が発行できます。デフォルト 7 日間有効。リンクを口頭/チャットで共有してください。
+            メンバー全員が発行できます。デフォルト 7
+            日間有効。リンクを口頭/チャットで共有してください。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -278,9 +254,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>サークル名を変更</DialogTitle>
-            <DialogDescription>
-              新しい名前を入力してください（最大 60 文字）。
-            </DialogDescription>
+            <DialogDescription>新しい名前を入力してください（最大 60 文字）。</DialogDescription>
           </DialogHeader>
           <form onSubmit={onRename} className="space-y-4">
             <Input
@@ -315,18 +289,10 @@ export function GroupDetailClient({ gid }: { gid: string }) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmLeaveOpen(false)}
-              disabled={working}
-            >
+            <Button variant="outline" onClick={() => setConfirmLeaveOpen(false)} disabled={working}>
               キャンセル
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void onLeave()}
-              disabled={working}
-            >
+            <Button variant="destructive" onClick={() => void onLeave()} disabled={working}>
               脱退する
             </Button>
           </DialogFooter>
@@ -339,8 +305,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
             <DialogTitle>サークルを削除</DialogTitle>
             <DialogDescription>
               「{group.name}」を削除します。配下のストラクチャ／トーナメントは
-              <strong>削除されません</strong>が、誰からも見えなくなります。
-              先に /structures や /tournaments で配下データを削除しておくことを推奨します。
+              <strong>削除されません</strong>が、誰からも見えなくなります。 先に /structures や
+              /tournaments で配下データを削除しておくことを推奨します。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -351,11 +317,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
             >
               キャンセル
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void onDelete()}
-              disabled={working}
-            >
+            <Button variant="destructive" onClick={() => void onDelete()} disabled={working}>
               削除する
             </Button>
           </DialogFooter>

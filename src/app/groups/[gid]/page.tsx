@@ -2,11 +2,7 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 
 import { GroupDetailClient } from "./group-detail-client";
 
-export default async function GroupDetailPage({
-  params,
-}: {
-  params: Promise<{ gid: string }>;
-}) {
+export default async function GroupDetailPage({ params }: { params: Promise<{ gid: string }> }) {
   const { gid } = await params;
   return (
     <RequireAuth>

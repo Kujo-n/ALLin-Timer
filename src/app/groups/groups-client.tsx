@@ -4,24 +4,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function GroupsClient() {
   const { user } = useAuthUser();
-  const {
-    loading,
-    groups,
-    currentGroupId,
-    setCurrentGroupId,
-  } = useCurrentGroup();
+  const { loading, groups, currentGroupId, setCurrentGroupId } = useCurrentGroup();
   const searchParams = useSearchParams();
   const empty = searchParams.get("empty") === "1";
 
@@ -76,8 +65,7 @@ export function GroupsClient() {
                     ) : null}
                   </div>
                   <CardDescription>
-                    メンバー {g.memberUids.length} 人
-                    {g.ownerUid === user.uid ? " / オーナー" : ""}
+                    メンバー {g.memberUids.length} 人{g.ownerUid === user.uid ? " / オーナー" : ""}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex gap-2">
@@ -87,11 +75,7 @@ export function GroupsClient() {
                     </Button>
                   </Link>
                   {!isCurrent ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setCurrentGroupId(g.id)}
-                    >
+                    <Button size="sm" variant="secondary" onClick={() => setCurrentGroupId(g.id)}>
                       切替
                     </Button>
                   ) : null}

@@ -6,10 +6,7 @@ import { useEffect, useState } from "react";
 import { TournamentForm } from "@/components/tournament/TournamentForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  getTournament,
-  updateTournament,
-} from "@/lib/firebase/repositories/tournaments";
+import { getTournament, updateTournament } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
@@ -50,18 +47,14 @@ export function TournamentEditClient({ tid }: { tid: string }) {
     );
   }
   if (!data) {
-    return (
-      <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">
-        読込中…
-      </main>
-    );
+    return <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
   if (data.state !== "setup") {
     return (
       <main className="mx-auto max-w-2xl p-8">
         <p className="text-sm text-destructive" role="alert">
-          tournament/already-started:
-          このトーナメントは既に開始されているため編集できません（state={data.state}）。
+          tournament/already-started: このトーナメントは既に開始されているため編集できません（state=
+          {data.state}）。
         </p>
       </main>
     );

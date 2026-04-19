@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,10 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
-import {
-  deleteStructure,
-  listStructuresByGroup,
-} from "@/lib/firebase/repositories/structures";
+import { deleteStructure, listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
@@ -75,7 +66,9 @@ export function StructuresClient() {
         <div>
           <h1 className="text-2xl font-bold">ストラクチャプリセット</h1>
           <p className="text-sm text-muted-foreground">
-            {currentGroup ? `サークル「${currentGroup.name}」のプリセット。` : "現在のサークルのプリセット。"}
+            {currentGroup
+              ? `サークル「${currentGroup.name}」のプリセット。`
+              : "現在のサークルのプリセット。"}
             メンバー全員で共有・編集できます。
           </p>
         </div>
@@ -111,8 +104,8 @@ export function StructuresClient() {
               <CardHeader>
                 <CardTitle>{s.name}</CardTitle>
                 <CardDescription>
-                  初期 {s.initialStack} / 締切 Lv{s.lateEntryDeadlineLevel} /{" "}
-                  {s.levels.length} レベル
+                  初期 {s.initialStack} / 締切 Lv{s.lateEntryDeadlineLevel} / {s.levels.length}{" "}
+                  レベル
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex gap-2">
@@ -121,11 +114,7 @@ export function StructuresClient() {
                     編集
                   </Button>
                 </Link>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteTarget(s)}
-                >
+                <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(s)}>
                   削除
                 </Button>
               </CardContent>
@@ -148,10 +137,7 @@ export function StructuresClient() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-            >
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               キャンセル
             </Button>
             <Button

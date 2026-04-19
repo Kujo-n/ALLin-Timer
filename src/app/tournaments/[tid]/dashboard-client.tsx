@@ -7,13 +7,7 @@ import { useEffect, useState } from "react";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { PlayerList } from "@/components/tournament/PlayerList";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -101,11 +95,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   if (!data || !user) {
-    return (
-      <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">
-        読込中…
-      </main>
-    );
+    return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 
   const canManage = groupIds.includes(data.groupId);
@@ -117,13 +107,11 @@ export function DashboardClient({ tid }: { tid: string }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">{data.name}</h1>
-            <span className="rounded bg-muted px-2 py-0.5 text-xs">
-              {data.state}
-            </span>
+            <span className="rounded bg-muted px-2 py-0.5 text-xs">{data.state}</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel}{" "}
-            / {data.structureSnapshot.levels.length} レベル
+            現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel} /{" "}
+            {data.structureSnapshot.levels.length} レベル
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -142,11 +130,7 @@ export function DashboardClient({ tid }: { tid: string }) {
                   編集
                 </Button>
               </Link>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setConfirmOpen(true)}
-              >
+              <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
                 削除
               </Button>
             </>
@@ -163,7 +147,8 @@ export function DashboardClient({ tid }: { tid: string }) {
         <CardHeader>
           <CardTitle>ストラクチャ snapshot</CardTitle>
           <CardDescription>
-            トーナメント作成時にコピー。以降の structures 側の編集はこのトーナメントには影響しません。
+            トーナメント作成時にコピー。以降の structures
+            側の編集はこのトーナメントには影響しません。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -224,16 +209,12 @@ export function DashboardClient({ tid }: { tid: string }) {
             <DialogTitle>トーナメントを開始</DialogTitle>
             <DialogDescription>
               「{data.name}」を開始します。開始すると編集／削除ができなくなります。
-              現バージョンではタイマーやレベル自動繰り上げは未実装（Phase 3
-              で追加予定）。Level 1 から手動進行になります。
+              現バージョンではタイマーやレベル自動繰り上げは未実装（Phase 3 で追加予定）。Level 1
+              から手動進行になります。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setStartOpen(false)}
-              disabled={starting}
-            >
+            <Button variant="outline" onClick={() => setStartOpen(false)} disabled={starting}>
               キャンセル
             </Button>
             <Button
