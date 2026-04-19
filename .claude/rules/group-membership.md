@@ -5,6 +5,7 @@ Phase 2.5 で確立する group ベース所有権・権限モデル。**Phase 2
 ## スコープ
 
 Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有所有モデルに移行する:
+
 - `structures/{sid}` — サークルで共有されるストラクチャプリセット
 - `tournaments/{tid}` — サークルで開催されるトーナメント
 
@@ -17,12 +18,12 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## 権限モデル（確定予定）
 
-| 操作 | 条件 |
-|---|---|
-| group の structure / tournament を read | `request.auth.uid in get(/groups/{groupId}).data.memberUids` |
-| group の structure / tournament を write | 同上（メンバー全員が編集可） |
-| group 自体の削除 | `request.auth.uid == group.ownerUid`（オーナーのみ） |
-| メンバー追加 | 招待コード経由のみ（直接書込禁止） |
+| 操作                                     | 条件                                                         |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| group の structure / tournament を read  | `request.auth.uid in get(/groups/{groupId}).data.memberUids` |
+| group の structure / tournament を write | 同上（メンバー全員が編集可）                                 |
+| group 自体の削除                         | `request.auth.uid == group.ownerUid`（オーナーのみ）         |
+| メンバー追加                             | 招待コード経由のみ（直接書込禁止）                           |
 
 ## 実装上の注意（Phase 2.5 実装時に埋める）
 
@@ -42,6 +43,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 **現行の緩和**: Phase 2.5 の `generateJoinCode` の default は `maxUses: null`（無制限）。UI からも `maxUses` 設定機能を提供していないため、本番運用上は顕在化しない。
 
 **Phase 3+ で `maxUses` UI を追加する際の必須対応**:
+
 1. `usesCount` 更新と `groups/{gid}.memberUids` への自分追加を **atomic に検証** する仕組みが必要
 2. Firestore Security Rules 単独では複数 doc 同期検証が表現困難なため、**Cloud Functions（Callable）化が現実解**
    - Callable function で `code` 検証 → group 加入 → `usesCount` 更新 を 1 トランザクションで実行
