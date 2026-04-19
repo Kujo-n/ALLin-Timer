@@ -19,12 +19,7 @@ import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function AuthBadge() {
   const { user, loading } = useAuthUser();
-  const {
-    loading: groupLoading,
-    groups,
-    currentGroupId,
-    setCurrentGroupId,
-  } = useCurrentGroup();
+  const { loading: groupLoading, groups, currentGroupId, setCurrentGroupId } = useCurrentGroup();
   const [busy, setBusy] = useState(false);
 
   if (loading) {
@@ -63,10 +58,7 @@ export function AuthBadge() {
   const currentGroup = groups.find((g) => g.id === currentGroupId);
 
   return (
-    <div
-      className="flex items-center gap-2 text-sm"
-      data-testid="auth-badge"
-    >
+    <div className="flex items-center gap-2 text-sm" data-testid="auth-badge">
       {!user.isAnonymous && !groupLoading ? (
         groups.length === 0 ? (
           <Link
@@ -84,17 +76,12 @@ export function AuthBadge() {
             {groups[0].name}
           </Link>
         ) : (
-          <Select
-            value={currentGroupId ?? undefined}
-            onValueChange={(v) => setCurrentGroupId(v)}
-          >
+          <Select value={currentGroupId ?? undefined} onValueChange={(v) => setCurrentGroupId(v)}>
             <SelectTrigger
               className="h-7 w-auto min-w-[8rem] gap-1 rounded-full bg-muted px-2 py-0 text-xs"
               aria-label="サークル切替"
             >
-              <SelectValue placeholder="サークルを選択">
-                {currentGroup?.name}
-              </SelectValue>
+              <SelectValue placeholder="サークルを選択">{currentGroup?.name}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {groups.map((g) => (
@@ -112,10 +99,7 @@ export function AuthBadge() {
         className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs hover:bg-muted/70"
         aria-label="current user (open settings)"
       >
-        <span
-          className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
-          aria-hidden
-        />
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
         {label}
       </Link>
       <Button

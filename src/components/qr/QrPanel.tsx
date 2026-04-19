@@ -4,12 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { buildJoinUrl } from "@/lib/services/qr";
 
@@ -47,9 +42,7 @@ export function QrPanel({ tid }: { tid: string }) {
               <QRCodeSVG value={url} size={224} />
             </div>
             <div className="space-y-2">
-              <p className="break-all rounded-md bg-muted px-3 py-2 text-xs font-mono">
-                {url}
-              </p>
+              <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-xs">{url}</p>
               <Button variant="outline" size="sm" onClick={onCopy}>
                 {copied ? "コピーしました" : "URL をコピー"}
               </Button>

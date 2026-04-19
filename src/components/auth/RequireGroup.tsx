@@ -6,8 +6,7 @@ import { useEffect, type ReactNode } from "react";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function RequireGroup({ children }: { children: ReactNode }) {
-  const { loading, groupIds, currentGroupId, setCurrentGroupId } =
-    useCurrentGroup();
+  const { loading, groupIds, currentGroupId, setCurrentGroupId } = useCurrentGroup();
   const router = useRouter();
 
   useEffect(() => {

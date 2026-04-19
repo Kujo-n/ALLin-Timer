@@ -25,25 +25,19 @@ function parseIntSafe(value: string): number {
 export function LevelTable({ levels, onChange }: Props) {
   function updateChip(index: number, field: ChipField, value: string) {
     const n = parseIntSafe(value);
-    const next = levels.map((l, i) =>
-      i === index ? { ...l, [field]: n } : l,
-    );
+    const next = levels.map((l, i) => (i === index ? { ...l, [field]: n } : l));
     onChange(next);
   }
 
   function updateDurationMin(index: number, value: string) {
     const minutes = parseIntSafe(value);
     const durationSec = Math.max(1, minutes) * 60;
-    const next = levels.map((l, i) =>
-      i === index ? { ...l, durationSec } : l,
-    );
+    const next = levels.map((l, i) => (i === index ? { ...l, durationSec } : l));
     onChange(next);
   }
 
   function removeRow(index: number) {
-    const next = levels
-      .filter((_, i) => i !== index)
-      .map((l, i) => ({ ...l, level: i + 1 }));
+    const next = levels.filter((_, i) => i !== index).map((l, i) => ({ ...l, level: i + 1 }));
     onChange(next);
   }
 
