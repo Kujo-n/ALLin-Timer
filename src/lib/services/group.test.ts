@@ -28,7 +28,6 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   getGroup: vi.fn(),
   listMyGroups: vi.fn(),
   updateGroupName: vi.fn(),
-  addMemberSelf: vi.fn(),
   removeMemberSelf: vi.fn(),
   deleteGroup: vi.fn(),
 }));
@@ -61,7 +60,6 @@ vi.mock("@/lib/firebase/repositories/users", () => ({
 import { runTransaction } from "firebase/firestore";
 
 import {
-  addMemberSelf,
   createGroup,
   deleteGroup,
   getGroup,
@@ -115,7 +113,6 @@ function makeCode(overrides: Partial<GroupJoinCodeDoc> = {}): GroupJoinCodeDoc {
 beforeEach(() => {
   vi.mocked(createGroup).mockReset();
   vi.mocked(getGroup).mockReset();
-  vi.mocked(addMemberSelf).mockReset();
   vi.mocked(removeMemberSelf).mockReset();
   vi.mocked(deleteGroup).mockReset();
   vi.mocked(updateGroupName).mockReset();

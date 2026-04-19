@@ -3,7 +3,6 @@ import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/fires
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import {
-  addMemberSelf,
   createGroup,
   deleteGroup,
   getGroup,
@@ -196,10 +195,4 @@ export async function renameGroup({
     throw new AppError("オーナーのみ名前変更できます", "group/not-owner");
   }
   await updateGroupName(gid, trimmed);
-}
-
-/** UI 側 helper：自分が group に再加入したい状態（drift 修復）かを判定する */
-export async function syncGroupIdAfterJoin(uid: string, gid: string): Promise<void> {
-  await addMemberSelf(gid, uid).catch(() => {});
-  await addGroupIdToUser(uid, gid).catch(() => {});
 }
