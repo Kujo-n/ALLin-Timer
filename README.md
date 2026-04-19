@@ -224,6 +224,8 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 | `npm run typecheck`                      | TypeScript 型チェックのみ (`tsc --noEmit`)                                 |
 | `npm test`                               | Vitest 実行（単発、`vitest run`）                                          |
 | `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                           |
+| `npm run format`                         | Prettier で書式修正 (`prettier --write .`)                                 |
+| `npm run format:check`                   | Prettier で書式チェックのみ (`prettier --check .`)                         |
 | `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI） |
 
 <!-- /AUTO-GENERATED -->
@@ -263,8 +265,7 @@ src/
 │  │  ├─ schemas/             # 各コレクションの zod schema（Firestore 真実源）
 │  │  └─ repositories/        # Firestore CRUD 集約（UI から SDK を直接呼ばない）
 │  └─ services/         # auth-actions / receipt / qr / redirect / group / current-group
-└─ types/
-   └─ tournament.ts     # Phase 2 以降は schemas/ 側を真実源とする
+└─ （真実源は src/lib/firebase/schemas/）
 ```
 
 <!-- /AUTO-GENERATED -->

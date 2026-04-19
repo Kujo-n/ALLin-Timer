@@ -56,7 +56,7 @@ Phase 1 で確立した規約を以下に分離。
 | Firebase / Firestore                | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
 | エラー / ログ                       | [.claude/rules/error-logging.md](.claude/rules/error-logging.md)         | `AppError` ラップ、ドメインコード付与、`logger` 経由出力                                                                                                 |
 | セキュリティ / 機密情報             | [.claude/rules/security.md](.claude/rules/security.md)                   | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則                                                         |
-| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md)   | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 実装中に充実させる                                                                             |
+| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md)   | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 完了済み・Phase 3 以降はここを参照                                                             |
 
 ### ルール参照の義務
 
