@@ -1,12 +1,13 @@
 # Firebase / Firestore 実装規約
 
-Phase 1 で確立した Firebase 利用パターン。Phase 2 以降も必ず従うこと。
+Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層を追加した Firebase 利用パターン。以降の Phase も必ず従うこと。
 
 ## 初期化
 
 - Auth / Firestore への直接アクセスは **`src/lib/firebase/client.ts` の singleton 経由のみ**
 - コンポーネント・hook・ユーティリティから `initializeApp` / `getAuth` / `getFirestore` を直接呼ばない
 - SSR / CSR の両方に対応した初期化ガード（`getApps().length` チェック）を singleton 側に集約
+- Firebase Auth のテンプレート言語は `firebaseAuth.languageCode = "ja"` を singleton で固定
 
 ## 認証購読
 
@@ -16,19 +17,29 @@ Phase 1 で確立した Firebase 利用パターン。Phase 2 以降も必ず従
 
 ## Firestore アクセス
 
-- Firestore の read / write は **`converter<T>()`（`src/lib/firebase/converters.ts`）経由**で型安全に
+- Firestore SDK の直接呼び出し（`collection` / `doc` / `addDoc` / `getDoc` / `getDocs` / `setDoc` / `updateDoc` / `deleteDoc`）は **`src/lib/firebase/repositories/` 配下のみ**で行う
+  - UI / component / hook / service 層からは repository 関数を呼ぶ
+- 各 collection は **`zodConverter(schema, "collectionName")` で withConverter 適用**（`src/lib/firebase/converters.ts`）
+  - schema は **ドキュメント本体**（`id` を含まない）で定義し、repository 側で `{ id: snap.id, ...snap.data() }` の形で合成して UI に返す
+  - `fromFirestore` が zod の validate に失敗したら `AppError("firestore/invalid-data")` を自動 throw
+- schema は `src/lib/firebase/schemas/{collection}.ts` に配置し、`BodySchema` と UI 向け `Doc`（= body + id）を双方 export
 - 生の `DocumentData` を UI まで持ち込まない
-- collection / doc 参照は converter 適用済みヘルパ関数にまとめる
-- **Phase 2 時点で runtime validator（zod 等）を `fromFirestore` に統合**する。Phase 1 の converter は `as T` キャストのみで型保証が弱い（converters.ts に `TODO(phase-2)` あり）。コレクション別に zod schema を定義し、`snap.data()` を validate してから返す設計に差し替えること
+- repository 関数はエラーを **必ず `AppError.from(e, "firestore/...", 日本語メッセージ)` でラップ**して throw する。呼び出し側で握りつぶさない
 
 ## セキュリティルール
 
 - **deny-by-default**（`allow read, write: if false;` から開始）
 - 書込条件の基本形: `request.auth.uid == resource.data.ownerUid`
 - 参加者の読取は対象トーナメントドキュメントのみに限定
+- **参加者ドキュメント（`tournaments/{tid}/players/{pid}`）** は以下を満たすこと:
+  - create: `pid == auth.uid`、`uid == auth.uid`、`isBusted == false` 必須
+  - update: 本人のみ、かつ `uid` / `isBusted` / `entryAt` / `bustedAt` は immutable（displayName のみ変更可）
+  - delete: self-delete（`pid == auth.uid`）または owner-delete（親 tournament が存在し `ownerUid == auth.uid`）
+- 外部ドキュメント参照（`get()`）は **`exists()` ガードと併用**し意図を明示化する
 - ルール変更時は必ずエミュレータでテスト → `firebase deploy --only firestore:rules`
 
 ## 変更時のチェック
 
-- Firestore スキーマ変更は converter と security rules の両方を同時更新
+- Firestore スキーマ変更は schema（zod） / repository / security rules の **3 点を同時更新**
 - 新規 collection 追加時は必ず deny ルールから書き始める
+- `where("field", "==") + orderBy("other")` のクエリは Firestore 複合インデックスが必要。規模が小さい場合は **client 側ソート** を採用して index 追加を回避する設計を優先（詳細は [converters.ts](src/lib/firebase/converters.ts) / `repositories/*.ts` の `listMyXxx` パターン参照）

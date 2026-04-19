@@ -1,4 +1,4 @@
-# ALLin-Timer
+# ALLin-PokerTimer
 
 ## 言語設定
 
@@ -10,7 +10,7 @@
 
 ## プロジェクト概要
 
-- **ALLin-Timer** — NLH（ノーリミットテキサスホールデム）小規模サークル向けトーナメント進行支援 Web アプリ
+- **ALLin-PokerTimer** — NLH（ノーリミットテキサスホールデム）小規模サークル向けトーナメント進行支援 Web アプリ
 - 核心価値: **熟練者不在でも TDA ルール通りに回せる**（席決め・テーブルバランシングをアプリが自動指示）
 - 対象規模: 6 テーブル以下、20 人前後のサークル（月 1〜2 回開催）
 - 配布: MIT ライセンスで GitHub 公開。サークル固有情報は Firestore にのみ保存
@@ -21,7 +21,7 @@
 |---|---|
 | フロントエンド | Next.js 15（App Router / TypeScript） |
 | UI | Tailwind CSS + shadcn/ui |
-| DB / 認証 | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Email Link の 3 方式） |
+| DB / 認証 | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Email Link／Google の 4 方式） |
 | リアルタイム同期 | Firestore `onSnapshot` |
 | デプロイ | Vercel Hobby（GitHub 連携） |
 
@@ -31,7 +31,11 @@
 
 - **PRD**: [.claude/PRPs/prds/allin-timer.prd.md](.claude/PRPs/prds/allin-timer.prd.md)（要件・Implementation Phases）
 - **実装計画**: [.claude/PRPs/plans/](.claude/PRPs/plans/) 配下に Phase 単位で生成
-  - Phase 1（Foundation）: [phase-1-foundation.plan.md](.claude/PRPs/plans/phase-1-foundation.plan.md) — `in-progress`
+  - 進行中の計画は `.claude/PRPs/plans/` 直下、完了した計画は `.claude/PRPs/plans/completed/` に移動
+  - Phase 1（Foundation）: [completed/phase-1-foundation.plan.md](.claude/PRPs/plans/completed/phase-1-foundation.plan.md) — `complete`
+  - Phase 2（Tournament Setup & Receipt）: [completed/phase-2-tournament-setup-receipt.plan.md](.claude/PRPs/plans/completed/phase-2-tournament-setup-receipt.plan.md) — `complete`
+- **実装レポート**: [.claude/PRPs/reports/](.claude/PRPs/reports/) に Phase 完了毎に生成
+- **PRD 内の Phase 進捗表**が最新状況の真実源。個別リンクは PRD を参照
 
 ## ワークフロー
 
@@ -48,7 +52,7 @@ Phase 1 で確立した規約を以下に分離。
 
 | 対象領域 | ルールファイル | 内容 |
 |---|---|---|
-| Firebase / Firestore | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`converter<T>()`、deny-by-default セキュリティルール |
+| Firebase / Firestore | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
 | エラー / ログ | [.claude/rules/error-logging.md](.claude/rules/error-logging.md) | `AppError` ラップ、ドメインコード付与、`logger` 経由出力 |
 | セキュリティ / 機密情報 | [.claude/rules/security.md](.claude/rules/security.md) | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用 |
 

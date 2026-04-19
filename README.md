@@ -1,4 +1,4 @@
-# ALLin-Timer
+# ALLin-PokerTimer
 
 NLH（ノーリミットテキサスホールデム）小規模サークル向けトーナメント進行支援 Web アプリ。熟練者不在でも TDA ルール通りに回せることを目標に、席決め・テーブルバランシングの自動指示を提供します。
 
@@ -19,8 +19,8 @@ NLH（ノーリミットテキサスホールデム）小規模サークル向�
 ### 1. リポジトリ取得と依存インストール
 
 ```bash
-git clone https://github.com/<your-account>/ALLin-Timer.git
-cd ALLin-Timer
+git clone https://github.com/<your-account>/ALLin-PokerTimer.git
+cd ALLin-PokerTimer
 npm install
 ```
 
@@ -36,7 +36,7 @@ npm install
      - 承認済みドメインに `localhost` と本番／プレビュー URL が入っていれば OAuth 同意画面はそのまま動く
 3. **Authentication** → 「Settings」→「承認済みドメイン」に以下を追加
    - `localhost`（開発用）
-   - Vercel 本番 URL（例: `allin-timer.vercel.app`）
+   - Vercel 本番 URL（例: `allin-pokertimer.vercel.app`）
    - プレビュー URL は PR ごとに変わるので、運用が辛い場合は `*.vercel.app` を追加
 4. **Firestore Database** を「本番モード」で作成（ルールは後段で別途デプロイ）
 5. **プロジェクト設定** → 「全般」→ 「マイアプリ」で Web アプリを追加し、`firebaseConfig` の値を控える
@@ -57,7 +57,7 @@ cp env.local.example .env.local
 npm run dev
 ```
 
-- <http://localhost:3000/> で「ALLin-Timer」見出しが表示されれば OK
+- <http://localhost:3000/> で「ALLin-PokerTimer」見出しが表示されれば OK
 - <http://localhost:3000/debug/fs> で [書込] → [一覧] を押し、作成したドキュメント ID が表示されれば Firestore 疎通 OK
 - <http://localhost:3000/login> で新規登録 → <http://localhost:3000/structures/new> → <http://localhost:3000/tournaments/new> でトーナメント作成が可能
 
@@ -130,10 +130,10 @@ Firebase 標準テンプレートは英語で、件名も「Sign in to ...」と
 #### 最低限やること（無料プラン・編集不要）
 
 1. クライアント側は既に `firebaseAuth.languageCode = "ja"` に固定済み（[client.ts](src/lib/firebase/client.ts)）。これだけで既定テンプレートが英語 → 日本語に切り替わる
-2. **Firebase Console → Project Settings → General → Public-facing name** を `ALLin-Timer` に変更。本文内 `%APP_NAME%` がこの値に置換され、「ALLin-Timer にログインするには〜」のような日本語本文になる
+2. **Firebase Console → Project Settings → General → Public-facing name** を `ALLin-PokerTimer` に変更。本文内 `%APP_NAME%` がこの値に置換され、「ALLin-PokerTimer にログインするには〜」のような日本語本文になる
 3. **Project Settings → General → Support email** に運営者の連絡先メールを設定（受信者が不審に思った際の確認窓口になる）
 
-ここまでで「件名: `ALLin-Timer へのログイン`」「本文に運営メール」になり、迷惑メール誤検出率が大幅に下がる。件名／本文の詳細カスタマイズには下の **上級カスタマイズ** 参照。
+ここまでで「件名: `ALLin-PokerTimer へのログイン`」「本文に運営メール」になり、迷惑メール誤検出率が大幅に下がる。件名／本文の詳細カスタマイズには下の **上級カスタマイズ** 参照。
 
 #### 上級カスタマイズ（件名・本文を自由に書き換えたい場合）
 
@@ -146,7 +146,7 @@ Firebase Console → Authentication → Templates → `メールリンクでの�
 | 件名／本文が完全グレーアウト | Google Cloud Console → IAM で Owner / Editor 権限があるか確認 |
 | Identity Platform も不可 | カスタム SMTP（Google Workspace 等）を Console に設定し、自社ドメインから送信する。送信元アドレスも自由になる |
 
-件名の例: `【ALLin-Timer】トーナメント参加のログインリンク`
+件名の例: `【ALLin-PokerTimer】トーナメント参加のログインリンク`
 
 **注意**: Firebase テンプレートは**プロジェクト単位の固定**で、`tid` やトーナメント名などの動的パラメータを件名に差し込むことは不可。参加者はメール内リンク URL（`/join/{tid}` が含まれる）で判別する前提。動的件名が必須なら Firebase Extensions `Trigger Email` + Blaze プラン + SendGrid/Mailgun が必要（Phase 5 での検討事項）。
 
@@ -179,34 +179,38 @@ firebase deploy --only firestore:rules
 
 ## よく使うコマンド
 
+<!-- AUTO-GENERATED: scripts — source of truth は package.json scripts。追加・変更時はここも同期 -->
 | コマンド | 用途 |
 |---|---|
-| `npm run dev` | 開発サーバ起動 |
-| `npm run build` | 本番ビルド |
-| `npm run start` | 本番ビルドのローカル起動 |
-| `npm run lint` | ESLint 実行 |
-| `npm run lint:fix` | 自動修正付き ESLint |
-| `npm run typecheck` | TypeScript 型チェックのみ |
-| `npm test` | Vitest 実行（単発） |
-| `npm run test:watch` | Vitest ウォッチモード |
-| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ |
+| `npm run dev` | 開発サーバ起動 (`next dev`) |
+| `npm run build` | 本番ビルド (`next build`) |
+| `npm run start` | 本番ビルドのローカル起動 (`next start`) |
+| `npm run lint` | ESLint 実行 (`next lint`) |
+| `npm run lint:fix` | 自動修正付き ESLint (`next lint --fix`) |
+| `npm run typecheck` | TypeScript 型チェックのみ (`tsc --noEmit`) |
+| `npm test` | Vitest 実行（単発、`vitest run`） |
+| `npm run test:watch` | Vitest ウォッチモード (`vitest`) |
+| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI）|
+<!-- /AUTO-GENERATED -->
 
 ## ディレクトリ構成
 
+<!-- AUTO-GENERATED: directory-tree — src/ ツリーの代表ディレクトリのみ。機能追加時はここを同期すること -->
 ```
 src/
 ├─ app/                 # Next.js App Router
 │  ├─ auth/email-link/  # Email Link コールバック
 │  ├─ debug/fs/         # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
-│  ├─ join/[tid]/       # 参加者向け受付（3 択フロー）
-│  ├─ login/            # 運営者ログイン / 新規登録
+│  ├─ join/[tid]/       # 参加者向け受付（Google / ゲスト / ログイン / メールリンク）
+│  ├─ login/            # 運営者ログイン / 新規登録 / メールリンク
+│  ├─ settings/         # プロフィール編集（displayName 変更）
 │  ├─ structures/       # ストラクチャプリセット CRUD
 │  ├─ tournaments/      # トーナメント一覧 / 作成 / ダッシュボード / 編集
 │  ├─ globals.css
-│  ├─ layout.tsx        # AuthProvider でラップ
+│  ├─ layout.tsx        # AuthProvider でラップし AuthBadge を全画面上部に常設
 │  └─ page.tsx
 ├─ components/
-│  ├─ auth/             # RequireAuth / AuthBadge
+│  ├─ auth/             # RequireAuth / AuthBadge / GoogleIcon / LinkAccountDialog
 │  ├─ qr/               # QrPanel（受付 URL + QR）
 │  ├─ structure/        # StructureForm / LevelTable
 │  ├─ tournament/       # TournamentForm / PlayerList
@@ -217,7 +221,7 @@ src/
 │  ├─ utils.ts          # cn()
 │  ├─ firebase/
 │  │  ├─ AuthProvider.tsx
-│  │  ├─ client.ts            # singleton 初期化
+│  │  ├─ client.ts            # singleton 初期化（languageCode="ja" 固定）
 │  │  ├─ converters.ts        # zod ベース withConverter
 │  │  ├─ schemas/             # 各コレクションの zod schema（Firestore 真実源）
 │  │  └─ repositories/        # Firestore CRUD 集約（UI から SDK を直接呼ばない）
@@ -225,6 +229,24 @@ src/
 └─ types/
    └─ tournament.ts     # Phase 2 以降は schemas/ 側を真実源とする
 ```
+<!-- /AUTO-GENERATED -->
+
+## 環境変数
+
+<!-- AUTO-GENERATED: env-vars — source of truth は env.local.example。追加・変更時はここも同期 -->
+ローカルでは `.env.local`（`env.local.example` をコピー）、本番／プレビューは Vercel の環境変数で管理。すべて `NEXT_PUBLIC_*` のためクライアントバンドルに含まれる前提（公開可能な値のみ）。
+
+| 変数 | 必須 | 説明 |
+|---|---|---|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes | Firebase Web SDK 設定（Console → Project settings → General → Web app）|
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes | 同上 |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes | 同上 |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Yes | 同上 |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | 同上 |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | 同上 |
+| `NEXT_PUBLIC_LOG_LEVEL` | No | ログレベル。`debug` / `info`（既定） / `warn` / `error` |
+| `NEXT_PUBLIC_ENABLE_DEBUG` | No | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定）|
+<!-- /AUTO-GENERATED -->
 
 ## 実装規約
 
