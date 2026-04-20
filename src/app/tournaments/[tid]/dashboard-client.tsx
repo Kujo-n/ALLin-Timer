@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { QrPanel } from "@/components/qr/QrPanel";
+import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { PlayerList } from "@/components/tournament/PlayerList";
+import { SeatingBoard } from "@/components/tournament/SeatingBoard";
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { Button } from "@/components/ui/button";
@@ -21,18 +23,25 @@ import {
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import { deleteTournamentIfSetup } from "@/lib/firebase/repositories/tournaments";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
+import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
-import { getLevelInfo } from "@/lib/services/timer";
 import { useCurrentGroup } from "@/lib/services/current-group";
+import { getLevelInfo } from "@/lib/services/timer";
 
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
   const { groupIds } = useCurrentGroup();
-  const canManage = !!user && groupIds.length > 0;
 
+  // 認証済みユーザー全員に autoAdvance opts を渡す。実際の per-tournament group
+  // メンバーシップ check は useTournamentTimer 内（および orchestrator 内 tx）で
+  // 行われるため、ここでは tournament.groupId を待たずに opts を確定できる。
   const {
     tournament: data,
     remainingMs,
@@ -40,11 +49,50 @@ export function DashboardClient({ tid }: { tid: string }) {
     lastSyncAt,
     error: timerError,
   } = useTournamentTimer(tid, {
-    autoAdvance: canManage && user ? { uid: user.uid, userGroupIds: groupIds } : undefined,
+    autoAdvance: user ? { uid: user.uid, userGroupIds: groupIds } : undefined,
   });
 
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [players, setPlayers] = useState<PlayerDoc[]>([]);
+  const [playersError, setPlayersError] = useState<string | null>(null);
+  const [tables, setTables] = useState<TableDoc[]>([]);
+
+  // Phase 4: dashboard で players と tables を 1 度だけ subscribe し、
+  // PlayerList / SeatingBoard / BalancingInstructionCard / TimerControls に伝搬。
+  useEffect(() => {
+    setPlayersError(null);
+    const unsub = subscribePlayers(
+      tid,
+      (list) => setPlayers(list),
+      (err) => {
+        logger.warn(err.message, { code: err.code });
+        setPlayersError(`${err.code}: ${err.message}`);
+      },
+    );
+    return unsub;
+  }, [tid]);
+
+  useEffect(() => {
+    const unsub = subscribeTables(
+      tid,
+      (list) => setTables(list),
+      (err) => {
+        logger.warn(err.message, { code: err.code });
+        // tables 購読失敗は致命ではない（席決め前は空でも UI は表示できる）。warn のみ。
+      },
+    );
+    return unsub;
+  }, [tid]);
+
+  useSeatingAutoOrchestrator({
+    tid,
+    uid: user?.uid ?? null,
+    userGroupIds: groupIds,
+    tournament: data,
+    players,
+    tables,
+  });
 
   async function onDelete() {
     if (!user) return;
@@ -76,6 +124,11 @@ export function DashboardClient({ tid }: { tid: string }) {
   const isMember = groupIds.includes(data.groupId);
   const canEdit = isMember && data.state === "setup";
   const showTimer = data.state !== "setup";
+  const showSeatingBoard =
+    data.state === "seating" ||
+    data.state === "running" ||
+    data.state === "paused";
+  const showBalancing = isMember && (data.state === "running" || data.state === "paused");
   const levelInfo = getLevelInfo(data);
 
   return (
@@ -89,7 +142,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           </div>
           <p className="text-sm text-muted-foreground">
             現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel} /{" "}
-            {data.structureSnapshot.levels.length} レベル
+            {data.structureSnapshot.levels.length} レベル / 1 卓 {data.seatsPerTable} 席
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -134,13 +187,49 @@ export function DashboardClient({ tid }: { tid: string }) {
           uid={user.uid}
           userGroupIds={groupIds}
           tournament={data}
+          players={players}
           onError={setError}
         />
       ) : null}
 
+      {showBalancing ? (
+        <BalancingInstructionCard
+          tid={tid}
+          uid={user.uid}
+          userGroupIds={groupIds}
+          players={players}
+          tables={tables}
+          seatsPerTable={data.seatsPerTable}
+          onError={setError}
+        />
+      ) : null}
+
+      {showSeatingBoard ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>卓 / 席</CardTitle>
+            <CardDescription>★ は自分の席（運営兼任プレイヤーの場合）。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SeatingBoard
+              players={players}
+              tables={tables}
+              seatsPerTable={data.seatsPerTable}
+              currentUid={user.uid}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 md:grid-cols-2">
         <QrPanel tid={tid} />
-        <PlayerList tid={tid} canManage={isMember} />
+        <PlayerList
+          tid={tid}
+          players={players}
+          subscribeError={playersError}
+          canManage={isMember}
+          tournamentState={data.state}
+        />
       </div>
 
       <Card>

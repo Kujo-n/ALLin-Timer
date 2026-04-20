@@ -76,8 +76,13 @@ export function TournamentEditClient({ tid }: { tid: string }) {
         groupId={data.groupId}
         initialName={data.name}
         initialSnapshot={data.structureSnapshot}
-        onSubmit={async ({ name, snapshot }) => {
-          await updateTournament(tid, { name, structureSnapshot: snapshot });
+        initialSeatsPerTable={data.seatsPerTable}
+        onSubmit={async ({ name, snapshot, seatsPerTable }) => {
+          await updateTournament(tid, {
+            name,
+            structureSnapshot: snapshot,
+            seatsPerTable,
+          });
           router.push(`/tournaments/${tid}`);
         }}
         onCancel={() => router.push(`/tournaments/${tid}`)}

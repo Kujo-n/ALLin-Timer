@@ -1,13 +1,43 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
+import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
+import { logger } from "@/lib/logger";
 import { getLevelInfo } from "@/lib/services/timer";
 
+const MOVED_BANNER_MS = 30_000;
+
 export function LiveClient({ tid }: { tid: string }) {
-  // /live は read-only。autoAdvance は渡さない（参加者端末は rule で書込不可）。
+  // /live は read-only。autoAdvance / auto-seat は渡さない（参加者端末は rule で書込不可）。
   const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
+  const { user } = useAuthUser();
+  const [me, setMe] = useState<PlayerDoc | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribePlayers(
+      tid,
+      (list) => {
+        const found = list.find((p) => p.uid === user.uid) ?? null;
+        setMe(found);
+      },
+      (err) => logger.warn("live players subscribe error", { code: err.code, tid }),
+    );
+    return unsub;
+  }, [tid, user]);
+
+  // 30 秒のバナー表示判定用に 1 秒間隔で再描画。
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   if (error) {
     return (
@@ -24,6 +54,14 @@ export function LiveClient({ tid }: { tid: string }) {
   }
 
   const levelInfo = getLevelInfo(tournament);
+  const seatedAt = me?.lastMovedAt ? me.lastMovedAt.toMillis() : null;
+  const recentlyMoved =
+    seatedAt !== null &&
+    me?.tableNum !== null &&
+    me?.seatNum !== null &&
+    now - seatedAt < MOVED_BANNER_MS;
+  const lateEntryClosed =
+    tournament.currentLevel > tournament.lateEntryDeadlineLevel;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-start gap-4 p-4 pt-8">
@@ -37,6 +75,40 @@ export function LiveClient({ tid }: { tid: string }) {
         levelInfo={levelInfo}
         className="w-full max-w-md"
       />
+
+      {user ? (
+        <section
+          className="w-full max-w-md rounded-lg border p-4"
+          aria-label="self-seat"
+        >
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">あなたの席</h2>
+          {me === null ? (
+            <p className="text-sm text-muted-foreground">受付情報を取得中…</p>
+          ) : me.isBusted ? (
+            <p className="text-sm text-muted-foreground">脱落済み</p>
+          ) : me.tableNum !== null && me.seatNum !== null ? (
+            <div className="space-y-2">
+              <p className="text-3xl font-bold tabular-nums">
+                卓 {me.tableNum} 席 {me.seatNum}
+              </p>
+              {recentlyMoved ? (
+                <p
+                  className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+                  role="status"
+                >
+                  📣 席が移動しました
+                </p>
+              ) : null}
+            </div>
+          ) : tournament.state === "setup" || tournament.state === "seating" ? (
+            <p className="text-sm text-muted-foreground">席決め待ち中…</p>
+          ) : lateEntryClosed ? (
+            <p className="text-sm text-destructive">レイトエントリー締切超過です</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">席決め待ち中…</p>
+          )}
+        </section>
+      ) : null}
     </main>
   );
 }

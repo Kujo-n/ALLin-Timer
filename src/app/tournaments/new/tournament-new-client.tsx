@@ -18,12 +18,13 @@ export function TournamentNewClient() {
       <h1 className="text-2xl font-bold">トーナメントを新規作成</h1>
       <TournamentForm
         groupId={currentGroupId}
-        onSubmit={async ({ name, snapshot }) => {
+        onSubmit={async ({ name, snapshot, seatsPerTable }) => {
           const tid = await createTournament({
             groupId: currentGroupId,
             createdByUid: user.uid,
             name,
             structureSnapshot: snapshot,
+            seatsPerTable,
           });
           router.push(`/tournaments/${tid}`);
         }}
