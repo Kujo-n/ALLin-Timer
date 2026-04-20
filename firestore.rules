@@ -111,19 +111,63 @@ service cloud.firestore {
       allow update, delete: if isGroupMember(resource.data.groupId);
 
       // 参加者ドキュメント: 本人による自己作成／更新／取消を許容（Phase 2: 受付フロー）
+      // Phase 4: update を「self: displayName のみ変更可」と「group メンバー: bust/seat 変更可」に分岐。
       match /players/{pid} {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
                       && pid == request.auth.uid
                       && request.resource.data.uid == request.auth.uid
-                      && request.resource.data.isBusted == false;
+                      && request.resource.data.isBusted == false
+                      && request.resource.data.tableNum == null
+                      && request.resource.data.seatNum == null;
+        // self-update: displayName のみ変更可。残りフィールドは immutable。
+        // organizer-update: group メンバーなら bust/seat/lastMovedAt 変更可。uid と entryAt は immutable。
+        // Phase 4 (M1 fix): organizer 経路でも tableNum / seatNum の型・範囲・整合性を rule で検証する。
+        //   - 数値の場合は int 型 + 1〜MAX_TABLES (6) / 1〜MAX_SEATS_PER_TABLE (10) 範囲
+        //   - tableNum と seatNum は同時 null か同時 int でなければならない（片方だけ設定不可）
+        //
+        // ⚠ DRIFT WARNING (L3): 以下の定数は rule 内ハードコード。drift を防ぐため、変更時は同期更新すること:
+        //   - MAX_TABLES = 6 ↔ src/lib/services/seating/engine.ts の MAX_TABLES
+        //   - MAX_SEATS_PER_TABLE = 10 ↔ src/lib/firebase/schemas/tournament.ts の seatsPerTable.max(10)
+        // Cloud Functions 化（Phase 5+）で集約する場合はこの分散ロジックを廃止する。
         allow update: if isSignedIn()
-                      && pid == request.auth.uid
-                      && resource.data.uid == request.auth.uid
-                      && request.resource.data.uid == resource.data.uid
-                      && request.resource.data.isBusted == resource.data.isBusted
-                      && request.resource.data.entryAt == resource.data.entryAt
-                      && request.resource.data.bustedAt == resource.data.bustedAt;
+                      && (
+                        (
+                          pid == request.auth.uid
+                          && resource.data.uid == request.auth.uid
+                          && request.resource.data.uid == resource.data.uid
+                          && request.resource.data.isBusted == resource.data.isBusted
+                          && request.resource.data.entryAt == resource.data.entryAt
+                          && request.resource.data.bustedAt == resource.data.bustedAt
+                          && request.resource.data.tableNum == resource.data.tableNum
+                          && request.resource.data.seatNum == resource.data.seatNum
+                          && request.resource.data.lastMovedAt == resource.data.lastMovedAt
+                        )
+                        ||
+                        (
+                          exists(/databases/$(database)/documents/tournaments/$(tid))
+                          && isGroupMember(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                          && request.resource.data.uid == resource.data.uid
+                          && request.resource.data.entryAt == resource.data.entryAt
+                          && request.resource.data.isBusted is bool
+                          && (
+                            request.resource.data.tableNum == null
+                            || (request.resource.data.tableNum is int
+                                && request.resource.data.tableNum >= 1
+                                && request.resource.data.tableNum <= 6)
+                          )
+                          && (
+                            request.resource.data.seatNum == null
+                            || (request.resource.data.seatNum is int
+                                && request.resource.data.seatNum >= 1
+                                && request.resource.data.seatNum <= 10)
+                          )
+                          && (
+                            (request.resource.data.tableNum == null && request.resource.data.seatNum == null)
+                            || (request.resource.data.tableNum != null && request.resource.data.seatNum != null)
+                          )
+                        )
+                      );
         // self-delete（自己取消）と group メンバーによる owner-delete を許容。
         allow delete: if isSignedIn()
                       && (
