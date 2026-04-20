@@ -1,0 +1,167 @@
+import { act, render, screen } from "@testing-library/react";
+import { Timestamp } from "firebase/firestore";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+
+// hooks / firebase module mocks — import 前に宣言する必要がある。
+vi.mock("@/lib/hooks/useTournamentTimer", () => ({
+  useTournamentTimer: vi.fn(),
+}));
+vi.mock("@/lib/firebase/AuthProvider", () => ({
+  useAuthUser: vi.fn(),
+}));
+vi.mock("@/lib/firebase/repositories/players", () => ({
+  subscribePlayers: vi.fn(),
+}));
+
+import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
+
+import { LiveClient } from "./live-client";
+
+const ts = Timestamp.fromDate(new Date("2026-04-20T10:00:00Z"));
+
+function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
+  return {
+    id: "t1",
+    groupId: "g1",
+    createdByUid: "u1",
+    name: "Monthly",
+    structureSnapshot: {
+      name: "Default",
+      initialStack: 10000,
+      lateEntryDeadlineLevel: 3,
+      levels: [
+        { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 },
+        { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600 },
+        { level: 3, sb: 75, bb: 150, ante: 25, durationSec: 600 },
+        { level: 4, sb: 100, bb: 200, ante: 25, durationSec: 600 },
+      ],
+    },
+    state: "running",
+    startedAt: ts,
+    levelStartedAt: ts,
+    pausedAt: null,
+    pausedAccumMs: 0,
+    finishedAt: null,
+    currentLevel: 4, // 締切 Lv3 超過
+    lateEntryDeadlineLevel: 3,
+    seatsPerTable: 9,
+    createdAt: ts,
+    updatedAt: ts,
+    ...overrides,
+  };
+}
+
+function player(p: Partial<PlayerDoc> & { id: string }): PlayerDoc {
+  return {
+    id: p.id,
+    displayName: p.displayName ?? p.id,
+    uid: p.uid ?? p.id,
+    entryAt: p.entryAt ?? ts,
+    isBusted: p.isBusted ?? false,
+    bustedAt: p.bustedAt ?? null,
+    tableNum: p.tableNum ?? null,
+    seatNum: p.seatNum ?? null,
+    lastMovedAt: p.lastMovedAt ?? null,
+  };
+}
+
+function setMocks(opts: {
+  tournament?: TournamentDoc | null;
+  uid?: string;
+}) {
+  vi.mocked(useTournamentTimer).mockReturnValue({
+    tournament: opts.tournament ?? makeTournament(),
+    remainingMs: 600_000,
+    fromCache: false,
+    hasPendingWrites: false,
+    lastSyncAt: Date.now(),
+    error: null,
+  });
+  vi.mocked(useAuthUser).mockReturnValue({
+    user: { uid: opts.uid ?? "u1" } as unknown as import("firebase/auth").User,
+    loading: false,
+  });
+}
+
+let lastOnNext: ((players: PlayerDoc[]) => void) | null = null;
+
+beforeEach(() => {
+  lastOnNext = null;
+  vi.mocked(subscribePlayers).mockImplementation((_tid, onNext) => {
+    lastOnNext = onNext;
+    return () => {};
+  });
+});
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("LiveClient — playersLoaded gating", () => {
+  it("shows 受付情報を取得中… before subscribePlayers fires (prevents レイトエントリー締切超過 flash)", () => {
+    setMocks({ tournament: makeTournament({ currentLevel: 4 }) }); // 締切超過 state
+    render(<LiveClient tid="t1" />);
+
+    // 購読未 fire の時点では「受付情報を取得中…」のみ。
+    expect(screen.getByText("受付情報を取得中…")).toBeInTheDocument();
+    // リロード直後の誤表示として報告された文字列が出ないこと。
+    expect(screen.queryByText("レイトエントリー締切超過です")).not.toBeInTheDocument();
+    expect(screen.queryByText("受付登録されていません")).not.toBeInTheDocument();
+  });
+
+  it("shows Table / No. frames after subscribePlayers fires with seated player", () => {
+    setMocks({ tournament: makeTournament() });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "u1", tableNum: 2, seatNum: 5 })]);
+    });
+
+    expect(screen.getByText("Table")).toBeInTheDocument();
+    expect(screen.getByText("No.")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.queryByText("受付情報を取得中…")).not.toBeInTheDocument();
+  });
+
+  it("shows 受付登録されていません when subscription fires but user is not in players list", () => {
+    setMocks({ uid: "u1" });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "other", uid: "other" })]);
+    });
+
+    expect(screen.getByText("受付登録されていません")).toBeInTheDocument();
+    // 同時に「レイトエントリー超過」は出さない（未登録者に突きつける文言ではない）。
+    expect(screen.queryByText("レイトエントリー締切超過です")).not.toBeInTheDocument();
+  });
+
+  it("shows レイトエントリー締切超過です only when registered player has no seat AND past deadline", () => {
+    setMocks({ tournament: makeTournament({ currentLevel: 4 }) });
+    render(<LiveClient tid="t1" />);
+
+    // 参加はしたが自動配席前（tableNum=null）、締切超過 state
+    act(() => {
+      lastOnNext?.([player({ id: "u1", tableNum: null, seatNum: null })]);
+    });
+
+    expect(screen.getByText("レイトエントリー締切超過です")).toBeInTheDocument();
+  });
+
+  it("shows 脱落済み when player is busted", () => {
+    setMocks({});
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "u1", isBusted: true, bustedAt: ts })]);
+    });
+
+    expect(screen.getByText("脱落済み")).toBeInTheDocument();
+  });
+});
