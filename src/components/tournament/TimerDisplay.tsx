@@ -22,6 +22,8 @@ function formatRemaining(ms: number | null): string {
 }
 
 export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: Props) {
+  const isBeforeStart = tournament.state === "setup" || tournament.state === "seating";
+
   const stateBadge =
     tournament.state === "paused"
       ? { label: "一時停止中", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }
@@ -29,10 +31,26 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
         ? { label: "終了", tone: "bg-muted text-muted-foreground" }
         : tournament.state === "running"
           ? { label: "進行中", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" }
-          : { label: "未開始", tone: "bg-muted text-muted-foreground" };
+          : isBeforeStart
+            ? { label: "開始前", tone: "bg-muted text-muted-foreground" }
+            : { label: "未開始", tone: "bg-muted text-muted-foreground" };
 
-  const current = levelInfo?.current ?? null;
-  const next = levelInfo?.next ?? null;
+  // setup / seating 中は Lv1 をプレビュー表示する。
+  const previewLevel =
+    isBeforeStart && tournament.structureSnapshot.levels.length > 0
+      ? tournament.structureSnapshot.levels[0]
+      : null;
+  const previewNext =
+    isBeforeStart && tournament.structureSnapshot.levels.length > 1
+      ? tournament.structureSnapshot.levels[1]
+      : null;
+
+  const current = levelInfo?.current ?? previewLevel;
+  const next = levelInfo?.next ?? previewNext;
+
+  const displayLevelNum = isBeforeStart ? 1 : tournament.currentLevel;
+  const displayRemainingMs =
+    isBeforeStart && previewLevel ? previewLevel.durationSec * 1000 : remainingMs;
 
   return (
     <section
@@ -44,7 +62,7 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
     >
       <div className="flex items-center gap-2">
         <span className="rounded bg-primary px-2 py-0.5 text-sm font-semibold text-primary-foreground">
-          Lv {tournament.currentLevel}
+          Lv {displayLevelNum}
         </span>
         <span className={cn("rounded px-2 py-0.5 text-xs font-medium", stateBadge.tone)}>
           {stateBadge.label}
@@ -52,9 +70,9 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
       </div>
 
       <div aria-label="残り時間" className="font-mono text-7xl font-bold tabular-nums md:text-8xl">
-        {formatRemaining(remainingMs)}
+        {formatRemaining(displayRemainingMs)}
       </div>
-      {remainingMs === null && tournament.state !== "setup" && tournament.state !== "seating" ? (
+      {remainingMs === null && !isBeforeStart ? (
         <p className="text-xs text-muted-foreground">同期中…</p>
       ) : null}
 

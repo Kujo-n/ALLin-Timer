@@ -123,7 +123,6 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   const isMember = groupIds.includes(data.groupId);
   const canEdit = isMember && data.state === "setup";
-  const showTimer = data.state !== "setup";
   const showSeatingBoard =
     data.state === "seating" ||
     data.state === "running" ||
@@ -177,9 +176,7 @@ export function DashboardClient({ tid }: { tid: string }) {
         </p>
       ) : null}
 
-      {showTimer ? (
-        <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
-      ) : null}
+      <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
 
       {isMember ? (
         <TimerControls
