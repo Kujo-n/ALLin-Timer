@@ -7,6 +7,7 @@ import {
 import type { ZodType } from "zod";
 
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 
 /**
  * Firestore `withConverter` に渡す zod ベースのコンバーター。
@@ -30,10 +31,20 @@ export function zodConverter<T extends DocumentData>(
       return modelObject as DocumentData;
     },
     fromFirestore(snap: QueryDocumentSnapshot, options?: SnapshotOptions): T {
-      const parsed = schema.safeParse(
-        snap.data({ serverTimestamps: "estimate", ...options }),
-      );
+      const data = snap.data({ serverTimestamps: "estimate", ...options });
+      const parsed = schema.safeParse(data);
       if (!parsed.success) {
+        // どのフィールドで validate が落ちたかを特定できるよう issues をログに残す。
+        logger.warn("zodConverter validate failed", {
+          collection: collectionName,
+          id: snap.id,
+          issues: parsed.error.issues.map((i) => ({
+            path: i.path.join("."),
+            code: i.code,
+            message: i.message,
+          })),
+          keys: Object.keys(data ?? {}),
+        });
         throw new AppError(
           `Firestore document failed schema validation: ${collectionName}/${snap.id}`,
           "firestore/invalid-data",
