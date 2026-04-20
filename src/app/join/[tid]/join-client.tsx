@@ -1,6 +1,7 @@
 "use client";
 
 import type { AuthCredential } from "firebase/auth";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
@@ -207,16 +208,23 @@ export function JoinClient({ tid }: { tid: string }) {
               </p>
             ) : null}
             {status.kind === "joined" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={submitting}
-                onClick={() => {
-                  void onCancelOwnEntry();
-                }}
-              >
-                {submitting ? "取消中…" : "参加を取り消す"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Link href={`/tournaments/${tid}/live`}>
+                  <Button size="sm" className="w-full">
+                    タイマー画面へ
+                  </Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={submitting}
+                  onClick={() => {
+                    void onCancelOwnEntry();
+                  }}
+                >
+                  {submitting ? "取消中…" : "参加を取り消す"}
+                </Button>
+              </div>
             ) : null}
             {status.kind === "cancelled" ? (
               <Button

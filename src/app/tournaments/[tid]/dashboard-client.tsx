@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { QrPanel } from "@/components/qr/QrPanel";
+import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { PlayerList } from "@/components/tournament/PlayerList";
+import { TimerControls } from "@/components/tournament/TimerControls";
+import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -18,41 +21,30 @@ import {
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import {
-  deleteTournamentIfSetup,
-  getTournament,
-  startTournament,
-} from "@/lib/firebase/repositories/tournaments";
-import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+import { deleteTournamentIfSetup } from "@/lib/firebase/repositories/tournaments";
+import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
+import { getLevelInfo } from "@/lib/services/timer";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
   const { groupIds } = useCurrentGroup();
-  const [data, setData] = useState<TournamentDoc | null>(null);
+  const canManage = !!user && groupIds.length > 0;
+
+  const {
+    tournament: data,
+    remainingMs,
+    fromCache,
+    lastSyncAt,
+    error: timerError,
+  } = useTournamentTimer(tid, {
+    autoAdvance: canManage && user ? { uid: user.uid, userGroupIds: groupIds } : undefined,
+  });
+
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [startOpen, setStartOpen] = useState(false);
-  const [starting, setStarting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const t = await getTournament(tid);
-        if (!cancelled) setData(t);
-      } catch (e) {
-        const wrapped = AppError.from(e, "firestore/read_failed", "取得失敗");
-        logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tid]);
 
   async function onDelete() {
     if (!user) return;
@@ -61,34 +53,17 @@ export function DashboardClient({ tid }: { tid: string }) {
       router.push("/tournaments");
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "削除失敗");
+      logger.warn(wrapped.message, { code: wrapped.code });
       setError(`${wrapped.code}: ${wrapped.message}`);
       setConfirmOpen(false);
     }
   }
 
-  async function onStart() {
-    if (!user) return;
-    setStarting(true);
-    try {
-      await startTournament(tid, user.uid, groupIds);
-      const next = await getTournament(tid);
-      setData(next);
-      setStartOpen(false);
-    } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "開始失敗");
-      logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
-      setStartOpen(false);
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  if (error) {
+  if (timerError) {
     return (
       <main className="mx-auto max-w-4xl p-8">
         <p className="text-sm text-destructive" role="alert">
-          {error}
+          {`${timerError.code}: ${timerError.message}`}
         </p>
       </main>
     );
@@ -98,8 +73,10 @@ export function DashboardClient({ tid }: { tid: string }) {
     return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 
-  const canManage = groupIds.includes(data.groupId);
-  const canEdit = canManage && data.state === "setup";
+  const isMember = groupIds.includes(data.groupId);
+  const canEdit = isMember && data.state === "setup";
+  const showTimer = data.state !== "setup";
+  const levelInfo = getLevelInfo(data);
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-8">
@@ -108,6 +85,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">{data.name}</h1>
             <span className="rounded bg-muted px-2 py-0.5 text-xs">{data.state}</span>
+            <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
           </div>
           <p className="text-sm text-muted-foreground">
             現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel} /{" "}
@@ -120,11 +98,13 @@ export function DashboardClient({ tid }: { tid: string }) {
               一覧へ戻る
             </Button>
           </Link>
+          <Link href={`/tournaments/${tid}/live`}>
+            <Button variant="outline" size="sm">
+              全画面表示
+            </Button>
+          </Link>
           {canEdit ? (
             <>
-              <Button size="sm" onClick={() => setStartOpen(true)}>
-                開始
-              </Button>
               <Link href={`/tournaments/${tid}/edit`}>
                 <Button variant="outline" size="sm">
                   編集
@@ -138,9 +118,29 @@ export function DashboardClient({ tid }: { tid: string }) {
         </div>
       </header>
 
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {showTimer ? (
+        <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+      ) : null}
+
+      {isMember ? (
+        <TimerControls
+          tid={tid}
+          uid={user.uid}
+          userGroupIds={groupIds}
+          tournament={data}
+          onError={setError}
+        />
+      ) : null}
+
       <div className="grid gap-6 md:grid-cols-2">
         <QrPanel tid={tid} />
-        <PlayerList tid={tid} canManage={canManage} />
+        <PlayerList tid={tid} canManage={isMember} />
       </div>
 
       <Card>
@@ -198,32 +198,6 @@ export function DashboardClient({ tid }: { tid: string }) {
               }}
             >
               削除する
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={startOpen} onOpenChange={setStartOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>トーナメントを開始</DialogTitle>
-            <DialogDescription>
-              「{data.name}」を開始します。開始すると編集／削除ができなくなります。
-              現バージョンではタイマーやレベル自動繰り上げは未実装（Phase 3 で追加予定）。Level 1
-              から手動進行になります。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStartOpen(false)} disabled={starting}>
-              キャンセル
-            </Button>
-            <Button
-              onClick={() => {
-                void onStart();
-              }}
-              disabled={starting}
-            >
-              {starting ? "開始中…" : "開始する"}
             </Button>
           </DialogFooter>
         </DialogContent>
