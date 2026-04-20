@@ -56,7 +56,7 @@ describe("TimerDisplay — setup / seating preview", () => {
     ).toBeInTheDocument();
     // 次のレベルもプレビューされる
     expect(
-      screen.getByText((text) => text.includes("次: Lv 2")),
+      screen.getByText((text) => text.includes("Next: Lv 2")),
     ).toBeInTheDocument();
     // setup/seating 中は「同期中…」を出さない（remainingMs が null でも）
     expect(screen.queryByText("同期中…")).not.toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("TimerDisplay — running / paused / finished", () => {
     expect(screen.getByText("進行中")).toBeInTheDocument();
     expect(screen.getByLabelText("残り時間").textContent).toBe("09:55");
     expect(
-      screen.getByText((text) => text.includes("次: Lv 3") && text.includes("ante 25")),
+      screen.getByText((text) => text.includes("Next: Lv 3") && text.includes("ante 25")),
     ).toBeInTheDocument();
   });
 

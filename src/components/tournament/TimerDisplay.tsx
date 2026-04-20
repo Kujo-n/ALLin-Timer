@@ -84,7 +84,7 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
 
       {next ? (
         <div className="text-sm text-muted-foreground">
-          次: Lv {next.level} ({next.sb} / {next.bb}
+          Next: Lv {next.level} ({next.sb} / {next.bb}
           {next.ante > 0 ? ` / ante ${next.ante}` : ""})
         </div>
       ) : levelInfo && tournament.currentLevel >= tournament.structureSnapshot.levels.length ? (
