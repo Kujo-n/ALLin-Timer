@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -44,6 +45,28 @@ export async function listPlayers(tid: string): Promise<PlayerDoc[]> {
     logger.warn(wrapped.message, { code: wrapped.code, tid });
     throw wrapped;
   }
+}
+
+/**
+ * 参加者一覧を onSnapshot で購読する。Phase 3 のリアルタイム化で UI から呼ばれる。
+ * 戻り値は unsubscribe 関数（呼び出し側で useEffect cleanup する）。
+ */
+export function subscribePlayers(
+  tid: string,
+  onNext: (players: PlayerDoc[]) => void,
+  onError: (err: AppError) => void,
+): () => void {
+  return onSnapshot(
+    query(playersRef(tid), orderBy("entryAt", "asc")),
+    (snap) => {
+      try {
+        onNext(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        onError(AppError.from(e, "firestore/invalid-data", "参加者データが不正です"));
+      }
+    },
+    (err) => onError(AppError.from(err, "firestore/subscribe_failed", "参加者購読エラー")),
+  );
 }
 
 /**
