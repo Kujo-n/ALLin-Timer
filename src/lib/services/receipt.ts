@@ -22,6 +22,17 @@ function assertAcceptingEntries(t: TournamentDoc): void {
   if (t.state === "finished") {
     throw new AppError("このトーナメントは終了しています", "tournament/late-entry-closed");
   }
+  // Phase 4: late entry 締切超過は client 側で警告（rules では弾かない）。
+  // 締切超過後に join しても自動配席されず /live で「締切超過」表示になるため事前に防ぐ。
+  if (
+    (t.state === "running" || t.state === "paused") &&
+    t.currentLevel > t.lateEntryDeadlineLevel
+  ) {
+    throw new AppError(
+      `レイトエントリー締切（Lv ${t.lateEntryDeadlineLevel}）を超過しています`,
+      "tournament/late-entry-closed",
+    );
+  }
 }
 
 function requireDisplayName(name: string | null | undefined): string {

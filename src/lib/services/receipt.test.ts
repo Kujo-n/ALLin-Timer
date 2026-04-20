@@ -64,6 +64,7 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     finishedAt: null,
     currentLevel: 0,
     lateEntryDeadlineLevel: 6,
+    seatsPerTable: 9,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -134,6 +135,9 @@ describe("joinAsGuest", () => {
       entryAt: now,
       isBusted: false,
       bustedAt: null,
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: null,
     });
     vi.mocked(upsertUserProfile).mockResolvedValue(undefined);
     vi.mocked(upsertPlayer).mockResolvedValue(undefined);
