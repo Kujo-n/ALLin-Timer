@@ -84,13 +84,24 @@
 | `src/lib/firebase/schemas/index.test.ts`   | +4      | tournament timer fields parse / require / reject                        |
 | `src/lib/services/timer.test.ts`           | 19 (new)| getLevelInfo / getRemainingMs / shouldAutoAdvance（全分岐 + 境界）      |
 
+## Post-Implementation Fixes
+
+実端末 E2E 検証中に判明した 2 件の Firestore/zod 関連不具合を修正（本レポート追記）。
+
+| #   | 症状                                                                                        | 原因                                                                                                                   | 修正                                                                          | Commit    |
+| --- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------- |
+| F1  | 運営 PC で `startTournament` 直後に `firestore/invalid-data`（ゲスト側は正常にカウント進行） | 書き込み元 local snapshot は `serverTimestamp()` pending write 中に該当フィールドを `null` で発火し、非 null Timestamp schema の validate が落ちる | `zodConverter.fromFirestore` で `snap.data({ serverTimestamps: "estimate" })` を既定指定 | `a94a000` |
+| F2  | 壊れた個別 doc 1 件で一覧全体が `firestore/invalid-data` となり新規作成後も何も表示できない | Phase 2.5 以前の古いフィールド欠落ドキュメントが残置しており、`listTournamentsByGroup` / `listStructuresByGroup` が全件で throw | 一覧取得を doc 単位の try/catch に変更し、invalid doc は warn 付きで skip     | `a76a147` |
+
+補助的に `zodConverter` の validate 失敗時に zod issues（path / code / message）と actual keys を `logger.warn` で出力するようにし、以後のスキーマ整合性問題の原因特定を容易にした（`83e97bf`）。
+
 ## Next Steps
 
-- [ ] **既存 `tournaments/*` ドキュメントの削除（Console / CLI）** — 破壊的スキーマ変更のため、Phase 3 ブランチ稼働前に必須
-- [ ] 実端末 E2E 検証（PC + スマホ 2 台）
-  - Lv 同期、pause/resume、auto-advance（durationSec=5 のテスト用 structure で確認）
-  - 機内モード ↔ 復帰で ConnectionBadge と timer 継続表示
-  - ゲスト → /live で参加者からの閲覧
+- [x] **既存 `tournaments/*` ドキュメントの削除（Console / CLI）** — 破壊的スキーマ変更のため、Phase 3 ブランチ稼働前に必須
+- [x] 実端末 E2E 検証（PC + スマホ 2 台）
+  - [x] Lv 同期、pause/resume、auto-advance（durationSec=5 のテスト用 structure で確認）
+  - [x] 機内モード ↔ 復帰で ConnectionBadge と timer 継続表示
+  - [x] ゲスト → /live で参加者からの閲覧
 - [ ] PRD の Phase 3 ステータスを `complete` に更新（PR マージ時）
 - [ ] `/code-review` で diff レビュー
 - [ ] `/prp-pr` で PR 作成
