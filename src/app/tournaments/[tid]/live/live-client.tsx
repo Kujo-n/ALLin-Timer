@@ -18,6 +18,10 @@ export function LiveClient({ tid }: { tid: string }) {
   const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
   const { user } = useAuthUser();
   const [me, setMe] = useState<PlayerDoc | null>(null);
+  // 購読が 1 回以上 fire したかで「読込中」と「参加者ではない」を区別する。
+  // これがないとリロード直後の一瞬、参加者でありながら「レイトエントリー超過」等の
+  // 誤メッセージが表示される（tournament state は先に解決され、players 購読は遅延するため）。
+  const [playersLoaded, setPlayersLoaded] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
 
   useEffect(() => {
@@ -27,6 +31,7 @@ export function LiveClient({ tid }: { tid: string }) {
       (list) => {
         const found = list.find((p) => p.uid === user.uid) ?? null;
         setMe(found);
+        setPlayersLoaded(true);
       },
       (err) => logger.warn("live players subscribe error", { code: err.code, tid }),
     );
@@ -57,8 +62,8 @@ export function LiveClient({ tid }: { tid: string }) {
   const seatedAt = me?.lastMovedAt ? me.lastMovedAt.toMillis() : null;
   const recentlyMoved =
     seatedAt !== null &&
-    me?.tableNum !== null &&
-    me?.seatNum !== null &&
+    me?.tableNum != null &&
+    me?.seatNum != null &&
     now - seatedAt < MOVED_BANNER_MS;
   const lateEntryClosed =
     tournament.currentLevel > tournament.lateEntryDeadlineLevel;
@@ -82,15 +87,24 @@ export function LiveClient({ tid }: { tid: string }) {
           aria-label="self-seat"
         >
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">あなたの席</h2>
-          {me === null ? (
+          {!playersLoaded ? (
             <p className="text-sm text-muted-foreground">受付情報を取得中…</p>
+          ) : me === null ? (
+            <p className="text-sm text-muted-foreground">受付登録されていません</p>
           ) : me.isBusted ? (
             <p className="text-sm text-muted-foreground">脱落済み</p>
           ) : me.tableNum !== null && me.seatNum !== null ? (
             <div className="space-y-2">
-              <p className="text-3xl font-bold tabular-nums">
-                卓 {me.tableNum} 席 {me.seatNum}
-              </p>
+              <dl className="flex gap-3">
+                <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
+                  <dt className="text-xs font-medium text-muted-foreground">Table</dt>
+                  <dd className="text-3xl font-bold tabular-nums">{me.tableNum}</dd>
+                </div>
+                <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
+                  <dt className="text-xs font-medium text-muted-foreground">No.</dt>
+                  <dd className="text-3xl font-bold tabular-nums">{me.seatNum}</dd>
+                </div>
+              </dl>
               {recentlyMoved ? (
                 <p
                   className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"

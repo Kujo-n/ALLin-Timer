@@ -14,7 +14,6 @@ import {
 import { AppError } from "@/lib/errors";
 import {
   advanceLevel,
-  beginSeating,
   confirmSeating,
   finishTournament,
   pauseTournament,
@@ -37,7 +36,6 @@ interface Props {
 }
 
 type Op =
-  | "begin-seating"
   | "commit-seating"
   | "confirm-seating"
   | "pause"
@@ -86,20 +84,6 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
           }
         >
           {busy === "commit-seating" ? "配席中…" : "席を決定"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy !== null}
-          onClick={() =>
-            void run(
-              "begin-seating",
-              () => beginSeating(tid, uid, userGroupIds),
-              "席決めフェーズへの遷移失敗",
-            )
-          }
-        >
-          {busy === "begin-seating" ? "処理中…" : "席決め待ちに切替"}
         </Button>
         {activeCount === 0 ? (
           <span className="text-xs text-muted-foreground">参加者がいません</span>
