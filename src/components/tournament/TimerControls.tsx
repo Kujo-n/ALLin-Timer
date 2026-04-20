@@ -14,26 +14,39 @@ import {
 import { AppError } from "@/lib/errors";
 import {
   advanceLevel,
+  beginSeating,
+  confirmSeating,
   finishTournament,
   pauseTournament,
   resumeTournament,
   revertLevel,
-  startTournament,
 } from "@/lib/firebase/repositories/tournaments";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { commitInitialSeating } from "@/lib/services/seating/orchestrator";
 
 interface Props {
   tid: string;
   uid: string;
   userGroupIds: string[];
   tournament: TournamentDoc;
+  /** 受付済み参加者一覧（subscribePlayers の結果）。setup→seating の commitInitialSeating に渡す。 */
+  players: PlayerDoc[];
   onError?: (message: string) => void;
 }
 
-type Op = "start" | "pause" | "resume" | "advance" | "revert" | "finish";
+type Op =
+  | "begin-seating"
+  | "commit-seating"
+  | "confirm-seating"
+  | "pause"
+  | "resume"
+  | "advance"
+  | "revert"
+  | "finish";
 
-export function TimerControls({ tid, uid, userGroupIds, tournament, onError }: Props) {
+export function TimerControls({ tid, uid, userGroupIds, tournament, players, onError }: Props) {
   const [busy, setBusy] = useState<Op | null>(null);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
 
@@ -55,16 +68,79 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, onError }: P
   const isFirst = tournament.currentLevel <= 1;
 
   if (tournament.state === "setup") {
+    const activeCount = players.filter((p) => !p.isBusted).length;
     return (
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          disabled={busy !== null}
+          disabled={busy !== null || activeCount === 0}
           onClick={() =>
-            void run("start", () => startTournament(tid, uid, userGroupIds), "開始失敗")
+            void run(
+              "commit-seating",
+              async () => {
+                const seed = Date.now();
+                await commitInitialSeating(tid, uid, userGroupIds, players, seed);
+              },
+              "席決めに失敗",
+            )
           }
         >
-          {busy === "start" ? "開始中…" : "開始"}
+          {busy === "commit-seating" ? "配席中…" : "席を決定"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() =>
+            void run(
+              "begin-seating",
+              () => beginSeating(tid, uid, userGroupIds),
+              "席決めフェーズへの遷移失敗",
+            )
+          }
+        >
+          {busy === "begin-seating" ? "処理中…" : "席決め待ちに切替"}
+        </Button>
+        {activeCount === 0 ? (
+          <span className="text-xs text-muted-foreground">参加者がいません</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (tournament.state === "seating") {
+    const activeCount = players.filter((p) => !p.isBusted).length;
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={busy !== null || activeCount === 0}
+          onClick={() =>
+            void run(
+              "confirm-seating",
+              () => confirmSeating(tid, uid, userGroupIds),
+              "トーナメント開始失敗",
+            )
+          }
+        >
+          {busy === "confirm-seating" ? "開始中…" : "トーナメント開始"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() =>
+            void run(
+              "commit-seating",
+              async () => {
+                const seed = Date.now();
+                await commitInitialSeating(tid, uid, userGroupIds, players, seed);
+              },
+              "再配席に失敗",
+            )
+          }
+        >
+          {busy === "commit-seating" ? "再配席中…" : "席を再決定"}
         </Button>
       </div>
     );
@@ -80,7 +156,7 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, onError }: P
     );
   }
 
-  // running / paused / seating
+  // running / paused
   return (
     <div className="flex flex-wrap gap-2">
       {tournament.state === "running" ? (

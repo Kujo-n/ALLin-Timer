@@ -1,8 +1,9 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+import { BustButton } from "@/components/tournament/BustButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,36 +15,36 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
-import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TournamentState } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
 
 interface Props {
   tid: string;
+  /** subscribePlayers の結果（dashboard で 1 度だけ subscribe して伝搬する）。 */
+  players: PlayerDoc[];
+  /** subscribe error（dashboard 側で受け取って表示するため optional に伝搬）。 */
+  subscribeError?: string | null;
   /** true の場合、各プレイヤー行に「取消」ボタンを出す（運営者向け） */
   canManage?: boolean;
+  /** バストボタン表示判定用。running / paused のみで出す。 */
+  tournamentState: TournamentState;
 }
 
-export function PlayerList({ tid, canManage = false }: Props) {
-  const [players, setPlayers] = useState<PlayerDoc[]>([]);
-  const [error, setError] = useState<string | null>(null);
+export function PlayerList({
+  tid,
+  players,
+  subscribeError,
+  canManage = false,
+  tournamentState,
+}: Props) {
+  // M3 fix: subscribeError を useEffect 経由で local state にコピーしない。
+  // 取消エラーのみ local state で持ち、subscribe error は render 時に合成。
+  const [localError, setLocalError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PlayerDoc | null>(null);
   const [cancelling, setCancelling] = useState(false);
-
-  // Phase 3: onSnapshot でリアルタイム同期。追加・取消は subscribe 経由で自動反映される。
-  useEffect(() => {
-    setError(null);
-    const unsub = subscribePlayers(
-      tid,
-      (list) => setPlayers(list),
-      (err) => {
-        logger.warn(err.message, { code: err.code });
-        setError(`${err.code}: ${err.message}`);
-      },
-    );
-    return unsub;
-  }, [tid]);
+  const error = subscribeError ?? localError;
 
   async function onConfirmCancel() {
     if (!cancelTarget) return;
@@ -53,11 +54,15 @@ export function PlayerList({ tid, canManage = false }: Props) {
       setCancelTarget(null);
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "取消に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      logger.warn(wrapped.message, { code: wrapped.code, tid, pid: cancelTarget.id });
+      setLocalError(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       setCancelling(false);
     }
   }
+
+  const showBustButton =
+    canManage && (tournamentState === "running" || tournamentState === "paused");
 
   return (
     <Card>
@@ -77,12 +82,24 @@ export function PlayerList({ tid, canManage = false }: Props) {
         ) : (
           <ul className="divide-y text-sm">
             {players.map((p) => (
-              <li key={p.id} className="flex items-center justify-between py-2">
-                <span>{p.displayName}</span>
+              <li key={p.id} className="flex items-center justify-between gap-2 py-2">
+                <span className="flex-1 truncate">{p.displayName}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {p.isBusted ? "脱落" : "エントリー中"}
+                    {p.isBusted
+                      ? "脱落"
+                      : p.tableNum !== null && p.seatNum !== null
+                        ? `${p.tableNum}卓${p.seatNum}席`
+                        : "エントリー中"}
                   </span>
+                  {showBustButton ? (
+                    <BustButton
+                      tid={tid}
+                      pid={p.id}
+                      isBusted={p.isBusted}
+                      onError={setLocalError}
+                    />
+                  ) : null}
                   {canManage ? (
                     <Button
                       variant="ghost"

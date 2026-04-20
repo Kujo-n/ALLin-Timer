@@ -22,10 +22,17 @@ interface Props {
   groupId: string;
   initialName?: string;
   initialSnapshot?: StructureSnapshot;
+  initialSeatsPerTable?: number;
   submitLabel?: string;
-  onSubmit: (input: { name: string; snapshot: StructureSnapshot }) => Promise<void>;
+  onSubmit: (input: {
+    name: string;
+    snapshot: StructureSnapshot;
+    seatsPerTable: number;
+  }) => Promise<void>;
   onCancel?: () => void;
 }
+
+const DEFAULT_SEATS_PER_TABLE = 9;
 
 function snapshotFromStructure(s: StructureDoc): StructureSnapshot {
   return {
@@ -40,6 +47,7 @@ export function TournamentForm({
   groupId,
   initialName = "",
   initialSnapshot,
+  initialSeatsPerTable,
   submitLabel = "作成",
   onSubmit,
   onCancel,
@@ -48,6 +56,9 @@ export function TournamentForm({
   const [structures, setStructures] = useState<StructureDoc[]>([]);
   const [selectedSid, setSelectedSid] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<StructureSnapshot | null>(initialSnapshot ?? null);
+  const [seatsPerTable, setSeatsPerTable] = useState<number>(
+    initialSeatsPerTable ?? DEFAULT_SEATS_PER_TABLE,
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
@@ -94,9 +105,13 @@ export function TournamentForm({
       setError("validation/structure: ストラクチャを選択してください");
       return;
     }
+    if (!Number.isInteger(seatsPerTable) || seatsPerTable < 2 || seatsPerTable > 10) {
+      setError("validation/seats: 1 卓あたりの席数は 2〜10 で入力してください");
+      return;
+    }
     setSubmitting(true);
     try {
-      await onSubmit({ name: name.trim(), snapshot });
+      await onSubmit({ name: name.trim(), snapshot, seatsPerTable });
     } catch (e) {
       const wrapped = AppError.from(e, "tournament/unknown", "保存に失敗しました");
       setError(`${wrapped.code}: ${wrapped.message}`);
@@ -140,6 +155,21 @@ export function TournamentForm({
             として保存されます
           </p>
         ) : null}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="t-seats">1 卓あたりの席数</Label>
+        <Input
+          id="t-seats"
+          type="number"
+          min={2}
+          max={10}
+          value={seatsPerTable}
+          onChange={(e) => setSeatsPerTable(Number(e.target.value))}
+          required
+        />
+        <p className="text-xs text-muted-foreground">
+          NLH 標準は 9 席。最大 6 卓 × {seatsPerTable} 席 = {6 * seatsPerTable} 人まで対応します。
+        </p>
       </div>
       {error ? (
         <p className="text-sm text-destructive" role="alert">
