@@ -1,8 +1,14 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 
 // During build / SSR, Firebase SDK is evaluated at module-load time even for
 // client components; falling back to a placeholder keeps the build green
@@ -48,4 +54,26 @@ export const firebaseAuth = getAuth(firebaseApp);
 // Firebase Auth が送信するシステムメール（メールリンク／パスワードリセット等）の
 // 既定テンプレート言語を日本語に固定する。Console のテンプレート編集と併用。
 firebaseAuth.languageCode = "ja";
-export const firestore = getFirestore(firebaseApp);
+
+// Phase 3: ブラウザでは persistentLocalCache を有効化して
+// オフライン閲覧（タイマー継続表示／接続切れ UI）を可能にする。
+// SSR 側では window 未定義のため従来通り getFirestore を使う。
+// initializeFirestore は既に初期化済みの場合に throw するため try/catch で
+// getFirestore にフォールバックする（HMR 二重初期化対策）。
+function createFirestore() {
+  if (typeof window === "undefined") {
+    return getFirestore(firebaseApp);
+  }
+  try {
+    return initializeFirestore(firebaseApp, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    logger.warn("persistentLocalCache init fallback to getFirestore", {
+      reason: e instanceof Error ? e.message : "unknown",
+    });
+    return getFirestore(firebaseApp);
+  }
+}
+
+export const firestore = createFirestore();
