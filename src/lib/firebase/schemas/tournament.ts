@@ -35,6 +35,10 @@ export const tournamentBodySchema = z.object({
   finishedAt: z.instanceof(Timestamp).nullable(),
   currentLevel: z.number().int().nonnegative(),
   lateEntryDeadlineLevel: z.number().int().positive(),
+  // Phase 4: 1 テーブルあたりの最大席数。default 9。setup 中のみ変更可。範囲 2〜10。
+  // M2 fix: input schema と body schema の制約を一致させる（DB 直書きでも 2 未満を弾く）。
+  // ⚠ DRIFT WARNING (L3): 上限 10 は firestore.rules の `seatNum <= 10` と同期。変更時は同時更新すること。
+  seatsPerTable: z.number().int().min(2).max(10),
   createdAt: z.instanceof(Timestamp),
   updatedAt: z.instanceof(Timestamp),
 });
@@ -47,11 +51,14 @@ export const createTournamentInputSchema = z.object({
   createdByUid: z.string().min(1),
   name: z.string().min(1, "名前を入力してください"),
   structureSnapshot: structureSnapshotSchema,
+  // Phase 4: UI で 2〜10 を指定（default 9）。
+  seatsPerTable: z.number().int().min(2).max(10),
 });
 export type CreateTournamentInput = z.infer<typeof createTournamentInputSchema>;
 
 export const updateTournamentInputSchema = z.object({
   name: z.string().min(1).optional(),
   structureSnapshot: structureSnapshotSchema.optional(),
+  seatsPerTable: z.number().int().min(2).max(10).optional(),
 });
 export type UpdateTournamentInput = z.infer<typeof updateTournamentInputSchema>;

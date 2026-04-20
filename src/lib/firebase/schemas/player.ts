@@ -7,6 +7,11 @@ export const playerBodySchema = z.object({
   entryAt: z.instanceof(Timestamp),
   isBusted: z.boolean(),
   bustedAt: z.instanceof(Timestamp).nullable(),
+  // Phase 4: 席割当（未配席は null）。初回席決め前 / late entry 登録直後 / バスト後は null。
+  tableNum: z.number().int().positive().nullable(),
+  seatNum: z.number().int().positive().nullable(),
+  // Phase 4: 直近の席移動時刻。/live で「席が移動しました」バナー判定に使う。
+  lastMovedAt: z.instanceof(Timestamp).nullable(),
 });
 export type PlayerBody = z.infer<typeof playerBodySchema>;
 

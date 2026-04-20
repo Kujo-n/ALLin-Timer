@@ -42,6 +42,7 @@ const baseTournament = {
   finishedAt: null,
   currentLevel: 0,
   lateEntryDeadlineLevel: 6,
+  seatsPerTable: 9,
   createdAt: now,
   updatedAt: now,
 };
@@ -145,6 +146,9 @@ describe("playerBodySchema", () => {
       entryAt: now,
       isBusted: false,
       bustedAt: null,
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: null,
     });
     expect(result.success).toBe(true);
   });
@@ -156,8 +160,25 @@ describe("playerBodySchema", () => {
       entryAt: now,
       isBusted: false,
       bustedAt: null,
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: null,
     });
     expect(result.success).toBe(false);
+  });
+
+  it("accepts seated player with tableNum/seatNum/lastMovedAt", () => {
+    const result = playerBodySchema.safeParse({
+      displayName: "Alice",
+      uid: "u1",
+      entryAt: now,
+      isBusted: false,
+      bustedAt: null,
+      tableNum: 1,
+      seatNum: 3,
+      lastMovedAt: now,
+    });
+    expect(result.success).toBe(true);
   });
 });
 
