@@ -72,12 +72,27 @@ export async function getTournament(tid: string): Promise<TournamentDoc> {
 /**
  * 指定 group のトーナメント一覧。`where("groupId","==")` のみで取得し
  * client 側で createdAt 降順に並べる。
+ *
+ * 個別 doc が schema validate に失敗しても一覧全体を落とさず、該当 doc のみ
+ * スキップして warn ログを残す（旧スキーマで作成された孤立 doc の影響で一覧が
+ * 完全に開けなくなる事故を防ぐ）。
  */
 export async function listTournamentsByGroup(groupId: string): Promise<TournamentDoc[]> {
   try {
     const q = query(tournamentsRef, where("groupId", "==", groupId));
     const snap = await getDocs(q);
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items: TournamentDoc[] = [];
+    for (const d of snap.docs) {
+      try {
+        items.push({ id: d.id, ...d.data() });
+      } catch (e) {
+        const wrapped = AppError.from(e, "firestore/invalid-data", "不正なドキュメント");
+        logger.warn("tournament list skipped invalid doc", {
+          tid: d.id,
+          code: wrapped.code,
+        });
+      }
+    }
     items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
     return items;
   } catch (e) {

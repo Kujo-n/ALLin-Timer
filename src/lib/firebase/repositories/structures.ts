@@ -58,12 +58,25 @@ export async function getStructure(sid: string): Promise<StructureDoc> {
 /**
  * 指定 group のストラクチャ一覧。複合インデックス追加を避けるため
  * `where("groupId","==")` のみで取得して client 側で createdAt 降順に並べる。
+ *
+ * 個別 doc が schema validate に失敗しても一覧全体を落とさず skip する。
  */
 export async function listStructuresByGroup(groupId: string): Promise<StructureDoc[]> {
   try {
     const q = query(structuresRef, where("groupId", "==", groupId));
     const snap = await getDocs(q);
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const items: StructureDoc[] = [];
+    for (const d of snap.docs) {
+      try {
+        items.push({ id: d.id, ...d.data() });
+      } catch (e) {
+        const wrapped = AppError.from(e, "firestore/invalid-data", "不正なドキュメント");
+        logger.warn("structure list skipped invalid doc", {
+          sid: d.id,
+          code: wrapped.code,
+        });
+      }
+    }
     items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
     return items;
   } catch (e) {
