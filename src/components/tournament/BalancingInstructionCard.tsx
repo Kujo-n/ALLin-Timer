@@ -62,7 +62,7 @@ export function BalancingInstructionCard({
       const name = player?.displayName ?? "（不明）";
       return {
         kind: "move" as const,
-        description: `${name}（${move.from.tableNum}卓${move.from.seatNum}席）を ${move.to.tableNum}卓${move.to.seatNum}席へ移動`,
+        description: `${name}（Table:${move.from.tableNum}, No.${move.from.seatNum}）を Table:${move.to.tableNum}, No.${move.to.seatNum} へ移動`,
       };
     }
     return { kind: "none" as const, description: null };
