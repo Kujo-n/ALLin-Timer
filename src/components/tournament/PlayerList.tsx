@@ -85,11 +85,11 @@ export function PlayerList({
               <li key={p.id} className="flex items-center justify-between gap-2 py-2">
                 <span className="flex-1 truncate">{p.displayName}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground tabular-nums">
                     {p.isBusted
                       ? "脱落"
                       : p.tableNum !== null && p.seatNum !== null
-                        ? `${p.tableNum}卓${p.seatNum}席`
+                        ? `Table:${p.tableNum}, No.${p.seatNum}`
                         : "エントリー中"}
                   </span>
                   {showBustButton ? (
