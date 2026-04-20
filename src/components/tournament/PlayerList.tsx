@@ -1,7 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
-import { listPlayers } from "@/lib/firebase/repositories/players";
+import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { logger } from "@/lib/logger";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
@@ -28,28 +28,22 @@ interface Props {
 export function PlayerList({ tid, canManage = false }: Props) {
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<PlayerDoc | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  const reload = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const list = await listPlayers(tid);
-      setPlayers(list);
-    } catch (e) {
-      const wrapped = AppError.from(e, "firestore/read_failed", "参加者取得失敗");
-      logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [tid]);
-
+  // Phase 3: onSnapshot でリアルタイム同期。追加・取消は subscribe 経由で自動反映される。
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    setError(null);
+    const unsub = subscribePlayers(
+      tid,
+      (list) => setPlayers(list),
+      (err) => {
+        logger.warn(err.message, { code: err.code });
+        setError(`${err.code}: ${err.message}`);
+      },
+    );
+    return unsub;
+  }, [tid]);
 
   async function onConfirmCancel() {
     if (!cancelTarget) return;
@@ -57,7 +51,6 @@ export function PlayerList({ tid, canManage = false }: Props) {
     try {
       await cancelPlayerEntry(tid, cancelTarget.id);
       setCancelTarget(null);
-      await reload();
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "取消に失敗しました");
       setError(`${wrapped.code}: ${wrapped.message}`);
@@ -68,21 +61,9 @@ export function PlayerList({ tid, canManage = false }: Props) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>参加者 ({players.length})</CardTitle>
-          <CardDescription>Phase 2 は手動リロード。Phase 3 でリアルタイム同期。</CardDescription>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void reload();
-          }}
-          disabled={loading}
-        >
-          {loading ? "読込中…" : "リロード"}
-        </Button>
+      <CardHeader>
+        <CardTitle>参加者 ({players.length})</CardTitle>
+        <CardDescription>リアルタイム同期中。</CardDescription>
       </CardHeader>
       <CardContent>
         {error ? (
