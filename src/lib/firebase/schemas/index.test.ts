@@ -36,6 +36,10 @@ const baseTournament = {
   },
   state: "setup" as const,
   startedAt: null,
+  levelStartedAt: null,
+  pausedAt: null,
+  pausedAccumMs: 0,
+  finishedAt: null,
   currentLevel: 0,
   lateEntryDeadlineLevel: 6,
   createdAt: now,
@@ -91,6 +95,43 @@ describe("tournamentBodySchema", () => {
     const result = tournamentBodySchema.safeParse({
       ...baseTournament,
       state: "unknown",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("parses a valid tournament with timer fields populated", () => {
+    const result = tournamentBodySchema.safeParse({
+      ...baseTournament,
+      state: "running" as const,
+      startedAt: now,
+      levelStartedAt: now,
+      pausedAt: null,
+      pausedAccumMs: 0,
+      finishedAt: null,
+      currentLevel: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("requires pausedAccumMs", () => {
+    const { pausedAccumMs: _omit, ...rest } = baseTournament;
+    void _omit;
+    const result = tournamentBodySchema.safeParse(rest);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects negative pausedAccumMs", () => {
+    const result = tournamentBodySchema.safeParse({
+      ...baseTournament,
+      pausedAccumMs: -1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-Timestamp pausedAt", () => {
+    const result = tournamentBodySchema.safeParse({
+      ...baseTournament,
+      pausedAt: "invalid",
     });
     expect(result.success).toBe(false);
   });

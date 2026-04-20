@@ -25,6 +25,14 @@ export const tournamentBodySchema = z.object({
   structureSnapshot: structureSnapshotSchema,
   state: tournamentStateSchema,
   startedAt: z.instanceof(Timestamp).nullable(),
+  // Phase 3: 現在 level の開始サーバ時刻。setup 中は null。
+  levelStartedAt: z.instanceof(Timestamp).nullable(),
+  // Phase 3: 一時停止中のみ非 null。state === "paused" と同期する不変条件。
+  pausedAt: z.instanceof(Timestamp).nullable(),
+  // Phase 3: 現在 level 内の累積 pause 時間（ms）。level 遷移で 0 にリセット。
+  pausedAccumMs: z.number().int().nonnegative(),
+  // Phase 3: 終了時のサーバ時刻。
+  finishedAt: z.instanceof(Timestamp).nullable(),
   currentLevel: z.number().int().nonnegative(),
   lateEntryDeadlineLevel: z.number().int().positive(),
   createdAt: z.instanceof(Timestamp),
