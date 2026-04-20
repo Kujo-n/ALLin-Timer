@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
@@ -72,6 +73,9 @@ export function subscribePlayers(
 /**
  * プレイヤードキュメントを `/tournaments/{tid}/players/{uid}` に upsert する。
  * 同 uid 再来訪時は `{ merge: true }` で displayName 等を更新し、重複参加を冪等化する。
+ *
+ * Phase 4: 新規作成時に席フィールド（tableNum/seatNum/lastMovedAt）を null で初期化する。
+ * 既存ドキュメント merge 時は席フィールドを上書きしない（既に配席済みなら維持）。
  */
 export async function upsertPlayer(
   tid: string,
@@ -91,6 +95,9 @@ export async function upsertPlayer(
       entryAt: serverTimestamp(),
       isBusted: false,
       bustedAt: null,
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: null,
     });
     logger.info("player create ok", { tid, uid });
   } catch (e) {
@@ -110,6 +117,89 @@ export async function deletePlayer(tid: string, pid: string): Promise<void> {
     logger.info("player delete ok", { tid, pid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "参加者の取消に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4: 運営者がバストを記録する。席はクリアする。
+ * 権限の最終防衛は Firestore rules（group メンバーのみ書込可）。client 側の
+ * group チェックは呼び出し元（component / orchestrator）で行う前提。
+ */
+export async function bustPlayer(tid: string, pid: string): Promise<void> {
+  try {
+    await updateDoc(doc(playersRef(tid), pid), {
+      isBusted: true,
+      bustedAt: serverTimestamp(),
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: serverTimestamp(),
+    });
+    logger.info("player bust ok", { tid, pid });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "バスト処理に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4: バスト誤操作のリカバリ。席は復旧しない（再度の手動 join 相当）。
+ */
+export async function unbustPlayer(tid: string, pid: string): Promise<void> {
+  try {
+    await updateDoc(doc(playersRef(tid), pid), {
+      isBusted: false,
+      bustedAt: null,
+      lastMovedAt: serverTimestamp(),
+    });
+    logger.info("player unbust ok", { tid, pid });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "バスト取消に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4: プレイヤーに席を割当てる（初回席決め・late entry・バランシング全て）。
+ * 競合制御は呼び出し元の orchestrator 側 transaction で実施する（ここは単純 write）。
+ */
+export async function assignSeat(
+  tid: string,
+  pid: string,
+  tableNum: number,
+  seatNum: number,
+): Promise<void> {
+  try {
+    await updateDoc(doc(playersRef(tid), pid), {
+      tableNum,
+      seatNum,
+      lastMovedAt: serverTimestamp(),
+    });
+    logger.info("player seat assign ok", { tid, pid, tableNum, seatNum });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "席割当に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4: 席をクリアする（バスト以外の理由で席だけ外したい場合の保険）。
+ * 現状は呼び出し元なし。将来「卓閉鎖の中間状態を表現したい」等のために置いておく。
+ */
+export async function clearSeat(tid: string, pid: string): Promise<void> {
+  try {
+    await updateDoc(doc(playersRef(tid), pid), {
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: serverTimestamp(),
+    });
+    logger.info("player seat clear ok", { tid, pid });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "席クリアに失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
     throw wrapped;
   }

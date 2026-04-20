@@ -51,6 +51,8 @@ import {
 
 import {
   advanceLevel,
+  beginSeating,
+  confirmSeating,
   createTournament,
   deleteTournamentIfSetup,
   finishTournament,
@@ -59,7 +61,6 @@ import {
   pauseTournament,
   resumeTournament,
   revertLevel,
-  startTournament,
   subscribeTournament,
   updateTournament,
 } from "./tournaments";
@@ -90,6 +91,7 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     finishedAt: null,
     currentLevel: 1,
     lateEntryDeadlineLevel: 6,
+    seatsPerTable: 9,
     createdAt: baseCreatedAt,
     updatedAt: baseCreatedAt,
     ...overrides,
@@ -132,6 +134,7 @@ describe("createTournament", () => {
       lateEntryDeadlineLevel: 6,
       levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 }],
     },
+    seatsPerTable: 9,
   };
 
   it("calls addDoc with timer fields initialized and returns id", async () => {
@@ -147,6 +150,7 @@ describe("createTournament", () => {
     expect(payload.pausedAccumMs).toBe(0);
     expect(payload.finishedAt).toBeNull();
     expect(payload.currentLevel).toBe(0);
+    expect(payload.seatsPerTable).toBe(9);
   });
 
   it("wraps addDoc errors with firestore/write_failed", async () => {
@@ -221,26 +225,55 @@ describe("updateTournament", () => {
   });
 });
 
-describe("startTournament", () => {
-  it("rejects when user is not a member of tournament's group", async () => {
-    mockGetTournament(makeTournament({ groupId: "g1", state: "setup" }));
-    await expect(startTournament("t1", "u1", ["g-other"])).rejects.toMatchObject({
+describe("beginSeating", () => {
+  it("rejects non-member", async () => {
+    mockGetTournament(makeTournament({ state: "setup" }));
+    await expect(beginSeating("t1", "u1", ["g-other"])).rejects.toMatchObject({
       code: "firestore/permission-denied",
     });
   });
 
   it("rejects when state is not setup", async () => {
     mockGetTournament(makeTournament({ state: "running" }));
-    await expect(startTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
-      code: "tournament/already-started",
+    await expect(beginSeating("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "tournament/invalid-state",
     });
   });
 
-  it("writes running state with timer fields initialized", async () => {
-    mockGetTournament(makeTournament({ state: "setup", currentLevel: 0 }));
+  it("transitions setup → seating", async () => {
+    mockGetTournament(makeTournament({ state: "setup" }));
+    await beginSeating("t1", "u1", ["g1"]);
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.state).toBe("seating");
+  });
 
-    await startTournament("t1", "u1", ["g1"]);
+  it("wraps updateDoc errors", async () => {
+    mockGetTournament(makeTournament({ state: "setup" }));
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    await expect(beginSeating("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
 
+describe("confirmSeating", () => {
+  it("rejects non-member", async () => {
+    mockGetTournament(makeTournament({ state: "seating" }));
+    await expect(confirmSeating("t1", "u1", ["g-other"])).rejects.toMatchObject({
+      code: "firestore/permission-denied",
+    });
+  });
+
+  it("rejects when state is not seating", async () => {
+    mockGetTournament(makeTournament({ state: "setup" }));
+    await expect(confirmSeating("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "tournament/invalid-state",
+    });
+  });
+
+  it("transitions seating → running with timer fields initialized", async () => {
+    mockGetTournament(makeTournament({ state: "seating", currentLevel: 0 }));
+    await confirmSeating("t1", "u1", ["g1"]);
     const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
     expect(payload.state).toBe("running");
     expect(payload.currentLevel).toBe(1);
@@ -250,9 +283,9 @@ describe("startTournament", () => {
   });
 
   it("wraps updateDoc errors", async () => {
-    mockGetTournament(makeTournament({ state: "setup" }));
+    mockGetTournament(makeTournament({ state: "seating" }));
     vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
-    await expect(startTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
+    await expect(confirmSeating("t1", "u1", ["g1"])).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
   });

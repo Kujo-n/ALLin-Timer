@@ -43,6 +43,7 @@ export async function createTournament(input: CreateTournamentInput): Promise<st
       finishedAt: null,
       currentLevel: 0,
       lateEntryDeadlineLevel: input.structureSnapshot.lateEntryDeadlineLevel,
+      seatsPerTable: input.seatsPerTable,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -130,14 +131,43 @@ async function assertCanManage(tid: string, userGroupIds: string[]): Promise<Tou
   return t;
 }
 
-export async function startTournament(
+/**
+ * Phase 4: setup → seating の遷移。実際の席割当は orchestrator.commitInitialSeating に委ねる。
+ *  - この関数は state 単独遷移のみ（古い `startTournament` の役割を分割）。
+ */
+export async function beginSeating(
   tid: string,
   uid: string,
   userGroupIds: string[],
 ): Promise<void> {
   const t = await assertCanManage(tid, userGroupIds);
   if (t.state !== "setup") {
-    throw new AppError("このトーナメントは既に開始されています", "tournament/already-started");
+    throw new AppError("setup 状態ではありません", "tournament/invalid-state");
+  }
+  try {
+    await updateDoc(doc(tournamentsRef, tid), {
+      state: "seating",
+      updatedAt: serverTimestamp(),
+    });
+    logger.info("tournament seating begin ok", { tid, uid });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "席決めフェーズへの遷移に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4: seating → running の遷移（タイマー起動）。orchestrator が初回席決めを書き終わった後に呼ぶ。
+ */
+export async function confirmSeating(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+): Promise<void> {
+  const t = await assertCanManage(tid, userGroupIds);
+  if (t.state !== "seating") {
+    throw new AppError("seating 状態ではありません", "tournament/invalid-state");
   }
   try {
     await updateDoc(doc(tournamentsRef, tid), {
@@ -150,7 +180,7 @@ export async function startTournament(
       currentLevel: 1,
       updatedAt: serverTimestamp(),
     });
-    logger.info("tournament start ok", { tid, uid });
+    logger.info("tournament seating confirm ok", { tid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント開始に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
