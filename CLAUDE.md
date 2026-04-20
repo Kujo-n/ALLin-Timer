@@ -35,7 +35,8 @@
   - Phase 1（Foundation）: [completed/phase-1-foundation.plan.md](.claude/PRPs/plans/completed/phase-1-foundation.plan.md) — `complete`
   - Phase 2（Tournament Setup & Receipt）: [completed/phase-2-tournament-setup-receipt.plan.md](.claude/PRPs/plans/completed/phase-2-tournament-setup-receipt.plan.md) — `complete`
   - Phase 2.5（Group Management）: [completed/phase-2.5-group-management.plan.md](.claude/PRPs/plans/completed/phase-2.5-group-management.plan.md) — `complete` — group ベース所有権モデルへ破壊的移行
-  - Phase 3（Timer & Realtime & Viewer）: [completed/phase-3-timer-realtime-viewer.plan.md](.claude/PRPs/plans/completed/phase-3-timer-realtime-viewer.plan.md) — `complete` — タイマー駆動と onSnapshot 同期、`/live` ページ、Firestore オフライン永続化
+  - Phase 3（Timer & Realtime & Viewer）: [completed/phase-3-timer-realtime-viewer.plan.md](.claude/PRPs/plans/completed/phase-3-timer-realtime-viewer.plan.md) — `complete` — タイマー駆動と onSnapshot 同期、`/tournaments/[tid]/live` ページ、Firestore オフライン永続化
+  - Phase 4（Seating Automation）: [completed/phase-4-seating-automation.plan.md](.claude/PRPs/plans/completed/phase-4-seating-automation.plan.md) — `complete` — 初回席決め／バスト／TDA 準拠バランシング／レイトエントリー自動配席、`tournaments/{tid}/tables` サブコレクション追加、seating engine と orchestrator を分離
 - **実装レポート**: [.claude/PRPs/reports/](.claude/PRPs/reports/) に Phase 完了毎に生成
 - **PRD 内の Phase 進捗表**が最新状況の真実源。個別リンクは PRD を参照
 

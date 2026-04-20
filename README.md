@@ -236,35 +236,39 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 
 ```
 src/
-├─ app/                 # Next.js App Router
-│  ├─ auth/email-link/  # Email Link コールバック
-│  ├─ debug/fs/         # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
-│  ├─ groups/           # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
-│  ├─ join/[tid]/       # 参加者向け受付（Google / ゲスト / ログイン / メールリンク）
-│  ├─ login/            # 運営者ログイン / 新規登録 / メールリンク
-│  ├─ settings/         # プロフィール編集（displayName 変更）
-│  ├─ structures/       # ストラクチャプリセット CRUD（group メンバーで共有）
-│  ├─ tournaments/      # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
+├─ app/                           # Next.js App Router
+│  ├─ auth/email-link/            # Email Link コールバック
+│  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
+│  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
+│  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン / メールリンク）
+│  ├─ login/                      # 運営者ログイン / 新規登録 / メールリンク
+│  ├─ settings/                   # プロフィール編集（displayName 変更）
+│  ├─ structures/                 # ストラクチャプリセット CRUD（group メンバーで共有）
+│  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
+│  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知）
 │  ├─ globals.css
-│  ├─ layout.tsx        # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
+│  ├─ layout.tsx                  # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
 │  └─ page.tsx
 ├─ components/
-│  ├─ auth/             # RequireAuth / RequireGroup / AuthBadge / GoogleIcon / LinkAccountDialog
-│  ├─ qr/               # QrPanel（受付 URL + QR）
-│  ├─ structure/        # StructureForm / LevelTable
-│  ├─ tournament/       # TournamentForm / PlayerList
-│  └─ ui/               # shadcn/ui
+│  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon / LinkAccountDialog
+│  ├─ qr/                         # QrPanel（受付 URL + QR）
+│  ├─ structure/                  # StructureForm / LevelTable
+│  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls
+│  │                              # / BustButton / SeatingBoard / BalancingInstructionCard / ConnectionBadge
+│  └─ ui/                         # shadcn/ui
 ├─ lib/
-│  ├─ errors.ts         # AppError 基底
-│  ├─ logger.ts         # レベル制御付きロガー
-│  ├─ utils.ts          # cn()
+│  ├─ errors.ts                   # AppError 基底
+│  ├─ logger.ts                   # レベル制御付きロガー
+│  ├─ utils.ts                    # cn()
 │  ├─ firebase/
 │  │  ├─ AuthProvider.tsx
-│  │  ├─ client.ts            # singleton 初期化（languageCode="ja" 固定）
-│  │  ├─ converters.ts        # zod ベース withConverter
-│  │  ├─ schemas/             # 各コレクションの zod schema（Firestore 真実源）
-│  │  └─ repositories/        # Firestore CRUD 集約（UI から SDK を直接呼ばない）
-│  └─ services/         # auth-actions / receipt / qr / redirect / group / current-group
+│  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定）
+│  │  ├─ converters.ts            # zod ベース withConverter
+│  │  ├─ schemas/                 # 各コレクションの zod schema（Firestore 真実源）
+│  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
+│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator
+│  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
+│     └─ seating/                 # engine（純粋関数の TDA バランシング）/ orchestrator（Firestore 副作用）/ prng
 └─ （真実源は src/lib/firebase/schemas/）
 ```
 
