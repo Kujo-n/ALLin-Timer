@@ -2,6 +2,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -76,6 +77,26 @@ export async function addGroupIdToUser(uid: string, gid: string): Promise<void> 
       "プロフィールへのサークル追加に失敗しました",
     );
     logger.warn(wrapped.message, { code: wrapped.code, uid, gid });
+    throw wrapped;
+  }
+}
+
+/**
+ * users/{uid} ドキュメントを削除する。
+ * Firestore rules で self-write（= self-delete）のみ許可される。
+ * 匿名ゲストが tournament 終了 / logout / cancelOwnEntry で自己削除する際に利用する。
+ */
+export async function deleteUserProfile(uid: string): Promise<void> {
+  try {
+    await deleteDoc(doc(usersRef, uid));
+    logger.info("user profile delete ok", { uid });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "プロフィール削除に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, uid });
     throw wrapped;
   }
 }
