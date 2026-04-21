@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { Timestamp } from "firebase/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,9 +15,13 @@ vi.mock("@/lib/firebase/AuthProvider", () => ({
 vi.mock("@/lib/firebase/repositories/players", () => ({
   subscribePlayers: vi.fn(),
 }));
+vi.mock("@/lib/firebase/repositories/users", () => ({
+  deleteUserProfile: vi.fn(),
+}));
 
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 
 import { LiveClient } from "./live-client";
@@ -73,6 +77,7 @@ function player(p: Partial<PlayerDoc> & { id: string }): PlayerDoc {
 function setMocks(opts: {
   tournament?: TournamentDoc | null;
   uid?: string;
+  user?: Partial<import("firebase/auth").User> & { uid: string };
 }) {
   vi.mocked(useTournamentTimer).mockReturnValue({
     tournament: opts.tournament ?? makeTournament(),
@@ -82,8 +87,9 @@ function setMocks(opts: {
     lastSyncAt: Date.now(),
     error: null,
   });
+  const user = opts.user ?? { uid: opts.uid ?? "u1" };
   vi.mocked(useAuthUser).mockReturnValue({
-    user: { uid: opts.uid ?? "u1" } as unknown as import("firebase/auth").User,
+    user: user as unknown as import("firebase/auth").User,
     loading: false,
   });
 }
@@ -96,6 +102,7 @@ beforeEach(() => {
     lastOnNext = onNext;
     return () => {};
   });
+  vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -163,5 +170,138 @@ describe("LiveClient — playersLoaded gating", () => {
     });
 
     expect(screen.getByText("脱落済み")).toBeInTheDocument();
+  });
+});
+
+describe("LiveClient — Winner banner", () => {
+  it("shows winner banner when only 1 active player remains during running state", () => {
+    setMocks({ tournament: makeTournament({ state: "running" }) });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([
+        player({ id: "u1", displayName: "Alice" }),
+        player({ id: "u2", displayName: "Bob", isBusted: true, bustedAt: ts }),
+        player({ id: "u3", displayName: "Carol", isBusted: true, bustedAt: ts }),
+      ]);
+    });
+
+    expect(screen.getByText("優勝")).toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("does not show winner banner when less than 2 players total", () => {
+    setMocks({ tournament: makeTournament({ state: "running" }) });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "u1", displayName: "Alice" })]);
+    });
+
+    expect(screen.queryByText("優勝")).not.toBeInTheDocument();
+  });
+
+  it("does not show winner banner during setup / seating", () => {
+    setMocks({ tournament: makeTournament({ state: "setup", currentLevel: 0 }) });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([
+        player({ id: "u1" }),
+        player({ id: "u2", isBusted: true, bustedAt: ts }),
+      ]);
+    });
+
+    expect(screen.queryByText("優勝")).not.toBeInTheDocument();
+  });
+});
+
+describe("LiveClient — anonymous self-delete on finish", () => {
+  it("deletes user profile and auth when anonymous participant sees finished state", async () => {
+    const userDelete = vi.fn().mockResolvedValue(undefined);
+    setMocks({
+      tournament: makeTournament({ state: "finished", finishedAt: ts }),
+      user: {
+        uid: "guest-1",
+        isAnonymous: true,
+        delete: userDelete,
+      } as unknown as import("firebase/auth").User & { uid: string },
+    });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "guest-1", uid: "guest-1" })]);
+    });
+
+    await waitFor(() => {
+      expect(deleteUserProfile).toHaveBeenCalledWith("guest-1");
+    });
+    expect(userDelete).toHaveBeenCalled();
+  });
+
+  it("does not self-delete non-anonymous users", async () => {
+    const userDelete = vi.fn().mockResolvedValue(undefined);
+    setMocks({
+      tournament: makeTournament({ state: "finished", finishedAt: ts }),
+      user: {
+        uid: "u1",
+        isAnonymous: false,
+        delete: userDelete,
+      } as unknown as import("firebase/auth").User & { uid: string },
+    });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "u1", uid: "u1" })]);
+    });
+
+    // ちょっと待って副作用が走らないことを確認
+    await new Promise((r) => setTimeout(r, 20));
+    expect(deleteUserProfile).not.toHaveBeenCalled();
+    expect(userDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not self-delete when not a participant", async () => {
+    const userDelete = vi.fn().mockResolvedValue(undefined);
+    setMocks({
+      tournament: makeTournament({ state: "finished", finishedAt: ts }),
+      user: {
+        uid: "guest-1",
+        isAnonymous: true,
+        delete: userDelete,
+      } as unknown as import("firebase/auth").User & { uid: string },
+    });
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "other", uid: "other" })]);
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(deleteUserProfile).not.toHaveBeenCalled();
+    expect(userDelete).not.toHaveBeenCalled();
+  });
+
+  it("swallows delete errors (best-effort)", async () => {
+    const userDelete = vi.fn().mockRejectedValue(new Error("requires-recent-login"));
+    setMocks({
+      tournament: makeTournament({ state: "finished", finishedAt: ts }),
+      user: {
+        uid: "guest-1",
+        isAnonymous: true,
+        delete: userDelete,
+      } as unknown as import("firebase/auth").User & { uid: string },
+    });
+    vi.mocked(deleteUserProfile).mockRejectedValueOnce(new Error("boom"));
+    render(<LiveClient tid="t1" />);
+
+    act(() => {
+      lastOnNext?.([player({ id: "guest-1", uid: "guest-1" })]);
+    });
+
+    await waitFor(() => {
+      expect(deleteUserProfile).toHaveBeenCalled();
+    });
+    // no crash; test passes if the rejected promise is swallowed
   });
 });

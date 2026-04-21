@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
+import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
-import { getLevelInfo } from "@/lib/services/timer";
+import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 
 const MOVED_BANNER_MS = 30_000;
 
@@ -17,7 +19,7 @@ export function LiveClient({ tid }: { tid: string }) {
   // /live は read-only。autoAdvance / auto-seat は渡さない（参加者端末は rule で書込不可）。
   const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
   const { user } = useAuthUser();
-  const [me, setMe] = useState<PlayerDoc | null>(null);
+  const [players, setPlayers] = useState<PlayerDoc[]>([]);
   // 購読が 1 回以上 fire したかで「読込中」と「参加者ではない」を区別する。
   // これがないとリロード直後の一瞬、参加者でありながら「レイトエントリー超過」等の
   // 誤メッセージが表示される（tournament state は先に解決され、players 購読は遅延するため）。
@@ -29,8 +31,7 @@ export function LiveClient({ tid }: { tid: string }) {
     const unsub = subscribePlayers(
       tid,
       (list) => {
-        const found = list.find((p) => p.uid === user.uid) ?? null;
-        setMe(found);
+        setPlayers(list);
         setPlayersLoaded(true);
       },
       (err) => logger.warn("live players subscribe error", { code: err.code, tid }),
@@ -38,11 +39,39 @@ export function LiveClient({ tid }: { tid: string }) {
     return unsub;
   }, [tid, user]);
 
+  const me = user ? (players.find((p) => p.uid === user.uid) ?? null) : null;
+
   // 30 秒のバナー表示判定用に 1 秒間隔で再描画。
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  // Phase 4.5: 匿名参加者の自己削除。tournament finish 検知時に Firebase Auth と
+  // users/{uid} を best-effort で削除する。player ドキュメントは履歴として残す。
+  const selfDeleteInflightRef = useRef(false);
+  useEffect(() => {
+    if (!user || !user.isAnonymous) return;
+    if (!tournament) return;
+    if (tournament.state !== "finished") return;
+    if (!me) return;
+    if (selfDeleteInflightRef.current) return;
+    selfDeleteInflightRef.current = true;
+
+    void (async () => {
+      try {
+        await deleteUserProfile(user.uid);
+        await user.delete();
+        logger.info("anonymous self-delete ok", { uid: user.uid, tid });
+      } catch (e) {
+        const code =
+          e instanceof Error && "code" in e
+            ? String((e as { code: unknown }).code)
+            : "unknown";
+        logger.warn("anonymous self-delete failed", { code, uid: user.uid });
+      }
+    })();
+  }, [user, tournament, me, tid]);
 
   if (error) {
     return (
@@ -67,6 +96,7 @@ export function LiveClient({ tid }: { tid: string }) {
     now - seatedAt < MOVED_BANNER_MS;
   const lateEntryClosed =
     tournament.currentLevel > tournament.lateEntryDeadlineLevel;
+  const winner = resolveWinner(tournament, players);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-start gap-4 p-4 pt-8">
@@ -80,6 +110,8 @@ export function LiveClient({ tid }: { tid: string }) {
         levelInfo={levelInfo}
         className="w-full max-w-md"
       />
+
+      {winner ? <WinnerBanner winner={winner} /> : null}
 
       {user ? (
         <section
