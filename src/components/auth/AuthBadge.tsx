@@ -41,7 +41,7 @@ export function AuthBadge() {
 
   const label = user.isAnonymous
     ? `ゲスト: ${user.displayName ?? "（名前未設定）"}`
-    : (user.email ?? user.displayName ?? user.uid);
+    : (user.displayName ?? user.email ?? user.uid);
 
   async function onLogout() {
     setBusy(true);
