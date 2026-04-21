@@ -35,7 +35,13 @@ yarn-error.log*
 .firebase/
 firebase-debug.log
 firestore-debug.log
+auth-debug.log
 ui-debug.log
+
+# playwright e2e
+/playwright-report
+/test-results
+/playwright/.cache
 
 # typescript
 *.tsbuildinfo
