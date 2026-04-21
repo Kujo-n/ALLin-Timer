@@ -21,7 +21,7 @@
 | ---------------- | ---------------------------------------------------------------------------------------------- |
 | フロントエンド   | Next.js 15（App Router / TypeScript）                                                          |
 | UI               | Tailwind CSS + shadcn/ui                                                                       |
-| DB / 認証        | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Email Link／Google の 4 方式） |
+| DB / 認証        | Firebase Firestore + Firebase Authentication（匿名／メール＋PW／Google の 3 方式）             |
 | リアルタイム同期 | Firestore `onSnapshot`                                                                         |
 | デプロイ         | Vercel Hobby（GitHub 連携）                                                                    |
 

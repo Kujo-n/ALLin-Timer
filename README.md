@@ -27,10 +27,9 @@ npm install
 ### 2. Firebase プロジェクトの作成
 
 1. [Firebase Console](https://console.firebase.google.com/) で新規プロジェクトを作成（Google Analytics は任意）
-2. **Authentication** → 「Sign-in method」から以下 4 方式を有効化
+2. **Authentication** → 「Sign-in method」から以下 3 方式を有効化
    - 匿名
    - メール / パスワード
-   - メールリンク（パスワードなしでのログイン）
    - Google（運営者 / 参加者の簡易ログイン用）
      - Google プロバイダ有効化時に **Project support email** の設定が求められるので、`Project Settings → General` で設定しておくこと
      - 承認済みドメインに `localhost` と本番／プレビュー URL が入っていれば OAuth 同意画面はそのまま動く
@@ -67,20 +66,18 @@ npm run dev
 
 - **運営者**: `/login` でログイン → **`/groups/new` でサークル（group）を作成**または **招待コードのリンクを踏んで加入** → 自動的にそのサークルが「現在のサークル」となる → `/structures` でプリセット作成 → `/tournaments/new` でトーナメント作成 → `/tournaments/[tid]` ダッシュボードで受付 URL / QR をコピーし参加者に共有
 - ストラクチャ／トーナメントは「現在のサークル」配下に紐づき、**メンバー全員で共有・編集・開始・削除可能**。当日プレイヤー兼任の運営者が複数いても相互に代替操作できる。
-- **参加者**: 配布された `/join/[tid]` URL から 4 つのいずれかで受付
+- **参加者**: 配布された `/join/[tid]` URL から 3 つのいずれかで受付
   - **Google で参加**: ポップアップでアカウント選択するだけで完了（displayName は Google プロフィールを自動利用）
   - (a) ログイン: 既存メール+PW アカウント
-  - (b) ゲスト: 表示名のみ（匿名 Auth）
-  - (c) アカウント登録: 表示名＋メール入力 → Firebase から届くリンクをタップして完了（`/auth/email-link` コールバック）
+  - (b) ゲスト: 表示名のみ（匿名 Auth）— トーナメント終了 / キャンセル / ログアウト時に Firebase Auth と `users/{uid}` を自動削除（Phase 4.5）
 
 ### 受付方式ごとの「次回以降のログイン」と「端末跨ぎ」
 
-| 登録方式                  | パスワード        | 端末跨ぎ                                                          | 次回アクセス方法                                                       |
-| ------------------------- | ----------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Google                    | なし（Google 側） | **可能**（同じ Google アカウントで各端末からログイン → 同一 uid） | `/login` または `/join/[tid]` の「Google でログイン/参加」ボタン       |
-| (a) ログイン（メール+PW） | あり              | **可能**（同じメール+PW で PC/スマホ両方ログイン → 同一 uid）     | `/login` タブ「ログイン」                                              |
-| (b) ゲスト（匿名 Auth）   | なし              | **不可**（端末ごとに別 uid が発行される）                         | 同一端末のセッション維持のみ。別端末からは別ゲスト扱い                 |
-| (c) メールリンク          | なし              | **可能**（別端末でリンクを開いたとき、メール再入力を促される）    | `/login` タブ「メールリンク」または `/join/[tid]` メール登録から再発行 |
+| 登録方式                  | パスワード        | 端末跨ぎ                                                          | 次回アクセス方法                                                 |
+| ------------------------- | ----------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Google                    | なし（Google 側） | **可能**（同じ Google アカウントで各端末からログイン → 同一 uid） | `/login` または `/join/[tid]` の「Google でログイン/参加」ボタン |
+| (a) ログイン（メール+PW） | あり              | **可能**（同じメール+PW で PC/スマホ両方ログイン → 同一 uid）     | `/login` タブ「ログイン」                                        |
+| (b) ゲスト（匿名 Auth）   | なし              | **不可**（端末ごとに別 uid が発行される）                         | 同一端末のセッション維持のみ。別端末からは別ゲスト扱い           |
 
 > Google は **displayName を自動取得**し、スマホで 1 タップで参加できるので、Phase 2 E2E では最も快適な導線。Firebase Console で Google プロバイダの有効化と Project support email 設定が済んでいることが前提。
 
@@ -108,55 +105,13 @@ Firebase の既定設定（One account per email）では、メール+PW 登録�
 トーナメント席表・参加者一覧への表示に displayName が必要なため、以下のフローすべてで displayName を保証する:
 
 - `/login` 新規登録（メール+PW）: **表示名フィールド必須**。登録時に Firebase Auth の displayName と `users/{uid}` プロフィールに書き込む
-- `/login` メールリンク: 初回登録なら表示名を入力（任意入力欄、コールバック時に Auth プロフィールへ反映）
 - `/join/[tid]` ゲスト: 表示名必須
-- `/join/[tid]` メール登録: 表示名必須
 - `/join/[tid]` ログイン／このアカウントで受付: 既存プロフィールの displayName を利用（未設定なら `validation/display-name-required` エラー）
 
 受付時の displayName 解決優先順位: フォーム入力 → `users/{uid}` プロフィール → Firebase Auth プロフィール → エラー。
 これにより別端末でログインしても displayName が保持され、参加者一覧表示がブレない。
 
-> Phase 2 以前に displayName なしで登録された既存アカウントが join で `validation/display-name-required` を踏んだ場合は、`/login` メールリンクから表示名付きで再登録するか、Phase 5 でプロフィール編集 UI を追加する（未着手）。
-
-### メールリンクのドメイン登録
-
-- Email Link 認証の遷移先は `/auth/email-link?redirect=/join/[tid]`
-- **Firebase Console → Authentication → 設定 → 承認済みドメイン** に `localhost` と Vercel 本番／プレビュー URL を追加しておくこと（未登録だと `auth/unauthorized-continue-uri` で失敗する）
-- プレビュー URL は PR ごとに変わるため、運用が辛い場合は Vercel のカスタムドメイン or プレビュー毎の手動追加を検討
-
-### メールテンプレートの日本語化 / ブランド調整
-
-Firebase 標準テンプレートは英語で、件名も「Sign in to ...」となり迷惑メール扱いされやすい。以下の手順で日本語化とブランド明示を行う。
-
-#### 最低限やること（無料プラン・編集不要）
-
-1. クライアント側は既に `firebaseAuth.languageCode = "ja"` に固定済み（[client.ts](src/lib/firebase/client.ts)）。これだけで既定テンプレートが英語 → 日本語に切り替わる
-2. **Firebase Console → Project Settings → General → Public-facing name** を `ALLin-PokerTimer` に変更。本文内 `%APP_NAME%` がこの値に置換され、「ALLin-PokerTimer にログインするには〜」のような日本語本文になる
-3. **Project Settings → General → Support email** に運営者の連絡先メールを設定（受信者が不審に思った際の確認窓口になる）
-
-ここまでで「件名: `ALLin-PokerTimer へのログイン`」「本文に運営メール」になり、迷惑メール誤検出率が大幅に下がる。件名／本文の詳細カスタマイズには下の **上級カスタマイズ** 参照。
-
-#### 上級カスタマイズ（件名・本文を自由に書き換えたい場合）
-
-Firebase Console → Authentication → Templates → `メールリンクでのログイン` の編集導線が出ない・グレーアウトする場合のトラブルシュート:
-
-| 症状                         | 対処                                                                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 編集アイコンが見当たらない   | Console の表示言語を英語に切替（右上歯車 → Languages → English）。日本語 UI では編集導線が隠れているケースあり           |
-| プレビューのみで保存不可     | Authentication → Settings で **Identity Platform にアップグレード**（無料・不可逆）。Auth 機能が拡張されて編集解禁される |
-| 件名／本文が完全グレーアウト | Google Cloud Console → IAM で Owner / Editor 権限があるか確認                                                            |
-| Identity Platform も不可     | カスタム SMTP（Google Workspace 等）を Console に設定し、自社ドメインから送信する。送信元アドレスも自由になる            |
-
-件名の例: `【ALLin-PokerTimer】トーナメント参加のログインリンク`
-
-**注意**: Firebase テンプレートは**プロジェクト単位の固定**で、`tid` やトーナメント名などの動的パラメータを件名に差し込むことは不可。参加者はメール内リンク URL（`/join/{tid}` が含まれる）で判別する前提。動的件名が必須なら Firebase Extensions `Trigger Email` + Blaze プラン + SendGrid/Mailgun が必要（Phase 5 での検討事項）。
-
-#### 送信後に届かない場合のチェック順
-
-1. 受信側の **迷惑メールフォルダ**（最頻）
-2. Console → Authentication → Usage で **送信上限（無料枠 100 通/日）** を確認
-3. テンプレート設定の保存漏れ（ブラウザ戻る等で未保存）
-4. 企業メールで受信拒否される場合は **SMTP カスタム設定**（Google Workspace 等）で自社ドメイン送信へ
+> displayName なしで登録された既存アカウントが join で `validation/display-name-required` を踏んだ場合は、`/settings` から表示名を設定して再度参加してください。
 
 ### 5. Firestore セキュリティルールのデプロイ
 
@@ -214,21 +169,34 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 
 <!-- AUTO-GENERATED: scripts — source of truth は package.json scripts。追加・変更時はここも同期 -->
 
-| コマンド                                 | 用途                                                                       |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| `npm run dev`                            | 開発サーバ起動 (`next dev`)                                                |
-| `npm run build`                          | 本番ビルド (`next build`)                                                  |
-| `npm run start`                          | 本番ビルドのローカル起動 (`next start`)                                    |
-| `npm run lint`                           | ESLint 実行 (`next lint`)                                                  |
-| `npm run lint:fix`                       | 自動修正付き ESLint (`next lint --fix`)                                    |
-| `npm run typecheck`                      | TypeScript 型チェックのみ (`tsc --noEmit`)                                 |
-| `npm test`                               | Vitest 実行（単発、`vitest run`）                                          |
-| `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                           |
-| `npm run format`                         | Prettier で書式修正 (`prettier --write .`)                                 |
-| `npm run format:check`                   | Prettier で書式チェックのみ (`prettier --check .`)                         |
-| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI） |
+| コマンド                                 | 用途                                                                                |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| `npm run dev`                            | 開発サーバ起動 (`next dev`)                                                         |
+| `npm run build`                          | 本番ビルド (`next build`)                                                           |
+| `npm run start`                          | 本番ビルドのローカル起動 (`next start`)                                             |
+| `npm run lint`                           | ESLint 実行 (`next lint`)                                                           |
+| `npm run lint:fix`                       | 自動修正付き ESLint (`next lint --fix`)                                             |
+| `npm run typecheck`                      | TypeScript 型チェックのみ (`tsc --noEmit`)                                          |
+| `npm test`                               | Vitest 実行（単発、`vitest run`）                                                   |
+| `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                                    |
+| `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
+| `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
+| `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
+| `npm run test:e2e:debug`                 | Playwright inspector で E2E デバッグ（`playwright test --debug`）                   |
+| `npm run emulator`                       | Firebase Emulator (auth + firestore + ui) のみ起動（`allin-pokertimer-e2e` 隔離）   |
+| `npm run format`                         | Prettier で書式修正 (`prettier --write .`)                                          |
+| `npm run format:check`                   | Prettier で書式チェックのみ (`prettier --check .`)                                  |
+| `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI）          |
 
 <!-- /AUTO-GENERATED -->
+
+## E2E テスト（Phase 4.5 以降）
+
+Playwright + Firebase Emulator で統合テストを自動化している。`npm run test:e2e` を叩けば Emulator → dev server（port 3001）→ test 実行まで一気通貫で走る。Emulator 起動には **Java ランタイム**が必要（未インストールだと `firestore` / `auth` が起動失敗）。
+
+- 設定: [playwright.config.ts](playwright.config.ts)
+- 詳細（Page Object 構成・前提条件・トラブルシュート）: [tests/e2e/README.md](tests/e2e/README.md)
+- `allin-pokertimer-e2e` という Firebase プロジェクト名で **実 Firebase プロジェクトと隔離**されているため、Emulator 内のデータは本番／開発の Firestore には影響しない
 
 ## ディレクトリ構成
 
@@ -237,23 +205,22 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 ```
 src/
 ├─ app/                           # Next.js App Router
-│  ├─ auth/email-link/            # Email Link コールバック
 │  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
-│  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン / メールリンク）
-│  ├─ login/                      # 運営者ログイン / 新規登録 / メールリンク
+│  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
+│  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
 │  ├─ structures/                 # ストラクチャプリセット CRUD（group メンバーで共有）
 │  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
-│  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知）
+│  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知 / Winner バナー）
 │  ├─ globals.css
 │  ├─ layout.tsx                  # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
-│  └─ page.tsx
+│  └─ page.tsx                    # 未ログイン時はログインボタンのみ、ログイン後はサークル/トーナメント導線（Phase 4.5）
 ├─ components/
 │  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon / LinkAccountDialog
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
 │  ├─ structure/                  # StructureForm / LevelTable
-│  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls
+│  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls / WinnerBanner
 │  │                              # / BustButton / SeatingBoard / BalancingInstructionCard / ConnectionBadge
 │  └─ ui/                         # shadcn/ui
 ├─ lib/
@@ -262,14 +229,15 @@ src/
 │  ├─ utils.ts                    # cn()
 │  ├─ firebase/
 │  │  ├─ AuthProvider.tsx
-│  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定）
+│  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定、E2E 時は Emulator 接続）
 │  │  ├─ converters.ts            # zod ベース withConverter
 │  │  ├─ schemas/                 # 各コレクションの zod schema（Firestore 真実源）
 │  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
 │  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
 │     └─ seating/                 # engine（純粋関数の TDA バランシング）/ orchestrator（Firestore 副作用）/ prng
-└─ （真実源は src/lib/firebase/schemas/）
+tests/
+└─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```
 
 <!-- /AUTO-GENERATED -->
@@ -290,6 +258,8 @@ src/
 | `NEXT_PUBLIC_FIREBASE_APP_ID`              | Yes  | 同上                                                                       |
 | `NEXT_PUBLIC_LOG_LEVEL`                    | No   | ログレベル。`debug` / `info`（既定） / `warn` / `error`                    |
 | `NEXT_PUBLIC_ENABLE_DEBUG`                 | No   | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定） |
+
+> `NEXT_PUBLIC_USE_FIREBASE_EMULATOR` は E2E テスト時に Playwright が自動で設定する変数で、`.env.local` には記載しない（`true` のとき Auth 9099 / Firestore 8080 の Emulator に接続）。
 
 <!-- /AUTO-GENERATED -->
 
