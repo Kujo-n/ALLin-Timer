@@ -183,6 +183,26 @@ export function GroupDetailClient({ gid }: { gid: string }) {
               一覧へ
             </Button>
           </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setCurrentGroupId(gid);
+              router.push("/tournaments");
+            }}
+          >
+            トーナメント
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setCurrentGroupId(gid);
+              router.push("/structures");
+            }}
+          >
+            ストラクチャ
+          </Button>
           {isOwner ? (
             <Button variant="outline" size="sm" onClick={() => setRenameOpen(true)}>
               名前変更
