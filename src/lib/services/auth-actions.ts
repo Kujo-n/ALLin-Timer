@@ -3,12 +3,9 @@ import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
-  isSignInWithEmailLink,
   linkWithCredential,
-  sendSignInLinkToEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
-  signInWithEmailLink,
   signInWithPopup,
   signOut,
   updateProfile,
@@ -18,12 +15,8 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
-import { upsertUserProfile } from "@/lib/firebase/repositories/users";
+import { deleteUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 import { logger } from "@/lib/logger";
-import { sanitizeRedirect } from "@/lib/services/redirect";
-
-const EMAIL_STORAGE_KEY = "emailForSignIn";
-const DISPLAY_NAME_STORAGE_KEY = "displayNameForSignIn";
 
 function normalizeAuthCode(code: string): string {
   switch (code) {
@@ -230,106 +223,6 @@ export async function signInAsGuest(displayName: string): Promise<User> {
   }
 }
 
-function buildEmailLinkContinueUrl(redirectPath: string): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-  const url = new URL("/auth/email-link", origin);
-  // open redirect 防止は sanitizeRedirect で統一。
-  // （decodeURIComponent 経由のエンコードバイパス対策も含む）
-  url.searchParams.set("redirect", sanitizeRedirect(redirectPath));
-  return url.toString();
-}
-
-export async function sendEmailLinkForJoin(
-  email: string,
-  redirectPath: string,
-  displayName?: string,
-): Promise<void> {
-  const continueUrl = buildEmailLinkContinueUrl(redirectPath);
-  logger.info("email link send requested", { continueUrl });
-  try {
-    await sendSignInLinkToEmail(firebaseAuth, email, {
-      url: continueUrl,
-      handleCodeInApp: true,
-    });
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
-      if (displayName && displayName.trim()) {
-        window.localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, displayName.trim());
-      } else {
-        window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
-      }
-    }
-  } catch (e) {
-    const wrapped = wrapAuthError(
-      e,
-      "auth/email-link-send-failed",
-      "メールリンクの送信に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
-}
-
-export function getStoredEmailForSignIn(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(EMAIL_STORAGE_KEY);
-}
-
-export function clearStoredEmailForSignIn(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(EMAIL_STORAGE_KEY);
-}
-
-export function getStoredDisplayNameForSignIn(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY);
-}
-
-export function clearStoredDisplayNameForSignIn(): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
-}
-
-export function isEmailLinkUrl(url: string): boolean {
-  return isSignInWithEmailLink(firebaseAuth, url);
-}
-
-export async function completeEmailLink(currentUrl: string, fallbackEmail?: string): Promise<User> {
-  if (!isSignInWithEmailLink(firebaseAuth, currentUrl)) {
-    throw new AppError("メールリンクが不正です", "auth/email-link-invalid");
-  }
-  const email = fallbackEmail ?? getStoredEmailForSignIn();
-  if (!email) {
-    throw new AppError("メールアドレスを入力してください", "auth/email-missing-on-callback");
-  }
-  let user: User;
-  try {
-    const cred = await signInWithEmailLink(firebaseAuth, email, currentUrl);
-    user = cred.user;
-  } catch (e) {
-    const wrapped = wrapAuthError(e, "auth/email-link-failed", "メールリンク認証に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
-  clearStoredEmailForSignIn();
-  // サインイン成功後に displayName を反映する処理は best-effort。
-  // 失敗しても認証自体は成立しているため下の logger.warn のみで許容する。
-  const storedName =
-    typeof window !== "undefined" ? window.localStorage.getItem(DISPLAY_NAME_STORAGE_KEY) : null;
-  if (storedName && !user.displayName) {
-    try {
-      await updateProfile(user, { displayName: storedName });
-    } catch (e) {
-      logger.warn("updateProfile failed during email link", {
-        code: "auth/update-profile-failed",
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  logger.info("email link sign-in ok", { uid: user.uid });
-  return user;
-}
-
 /**
  * ログイン済みユーザーの displayName を更新する。
  * Firebase Auth プロフィール（端末跨ぎ同期）と `users/{uid}` の両方に書き込む。
@@ -358,7 +251,29 @@ export async function updateDisplayName(newName: string): Promise<void> {
   }
 }
 
+/**
+ * ログアウト。匿名ユーザーの場合は users/{uid} と auth 自体を best-effort で削除し、
+ * ゴミアカウントの蓄積を防ぐ。削除失敗時は通常の signOut にフォールバックする。
+ * （匿名アカウントは recent-login 猶予内なので通常は user.delete() が成功する。）
+ */
 export async function logout(): Promise<void> {
+  const user = firebaseAuth.currentUser;
+  if (user?.isAnonymous) {
+    try {
+      await deleteUserProfile(user.uid);
+      await user.delete();
+      logger.info("anonymous logout (self-delete) ok", { uid: user.uid });
+      return;
+    } catch (e) {
+      const wrapped = AppError.from(
+        e,
+        "auth/anon-delete-failed",
+        "匿名アカウントの削除に失敗しました",
+      );
+      logger.warn(wrapped.message, { code: wrapped.code });
+      // fallthrough: 通常の signOut を試みる（データ残留は許容）
+    }
+  }
   try {
     await signOut(firebaseAuth);
     logger.info("logout ok");

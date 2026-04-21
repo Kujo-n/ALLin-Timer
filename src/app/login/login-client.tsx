@@ -18,12 +18,11 @@ import {
   AccountLinkRequired,
   loginWithEmail,
   registerWithEmail,
-  sendEmailLinkForJoin,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
 import { sanitizeRedirect } from "@/lib/services/redirect";
 
-type Mode = "login" | "register" | "email-link";
+type Mode = "login" | "register";
 
 export function LoginClient() {
   const { user, loading } = useAuthUser();
@@ -37,7 +36,6 @@ export function LoginClient() {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const [linkRequest, setLinkRequest] = useState<{
     email: string;
     credential: AuthCredential;
@@ -88,54 +86,7 @@ export function LoginClient() {
     }
   }
 
-  async function onSubmitEmailLink(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      // redirect 先はログイン後の遷移先。/auth/email-link からクエリ経由で渡る。
-      // displayName は任意 — 新規の場合はコールバックで Auth プロフィールに反映。
-      await sendEmailLinkForJoin(email, redirect, displayName.trim() || undefined);
-      setLinkSentTo(email);
-    } catch (e) {
-      const wrapped = AppError.from(e, "auth/unknown", "メール送信に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (linkSentTo) {
-    return (
-      <main className="mx-auto max-w-md space-y-6 p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>メールを送信しました</CardTitle>
-            <CardDescription>
-              {linkSentTo}{" "}
-              宛にログインリンクを送信しました。届かない場合は迷惑メールフォルダも確認してください。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setLinkSentTo(null);
-                setMode("login");
-              }}
-            >
-              ログイン画面に戻る
-            </Button>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
-  const title =
-    mode === "login" ? "ログイン" : mode === "register" ? "新規登録" : "メールリンクでログイン";
+  const title = mode === "login" ? "ログイン" : "新規登録";
 
   return (
     <main className="mx-auto max-w-md space-y-6 p-8">
@@ -173,7 +124,6 @@ export function LoginClient() {
               [
                 ["login", "ログイン"],
                 ["register", "新規登録"],
-                ["email-link", "メールリンク"],
               ] as [Mode, string][]
             ).map(([value, label]) => (
               <button
@@ -195,93 +145,53 @@ export function LoginClient() {
             ))}
           </div>
 
-          {mode === "email-link" ? (
-            <form onSubmit={onSubmitEmailLink} className="space-y-4">
+          <form onSubmit={onSubmitPassword} className="space-y-4">
+            {mode === "register" ? (
               <div className="space-y-2">
-                <Label htmlFor="link-name">
-                  表示名
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    （初回登録時に必須、既存ユーザーは空欄で可）
-                  </span>
-                </Label>
+                <Label htmlFor="reg-name">表示名</Label>
                 <Input
-                  id="link-name"
+                  id="reg-name"
+                  required
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="link-email">メールアドレス</Label>
-                <Input
-                  id="link-email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              {error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
+                <p className="text-xs text-muted-foreground">
+                  トーナメント参加時に席表・参加者一覧に表示される名前です。
                 </p>
-              ) : null}
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "送信中…" : "ログインリンクを送信"}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                参加者として「メールリンク」で受付した方は、次回以降もこの方法でログインしてください（パスワードは発行されません）。
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="email">メールアドレス</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">パスワード</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
               </p>
-            </form>
-          ) : (
-            <form onSubmit={onSubmitPassword} className="space-y-4">
-              {mode === "register" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="reg-name">表示名</Label>
-                  <Input
-                    id="reg-name"
-                    required
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    トーナメント参加時に席表・参加者一覧に表示される名前です。
-                  </p>
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                <Label htmlFor="email">メールアドレス</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">パスワード</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              {error ? (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              ) : null}
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "送信中…" : mode === "login" ? "ログイン" : "新規登録"}
-              </Button>
-            </form>
-          )}
+            ) : null}
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "送信中…" : mode === "login" ? "ログイン" : "新規登録"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

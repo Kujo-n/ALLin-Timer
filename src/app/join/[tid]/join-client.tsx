@@ -22,15 +22,13 @@ import {
   joinAsCurrentUser,
   joinAsExistingUser,
   joinAsGuest,
-  joinViaEmailLinkRequest,
   joinViaGoogle,
   type ReceiptResult,
 } from "@/lib/services/receipt";
 
-type Tab = "login" | "guest" | "email";
+type Tab = "login" | "guest";
 type Status =
   | { kind: "joined"; result: ReceiptResult }
-  | { kind: "link-sent"; email: string }
   | { kind: "cancelled" };
 
 export function JoinClient({ tid }: { tid: string }) {
@@ -109,29 +107,6 @@ export function JoinClient({ tid }: { tid: string }) {
     }
   }
 
-  async function onEmailLinkSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const parsed = joinInputSchema.safeParse({ tid, displayName });
-    if (!parsed.success) {
-      setError(`validation/join: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await joinViaEmailLinkRequest({
-        tid,
-        email,
-        displayName: parsed.data.displayName,
-      });
-      setStatus({ kind: "link-sent", email });
-    } catch (e) {
-      wrapError(e);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   async function onGoogleJoin() {
     setError(null);
     setSubmitting(true);
@@ -184,15 +159,11 @@ export function JoinClient({ tid }: { tid: string }) {
         ? status.result === "already-joined"
           ? "既に参加済みです"
           : "受付完了"
-        : status.kind === "cancelled"
-          ? "参加を取り消しました"
-          : "メールを送信しました";
+        : "参加を取り消しました";
     const description =
       status.kind === "joined"
         ? "運営者が席決めするまでお待ちください。"
-        : status.kind === "cancelled"
-          ? "再度参加したい場合は、下のボタンから受付画面に戻ってください。"
-          : `${status.email} 宛に届いたリンクを開いてください。届かない場合は迷惑メールフォルダも確認してください。`;
+        : "再度参加したい場合は、下のボタンから受付画面に戻ってください。";
     return (
       <main className="mx-auto max-w-md space-y-4 p-8">
         <Card>
@@ -249,7 +220,7 @@ export function JoinClient({ tid }: { tid: string }) {
       <Card>
         <CardHeader>
           <CardTitle>{tournament ? tournament.name : "トーナメント受付"}</CardTitle>
-          <CardDescription>以下 3 つのいずれかで受付してください。</CardDescription>
+          <CardDescription>以下のいずれかで受付してください。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {authLoading ? (
@@ -287,7 +258,6 @@ export function JoinClient({ tid }: { tid: string }) {
               [
                 ["guest", "ゲスト"],
                 ["login", "ログイン"],
-                ["email", "メール登録"],
               ] as [Tab, string][]
             ).map(([value, label]) => (
               <button
@@ -356,38 +326,6 @@ export function JoinClient({ tid }: { tid: string }) {
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? "処理中…" : "ログインして受付"}
               </Button>
-            </form>
-          ) : null}
-
-          {tab === "email" ? (
-            <form onSubmit={onEmailLinkSubmit} className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="e-name">表示名</Label>
-                <Input
-                  id="e-name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="e-email">メールアドレス</Label>
-                <Input
-                  id="e-email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "送信中…" : "参加用メールリンクを送信"}
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                届いたメールのリンクを開くとアカウント作成 + 受付が完了します。
-                次回以降のログインも同じメールアドレスでリンクを発行してください。
-              </p>
             </form>
           ) : null}
 

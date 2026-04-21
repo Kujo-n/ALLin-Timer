@@ -21,9 +21,6 @@ vi.mock("firebase/auth", async () => {
     updateProfile: vi.fn(),
     signInAnonymously: vi.fn(),
     signInWithPopup: vi.fn(),
-    sendSignInLinkToEmail: vi.fn(),
-    isSignInWithEmailLink: vi.fn(),
-    signInWithEmailLink: vi.fn(),
     fetchSignInMethodsForEmail: vi.fn(),
     linkWithCredential: vi.fn(),
     signOut: vi.fn(),
@@ -38,38 +35,29 @@ vi.mock("firebase/auth", async () => {
 
 vi.mock("@/lib/firebase/repositories/users", () => ({
   upsertUserProfile: vi.fn(),
+  deleteUserProfile: vi.fn(),
 }));
 
 import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
-  isSignInWithEmailLink,
   linkWithCredential,
-  sendSignInLinkToEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
-  signInWithEmailLink,
   signInWithPopup,
   signOut,
   updateProfile,
 } from "firebase/auth";
 
-import { upsertUserProfile } from "@/lib/firebase/repositories/users";
+import { deleteUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 
 import {
   AccountLinkRequired,
-  clearStoredDisplayNameForSignIn,
-  clearStoredEmailForSignIn,
-  completeEmailLink,
-  getStoredDisplayNameForSignIn,
-  getStoredEmailForSignIn,
-  isEmailLinkUrl,
   linkGoogleWithPassword,
   loginWithEmail,
   logout,
   registerWithEmail,
-  sendEmailLinkForJoin,
   signInAsGuest,
   signInWithGoogle,
   updateDisplayName,
@@ -82,6 +70,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     displayName: "Alice",
     isAnonymous: false,
     reload: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -92,14 +81,12 @@ beforeEach(() => {
   vi.mocked(updateProfile).mockReset().mockResolvedValue(undefined);
   vi.mocked(signInAnonymously).mockReset();
   vi.mocked(signInWithPopup).mockReset();
-  vi.mocked(sendSignInLinkToEmail).mockReset().mockResolvedValue(undefined);
-  vi.mocked(isSignInWithEmailLink).mockReset();
-  vi.mocked(signInWithEmailLink).mockReset();
   vi.mocked(fetchSignInMethodsForEmail).mockReset().mockResolvedValue([]);
   vi.mocked(linkWithCredential).mockReset().mockResolvedValue(undefined as never);
   vi.mocked(signOut).mockReset().mockResolvedValue(undefined);
   vi.mocked(GoogleAuthProvider.credentialFromError).mockReset();
   vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+  vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
   mockAuthState.currentUser = null;
   if (typeof window !== "undefined") {
     window.localStorage.clear();
@@ -316,139 +303,6 @@ describe("linkGoogleWithPassword", () => {
   });
 });
 
-describe("sendEmailLinkForJoin", () => {
-  it("sends link and stores email in localStorage", async () => {
-    await sendEmailLinkForJoin("alice@example.com", "/join/t1");
-
-    expect(sendSignInLinkToEmail).toHaveBeenCalled();
-    expect(window.localStorage.getItem("emailForSignIn")).toBe("alice@example.com");
-  });
-
-  it("stores trimmed displayName when provided", async () => {
-    await sendEmailLinkForJoin("alice@example.com", "/join/t1", "  Alice  ");
-    expect(window.localStorage.getItem("displayNameForSignIn")).toBe("Alice");
-  });
-
-  it("removes stored displayName when blank provided", async () => {
-    window.localStorage.setItem("displayNameForSignIn", "Old");
-    await sendEmailLinkForJoin("alice@example.com", "/join/t1", "   ");
-    expect(window.localStorage.getItem("displayNameForSignIn")).toBeNull();
-  });
-
-  it("normalizes invalid-email error", async () => {
-    vi.mocked(sendSignInLinkToEmail).mockRejectedValue(
-      new FirebaseError("auth/invalid-email", "bad"),
-    );
-    await expect(sendEmailLinkForJoin("notmail", "/x")).rejects.toMatchObject({
-      code: "auth/invalid-email",
-    });
-  });
-});
-
-describe("storage helpers", () => {
-  it("getStoredEmailForSignIn returns null when not set", () => {
-    expect(getStoredEmailForSignIn()).toBeNull();
-  });
-
-  it("getStoredEmailForSignIn returns stored value", () => {
-    window.localStorage.setItem("emailForSignIn", "x@y.com");
-    expect(getStoredEmailForSignIn()).toBe("x@y.com");
-  });
-
-  it("clearStoredEmailForSignIn removes value", () => {
-    window.localStorage.setItem("emailForSignIn", "x@y.com");
-    clearStoredEmailForSignIn();
-    expect(window.localStorage.getItem("emailForSignIn")).toBeNull();
-  });
-
-  it("getStoredDisplayNameForSignIn round-trips", () => {
-    window.localStorage.setItem("displayNameForSignIn", "Bob");
-    expect(getStoredDisplayNameForSignIn()).toBe("Bob");
-    clearStoredDisplayNameForSignIn();
-    expect(getStoredDisplayNameForSignIn()).toBeNull();
-  });
-});
-
-describe("isEmailLinkUrl", () => {
-  it("delegates to isSignInWithEmailLink", () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    expect(isEmailLinkUrl("https://example.com/x")).toBe(true);
-
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(false);
-    expect(isEmailLinkUrl("https://example.com/y")).toBe(false);
-  });
-});
-
-describe("completeEmailLink", () => {
-  it("rejects when URL is not a sign-in link", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(false);
-    await expect(completeEmailLink("https://x")).rejects.toMatchObject({
-      code: "auth/email-link-invalid",
-    });
-  });
-
-  it("rejects when no email available (neither fallback nor stored)", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    await expect(completeEmailLink("https://x")).rejects.toMatchObject({
-      code: "auth/email-missing-on-callback",
-    });
-  });
-
-  it("uses fallbackEmail when provided", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    const user = makeUser();
-    vi.mocked(signInWithEmailLink).mockResolvedValue({ user } as never);
-
-    const result = await completeEmailLink("https://x", "alice@example.com");
-
-    expect(result).toBe(user);
-  });
-
-  it("clears stored email after success", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    window.localStorage.setItem("emailForSignIn", "alice@example.com");
-    const user = makeUser();
-    vi.mocked(signInWithEmailLink).mockResolvedValue({ user } as never);
-
-    await completeEmailLink("https://x");
-
-    expect(window.localStorage.getItem("emailForSignIn")).toBeNull();
-  });
-
-  it("applies stored displayName when user has none", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    window.localStorage.setItem("emailForSignIn", "alice@example.com");
-    window.localStorage.setItem("displayNameForSignIn", "Alice");
-    const user = makeUser({ displayName: null });
-    vi.mocked(signInWithEmailLink).mockResolvedValue({ user } as never);
-
-    await completeEmailLink("https://x");
-
-    expect(updateProfile).toHaveBeenCalledWith(user, { displayName: "Alice" });
-  });
-
-  it("logs and continues if updateProfile throws (best-effort)", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    window.localStorage.setItem("emailForSignIn", "a@b.com");
-    window.localStorage.setItem("displayNameForSignIn", "Alice");
-    const user = makeUser({ displayName: null });
-    vi.mocked(signInWithEmailLink).mockResolvedValue({ user } as never);
-    vi.mocked(updateProfile).mockRejectedValueOnce(new Error("network"));
-
-    await expect(completeEmailLink("https://x")).resolves.toBe(user);
-  });
-
-  it("wraps signInWithEmailLink errors", async () => {
-    vi.mocked(isSignInWithEmailLink).mockReturnValue(true);
-    window.localStorage.setItem("emailForSignIn", "a@b.com");
-    vi.mocked(signInWithEmailLink).mockRejectedValue(new Error("boom"));
-
-    await expect(completeEmailLink("https://x")).rejects.toMatchObject({
-      code: "auth/email-link-failed",
-    });
-  });
-});
-
 describe("updateDisplayName", () => {
   it("rejects when not authenticated", async () => {
     mockAuthState.currentUser = null;
@@ -488,14 +342,59 @@ describe("updateDisplayName", () => {
 });
 
 describe("logout", () => {
-  it("calls signOut on success", async () => {
+  it("calls signOut on success for non-anonymous user", async () => {
+    mockAuthState.currentUser = makeUser();
     await logout();
     expect(signOut).toHaveBeenCalled();
+    expect(deleteUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("calls signOut when currentUser is null", async () => {
+    mockAuthState.currentUser = null;
+    await logout();
+    expect(signOut).toHaveBeenCalled();
+    expect(deleteUserProfile).not.toHaveBeenCalled();
   });
 
   it("wraps errors with auth/logout-failed", async () => {
+    mockAuthState.currentUser = makeUser();
     vi.mocked(signOut).mockRejectedValue(new Error("boom"));
     await expect(logout()).rejects.toMatchObject({ code: "auth/logout-failed" });
+  });
+
+  it("deletes user profile and auth account for anonymous user", async () => {
+    const user = makeUser({ isAnonymous: true });
+    mockAuthState.currentUser = user;
+
+    await logout();
+
+    expect(deleteUserProfile).toHaveBeenCalledWith("u1");
+    expect(user.delete).toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("falls back to signOut when anonymous delete fails", async () => {
+    const user = makeUser({
+      isAnonymous: true,
+      delete: vi.fn().mockRejectedValue(new Error("requires-recent-login")),
+    });
+    mockAuthState.currentUser = user;
+
+    await logout();
+
+    expect(deleteUserProfile).toHaveBeenCalledWith("u1");
+    expect(user.delete).toHaveBeenCalled();
+    expect(signOut).toHaveBeenCalled();
+  });
+
+  it("falls back to signOut when deleteUserProfile fails", async () => {
+    const user = makeUser({ isAnonymous: true });
+    mockAuthState.currentUser = user;
+    vi.mocked(deleteUserProfile).mockRejectedValue(new Error("boom"));
+
+    await logout();
+
+    expect(signOut).toHaveBeenCalled();
   });
 });
 

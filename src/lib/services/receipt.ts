@@ -4,14 +4,15 @@ import { AppError } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
-import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
+import {
+  deleteUserProfile,
+  getUserProfile,
+  upsertUserProfile,
+} from "@/lib/firebase/repositories/users";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import {
-  clearStoredDisplayNameForSignIn,
-  completeEmailLink,
   loginWithEmail,
-  sendEmailLinkForJoin,
   signInAsGuest,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
@@ -124,49 +125,9 @@ export async function joinAsGuest({
 }
 
 /**
- * メール登録での受付リクエスト。未認証の相手がメールを入力するフローのため、
- * tournament の存在確認はメールリンクコールバック側 (`joinViaEmailLinkComplete`) で行い、
- * ここでは送信のみ行う。displayName は受付完了時に使うため localStorage に一時保存する。
- */
-export async function joinViaEmailLinkRequest({
-  tid,
-  email,
-  displayName,
-}: {
-  tid: string;
-  email: string;
-  displayName?: string;
-}): Promise<void> {
-  await sendEmailLinkForJoin(email, `/join/${tid}`, displayName);
-  logger.info("email link request ok", { tid });
-}
-
-export async function joinViaEmailLinkComplete({
-  tid,
-  currentUrl,
-  fallbackEmail,
-  displayName,
-}: {
-  tid: string;
-  currentUrl: string;
-  fallbackEmail?: string;
-  displayName?: string;
-}): Promise<ReceiptResult> {
-  try {
-    const user = await completeEmailLink(currentUrl, fallbackEmail);
-    const result = await ensurePlayerCreated(tid, user, displayName);
-    logger.info("email link complete ok", { tid, uid: user.uid, result });
-    return result;
-  } finally {
-    // 成功・失敗どちらのパスでも localStorage の一時保存をクリア。
-    // 残留すると次回別メールリンクで誤った displayName が当たる可能性がある。
-    clearStoredDisplayNameForSignIn();
-  }
-}
-
-/**
  * 既に認証済みの（ログイン済み）ユーザーをそのまま受付する。
  * `/join/[tid]` で `useAuthUser` が user を持っている場合の「そのまま参加」導線で利用。
+ * 運営者が setup 画面から自己参加する「自分も参加する」導線でも利用する（Phase 4.5）。
  */
 export async function joinAsCurrentUser({
   tid,
@@ -187,6 +148,8 @@ export async function joinAsCurrentUser({
 /**
  * 参加者本人による自己取消。
  * Firestore rules は `pid == request.auth.uid` の delete を許可する必要がある。
+ *
+ * Phase 4.5: 匿名ゲストの場合は player 削除後に users/{uid} と auth を best-effort で削除する。
  */
 export async function cancelOwnEntry(tid: string): Promise<void> {
   const user = firebaseAuth.currentUser;
@@ -195,6 +158,21 @@ export async function cancelOwnEntry(tid: string): Promise<void> {
   }
   await deletePlayer(tid, user.uid);
   logger.info("cancel own entry ok", { tid, uid: user.uid });
+
+  if (user.isAnonymous) {
+    try {
+      await deleteUserProfile(user.uid);
+      await user.delete();
+      logger.info("anonymous self-delete after cancel", { uid: user.uid, tid });
+    } catch (e) {
+      const code =
+        e instanceof Error && "code" in e
+          ? String((e as { code: unknown }).code)
+          : "unknown";
+      logger.warn("anonymous self-delete failed", { code, uid: user.uid });
+      // best-effort: 残留は許容
+    }
+  }
 }
 
 /**

@@ -27,20 +27,31 @@ vi.mock("@/lib/firebase/repositories/players", () => ({
 vi.mock("@/lib/firebase/repositories/users", () => ({
   upsertUserProfile: vi.fn(),
   getUserProfile: vi.fn(),
+  deleteUserProfile: vi.fn(),
 }));
 vi.mock("@/lib/services/auth-actions", () => ({
   signInAsGuest: vi.fn(),
   loginWithEmail: vi.fn(),
-  sendEmailLinkForJoin: vi.fn(),
-  completeEmailLink: vi.fn(),
+  signInWithGoogle: vi.fn(),
 }));
 
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
-import { getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
-import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
-import { signInAsGuest } from "@/lib/services/auth-actions";
+import { getPlayer, upsertPlayer, deletePlayer } from "@/lib/firebase/repositories/players";
+import {
+  deleteUserProfile,
+  getUserProfile,
+  upsertUserProfile,
+} from "@/lib/firebase/repositories/users";
+import { loginWithEmail, signInAsGuest, signInWithGoogle } from "@/lib/services/auth-actions";
 
-import { joinAsCurrentUser, joinAsGuest } from "./receipt";
+import {
+  cancelOwnEntry,
+  cancelPlayerEntry,
+  joinAsCurrentUser,
+  joinAsExistingUser,
+  joinAsGuest,
+  joinViaGoogle,
+} from "./receipt";
 
 const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 
@@ -226,5 +237,254 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
       code: "validation/display-name-required",
     });
     expect(upsertPlayer).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelOwnEntry", () => {
+  beforeEach(() => {
+    vi.mocked(deletePlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
+    mockAuthState.currentUser = null;
+  });
+
+  it("rejects when not authenticated", async () => {
+    mockAuthState.currentUser = null;
+    await expect(cancelOwnEntry("t1")).rejects.toMatchObject({
+      code: "auth/not-authenticated",
+    });
+    expect(deletePlayer).not.toHaveBeenCalled();
+  });
+
+  it("deletes only player for non-anonymous user", async () => {
+    mockAuthState.currentUser = {
+      uid: "u1",
+      email: "alice@example.com",
+      displayName: "Alice",
+      isAnonymous: false,
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await cancelOwnEntry("t1");
+
+    expect(deletePlayer).toHaveBeenCalledWith("t1", "u1");
+    expect(deleteUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("also deletes user profile and auth for anonymous user", async () => {
+    const userDelete = vi.fn().mockResolvedValue(undefined);
+    mockAuthState.currentUser = {
+      uid: "guest-1",
+      email: null,
+      displayName: "Alice",
+      isAnonymous: true,
+      delete: userDelete,
+    };
+
+    await cancelOwnEntry("t1");
+
+    expect(deletePlayer).toHaveBeenCalledWith("t1", "guest-1");
+    expect(deleteUserProfile).toHaveBeenCalledWith("guest-1");
+    expect(userDelete).toHaveBeenCalled();
+  });
+
+  it("tolerates anonymous delete failures (best-effort)", async () => {
+    const userDelete = vi.fn().mockRejectedValue(new Error("requires-recent-login"));
+    mockAuthState.currentUser = {
+      uid: "guest-1",
+      email: null,
+      displayName: "Alice",
+      isAnonymous: true,
+      delete: userDelete,
+    };
+
+    await expect(cancelOwnEntry("t1")).resolves.toBeUndefined();
+    expect(deletePlayer).toHaveBeenCalledWith("t1", "guest-1");
+  });
+
+  it("swallows delete failures with non-standard error (no code property)", async () => {
+    const userDelete = vi.fn().mockRejectedValue("string-error");
+    mockAuthState.currentUser = {
+      uid: "guest-1",
+      email: null,
+      displayName: "Alice",
+      isAnonymous: true,
+      delete: userDelete,
+    };
+
+    await expect(cancelOwnEntry("t1")).resolves.toBeUndefined();
+  });
+});
+
+describe("cancelPlayerEntry", () => {
+  beforeEach(() => {
+    vi.mocked(deletePlayer).mockReset().mockResolvedValue(undefined);
+  });
+
+  it("delegates to deletePlayer with given pid", async () => {
+    await cancelPlayerEntry("t1", "p1");
+    expect(deletePlayer).toHaveBeenCalledWith("t1", "p1");
+  });
+
+  it("propagates deletePlayer errors", async () => {
+    vi.mocked(deletePlayer).mockRejectedValue(
+      new AppError("permission denied", "firestore/permission-denied"),
+    );
+    await expect(cancelPlayerEntry("t1", "p1")).rejects.toMatchObject({
+      code: "firestore/permission-denied",
+    });
+  });
+});
+
+describe("joinAsExistingUser", () => {
+  beforeEach(() => {
+    vi.mocked(getTournament).mockReset().mockResolvedValue(makeTournament());
+    vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
+    vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+    vi.mocked(loginWithEmail).mockReset();
+  });
+
+  it("logs in and upserts player on happy path", async () => {
+    vi.mocked(loginWithEmail).mockResolvedValue({
+      uid: "u1",
+      email: "alice@example.com",
+      displayName: "Alice",
+    } as unknown as Awaited<ReturnType<typeof loginWithEmail>>);
+
+    const result = await joinAsExistingUser({
+      tid: "t1",
+      email: "alice@example.com",
+      password: "pw",
+    });
+
+    expect(result).toBe("created");
+    expect(loginWithEmail).toHaveBeenCalledWith("alice@example.com", "pw");
+    expect(upsertPlayer).toHaveBeenCalledWith("t1", "u1", { displayName: "Alice" });
+  });
+
+  it("returns already-joined when existing player record is found", async () => {
+    vi.mocked(loginWithEmail).mockResolvedValue({
+      uid: "u1",
+      email: "alice@example.com",
+      displayName: "Alice",
+    } as unknown as Awaited<ReturnType<typeof loginWithEmail>>);
+    vi.mocked(getPlayer).mockResolvedValue({
+      id: "u1",
+      uid: "u1",
+      displayName: "Alice",
+      entryAt: now,
+      isBusted: false,
+      bustedAt: null,
+      tableNum: null,
+      seatNum: null,
+      lastMovedAt: null,
+    });
+
+    const result = await joinAsExistingUser({
+      tid: "t1",
+      email: "alice@example.com",
+      password: "pw",
+    });
+
+    expect(result).toBe("already-joined");
+  });
+
+  it("propagates loginWithEmail errors", async () => {
+    vi.mocked(loginWithEmail).mockRejectedValue(
+      new AppError("login failed", "auth/invalid-credentials"),
+    );
+    await expect(
+      joinAsExistingUser({ tid: "t1", email: "alice@example.com", password: "pw" }),
+    ).rejects.toMatchObject({ code: "auth/invalid-credentials" });
+  });
+});
+
+describe("joinViaGoogle", () => {
+  beforeEach(() => {
+    vi.mocked(getTournament).mockReset().mockResolvedValue(makeTournament());
+    vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
+    vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+    vi.mocked(signInWithGoogle).mockReset();
+  });
+
+  it("signs in with google and creates player on happy path", async () => {
+    vi.mocked(signInWithGoogle).mockResolvedValue({
+      uid: "u-google",
+      email: "alice@example.com",
+      displayName: "Alice",
+    } as unknown as Awaited<ReturnType<typeof signInWithGoogle>>);
+
+    const result = await joinViaGoogle({ tid: "t1" });
+
+    expect(result).toBe("created");
+    expect(signInWithGoogle).toHaveBeenCalled();
+    expect(upsertPlayer).toHaveBeenCalledWith("t1", "u-google", { displayName: "Alice" });
+  });
+
+  it("propagates signInWithGoogle errors", async () => {
+    vi.mocked(signInWithGoogle).mockRejectedValue(
+      new AppError("popup closed", "auth/popup-closed"),
+    );
+    await expect(joinViaGoogle({ tid: "t1" })).rejects.toMatchObject({
+      code: "auth/popup-closed",
+    });
+  });
+});
+
+describe("assertAcceptingEntries (via joinAsGuest)", () => {
+  beforeEach(() => {
+    vi.mocked(getTournament).mockReset();
+    vi.mocked(signInAsGuest).mockReset().mockResolvedValue({
+      uid: "guest-1",
+      email: null,
+      displayName: "Alice",
+    } as unknown as Awaited<ReturnType<typeof signInAsGuest>>);
+    vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
+    vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+  });
+
+  it("rejects when running tournament is past late-entry deadline", async () => {
+    vi.mocked(getTournament).mockResolvedValue(
+      makeTournament({
+        state: "running",
+        currentLevel: 7,
+        lateEntryDeadlineLevel: 6,
+      }),
+    );
+
+    await expect(joinAsGuest({ tid: "t1", displayName: "Alice" })).rejects.toMatchObject({
+      code: "tournament/late-entry-closed",
+    });
+  });
+
+  it("rejects when paused tournament is past late-entry deadline", async () => {
+    vi.mocked(getTournament).mockResolvedValue(
+      makeTournament({
+        state: "paused",
+        currentLevel: 10,
+        lateEntryDeadlineLevel: 6,
+      }),
+    );
+
+    await expect(joinAsGuest({ tid: "t1", displayName: "Alice" })).rejects.toMatchObject({
+      code: "tournament/late-entry-closed",
+    });
+  });
+
+  it("accepts when running tournament is within late-entry deadline", async () => {
+    vi.mocked(getTournament).mockResolvedValue(
+      makeTournament({
+        state: "running",
+        currentLevel: 4,
+        lateEntryDeadlineLevel: 6,
+      }),
+    );
+
+    await expect(joinAsGuest({ tid: "t1", displayName: "Alice" })).resolves.toBe("created");
   });
 });
