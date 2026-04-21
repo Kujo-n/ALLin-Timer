@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
 import {
+  connectFirestoreEmulator,
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
@@ -9,6 +10,15 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
+
+// E2E テスト用: `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true` 設定時に Firebase Auth /
+// Firestore をローカル emulator（127.0.0.1:9099 / :8080）へ向ける。本番・開発では無効。
+const useEmulator =
+  typeof window !== "undefined" &&
+  process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true";
+const AUTH_EMULATOR_URL = "http://127.0.0.1:9099";
+const FIRESTORE_EMULATOR_HOST = "127.0.0.1";
+const FIRESTORE_EMULATOR_PORT = 8080;
 
 // During build / SSR, Firebase SDK is evaluated at module-load time even for
 // client components; falling back to a placeholder keeps the build green
@@ -60,9 +70,17 @@ firebaseAuth.languageCode = "ja";
 // SSR 側では window 未定義のため従来通り getFirestore を使う。
 // initializeFirestore は既に初期化済みの場合に throw するため try/catch で
 // getFirestore にフォールバックする（HMR 二重初期化対策）。
+// E2E emulator 利用時は persistentLocalCache を無効化（テスト間状態汚染を防ぐ）。
 function createFirestore() {
   if (typeof window === "undefined") {
     return getFirestore(firebaseApp);
+  }
+  if (useEmulator) {
+    try {
+      return initializeFirestore(firebaseApp, {});
+    } catch {
+      return getFirestore(firebaseApp);
+    }
   }
   try {
     return initializeFirestore(firebaseApp, {
@@ -77,3 +95,19 @@ function createFirestore() {
 }
 
 export const firestore = createFirestore();
+
+// E2E: emulator へ接続。重複接続は Firebase SDK 側で throw するため globalThis 上の
+// flag でガード（HMR 再実行・複数ページ開きでの re-invocation 対策）。
+if (useEmulator) {
+  type EmulatorFlag = { __FIREBASE_EMULATORS_CONNECTED__?: boolean };
+  const g = globalThis as typeof globalThis & EmulatorFlag;
+  if (!g.__FIREBASE_EMULATORS_CONNECTED__) {
+    connectAuthEmulator(firebaseAuth, AUTH_EMULATOR_URL, { disableWarnings: true });
+    connectFirestoreEmulator(firestore, FIRESTORE_EMULATOR_HOST, FIRESTORE_EMULATOR_PORT);
+    g.__FIREBASE_EMULATORS_CONNECTED__ = true;
+    logger.info("firebase emulators connected", {
+      auth: AUTH_EMULATOR_URL,
+      firestore: `${FIRESTORE_EMULATOR_HOST}:${FIRESTORE_EMULATOR_PORT}`,
+    });
+  }
+}
