@@ -36,12 +36,24 @@ vi.mock("@/lib/firebase/converters", () => ({
   zodConverter: vi.fn(() => ({})),
 }));
 
+vi.mock("@/lib/firebase/repositories/players", () => ({
+  bustPlayer: vi.fn(),
+  unbustPlayer: vi.fn(),
+}));
+
 import { runTransaction, updateDoc } from "firebase/firestore";
+
+import {
+  bustPlayer as bustPlayerWrite,
+  unbustPlayer as unbustPlayerWrite,
+} from "@/lib/firebase/repositories/players";
 
 import {
   applyBalancingOnce,
   autoSeatLateEntry,
+  bustPlayer,
   commitInitialSeating,
+  unbustPlayer,
 } from "./orchestrator";
 
 const ts = Timestamp.fromDate(new Date("2026-04-20T10:00:00Z"));
@@ -125,6 +137,8 @@ function mockTransaction(
 beforeEach(() => {
   vi.mocked(runTransaction).mockReset();
   vi.mocked(updateDoc).mockReset().mockResolvedValue(undefined);
+  vi.mocked(bustPlayerWrite).mockReset().mockResolvedValue(undefined);
+  vi.mocked(unbustPlayerWrite).mockReset().mockResolvedValue(undefined);
 });
 
 describe("commitInitialSeating", () => {
@@ -614,5 +628,319 @@ describe("applyBalancingOnce → applyTableBreak (TG2)", () => {
     await expect(
       applyBalancingOnce("t1", "u1", ["g-other"], seated, tables, 9),
     ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+  });
+
+  it("skips with reason=busted when fresh player snapshot shows isBusted", async () => {
+    const { seated, tables } = tableBreakFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: unknown[] = [];
+    // b1 が tx 内で isBusted=true を観測 → skipReason=busted で早期 return
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "b1",
+          data: () =>
+            stripId(
+              player({
+                id: "b1",
+                tableNum: 2,
+                seatNum: 1,
+                isBusted: true,
+                bustedAt: ts,
+              }),
+            ),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch),
+    );
+
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+
+    expect(result.applied).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("skips with reason=missing when target player doc vanishes in tx", async () => {
+    const { seated, tables } = tableBreakFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({ exists: () => false }),
+    ]);
+
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+
+    expect(result.applied).toBe(false);
+  });
+
+  it("skips with reason=race when target player lastMovedAt differs in tx", async () => {
+    const { seated, tables } = tableBreakFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const movedTs = Timestamp.fromMillis(999_000);
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({
+        exists: () => true,
+        id: "b1",
+        data: () =>
+          stripId(
+            player({
+              id: "b1",
+              tableNum: 2,
+              seatNum: 1,
+              // 期待値は null（fixture に lastMovedAt 未設定）だが fresh 側は 999_000
+              lastMovedAt: movedTs,
+            }),
+          ),
+      }),
+    ]);
+
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+    expect(result.applied).toBe(false);
+  });
+});
+
+describe("autoSeatLateEntry — additional skip reasons", () => {
+  it("skips with reason=state when tournament is still in setup", async () => {
+    const t = makeTournament({ state: "setup" });
+    const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+    ]);
+    const result = await autoSeatLateEntry(
+      "t1",
+      "u1",
+      ["g1"],
+      "new",
+      null,
+      seated,
+      [],
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(result.reason).toBe("state");
+  });
+
+  it("skips with reason=missing when player doc does not exist in tx", async () => {
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({ exists: () => false }),
+    ]);
+    const result = await autoSeatLateEntry(
+      "t1",
+      "u1",
+      ["g1"],
+      "new",
+      null,
+      seated,
+      [],
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(result.reason).toBe("missing");
+  });
+
+  it("skips with reason=busted when player is already busted", async () => {
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({
+        exists: () => true,
+        id: "new",
+        data: () =>
+          stripId(
+            player({ id: "new", isBusted: true, bustedAt: ts }),
+          ),
+      }),
+    ]);
+    const result = await autoSeatLateEntry(
+      "t1",
+      "u1",
+      ["g1"],
+      "new",
+      null,
+      seated,
+      [],
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(result.reason).toBe("busted");
+  });
+
+  it("wraps unexpected tx errors with firestore/write_failed", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(new Error("network"));
+    const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
+    await expect(
+      autoSeatLateEntry("t1", "u1", ["g1"], "new", null, seated, [], 9),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
+describe("applyBalancingOnce → applySingleMove — additional skip reasons", () => {
+  function balancingFixture() {
+    const seated = [
+      ...Array.from({ length: 7 }, (_, i) =>
+        player({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        player({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    const tables = [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+    ];
+    return { seated, tables };
+  }
+
+  it("skips with reason=missing when mover doc vanishes in tx", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({ exists: () => false }),
+    ]);
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+    expect(result.applied).toBe(false);
+  });
+
+  it("skips with reason=busted when mover is busted at tx", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({
+        exists: () => true,
+        id: "a1",
+        data: () =>
+          stripId(
+            player({
+              id: "a1",
+              tableNum: 1,
+              seatNum: 1,
+              isBusted: true,
+              bustedAt: ts,
+            }),
+          ),
+      }),
+    ]);
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+    expect(result.applied).toBe(false);
+  });
+
+  it("skips with reason=race when mover lastMovedAt differs in tx", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const movedTs = Timestamp.fromMillis(555_000);
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({
+        exists: () => true,
+        id: "a1",
+        data: () =>
+          stripId(
+            player({
+              id: "a1",
+              tableNum: 1,
+              seatNum: 1,
+              lastMovedAt: movedTs,
+            }),
+          ),
+      }),
+    ]);
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+    expect(result.applied).toBe(false);
+  });
+});
+
+describe("commitInitialSeating — additional branches", () => {
+  it("wraps invalid-seats-per-table errors from engine", async () => {
+    const t = makeTournament({ state: "setup" });
+    const players = [player({ id: "p1" })];
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+      () => ({ exists: () => true, id: "p1", data: () => stripId(players[0]) }),
+    ]);
+    // seatsPerTable=0 は engine 側で InvalidSeatsPerTableError を発火
+    await expect(
+      commitInitialSeating("t1", "u1", ["g1"], players, 1, 0),
+    ).rejects.toMatchObject({ code: "seating/invalid-seats-per-table" });
+  });
+
+  it("throws firestore/not-found when tournament doc does not exist", async () => {
+    mockTransaction([() => ({ exists: () => false })]);
+    await expect(
+      commitInitialSeating("t1", "u1", ["g1"], [], Date.now()),
+    ).rejects.toMatchObject({ code: "firestore/not-found" });
+  });
+
+  it("skips busted players during tx.get re-read", async () => {
+    const t = makeTournament({ state: "setup" });
+    // p1 は busted 状態で tx が返す → 除外 → p2 のみ席割当
+    const p1 = player({ id: "p1" });
+    const p2 = player({ id: "p2" });
+    const updateCalls: Array<Record<string, unknown>> = [];
+    const setCalls: Array<Record<string, unknown>> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "p1",
+          data: () =>
+            stripId(player({ id: "p1", isBusted: true, bustedAt: ts })),
+        }),
+        () => ({ exists: () => true, id: "p2", data: () => stripId(p2) }),
+      ],
+      (_ref, patch) => updateCalls.push(patch as Record<string, unknown>),
+      (_ref, patch) => setCalls.push(patch as Record<string, unknown>),
+    );
+
+    await commitInitialSeating("t1", "u1", ["g1"], [p1, p2], 42);
+
+    // p2 だけ席割当 + 1 tournament state update = 2 updates, 1 tables.set
+    expect(updateCalls).toHaveLength(2);
+    expect(setCalls).toHaveLength(1);
+  });
+
+  it("skips tx.get returns missing (non-existing) players", async () => {
+    const t = makeTournament({ state: "setup" });
+    const p1 = player({ id: "p1" });
+    const p2 = player({ id: "p2" });
+    const updateCalls: Array<Record<string, unknown>> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({ exists: () => false }),
+        () => ({ exists: () => true, id: "p2", data: () => stripId(p2) }),
+      ],
+      (_ref, patch) => updateCalls.push(patch as Record<string, unknown>),
+    );
+
+    await commitInitialSeating("t1", "u1", ["g1"], [p1, p2], 42);
+    // p2 だけ割当 + tournament = 2 updates
+    expect(updateCalls).toHaveLength(2);
+  });
+});
+
+describe("bustPlayer / unbustPlayer wrappers", () => {
+  it("bustPlayer delegates to players.bustPlayer", async () => {
+    await bustPlayer("t1", "p1");
+    expect(bustPlayerWrite).toHaveBeenCalledWith("t1", "p1");
+  });
+
+  it("unbustPlayer delegates to players.unbustPlayer", async () => {
+    await unbustPlayer("t1", "p1");
+    expect(unbustPlayerWrite).toHaveBeenCalledWith("t1", "p1");
+  });
+
+  it("bustPlayer propagates underlying errors", async () => {
+    vi.mocked(bustPlayerWrite).mockRejectedValueOnce(new Error("network"));
+    await expect(bustPlayer("t1", "p1")).rejects.toThrow("network");
   });
 });
