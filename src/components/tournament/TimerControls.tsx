@@ -23,6 +23,7 @@ import {
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { commitInitialSeating } from "@/lib/services/seating/orchestrator";
 
 interface Props {
@@ -38,6 +39,7 @@ interface Props {
 type Op =
   | "commit-seating"
   | "confirm-seating"
+  | "self-join"
   | "pause"
   | "resume"
   | "advance"
@@ -67,6 +69,7 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
 
   if (tournament.state === "setup") {
     const activeCount = players.filter((p) => !p.isBusted).length;
+    const alreadyJoined = players.some((p) => p.uid === uid);
     return (
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -85,6 +88,24 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
         >
           {busy === "commit-seating" ? "配席中…" : "席を決定"}
         </Button>
+        {!alreadyJoined ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={() =>
+              void run(
+                "self-join",
+                async () => {
+                  await joinAsCurrentUser({ tid });
+                },
+                "自己参加に失敗",
+              )
+            }
+          >
+            {busy === "self-join" ? "登録中…" : "自分も参加する"}
+          </Button>
+        ) : null}
         {activeCount === 0 ? (
           <span className="text-xs text-muted-foreground">参加者がいません</span>
         ) : null}

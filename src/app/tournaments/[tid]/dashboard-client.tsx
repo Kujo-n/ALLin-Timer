@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { QrPanel } from "@/components/qr/QrPanel";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
@@ -11,6 +11,7 @@ import { PlayerList } from "@/components/tournament/PlayerList";
 import { SeatingBoard } from "@/components/tournament/SeatingBoard";
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
+import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -25,14 +26,19 @@ import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
-import { deleteTournamentIfSetup } from "@/lib/firebase/repositories/tournaments";
+import {
+  deleteTournamentIfSetup,
+  finishTournament,
+} from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
-import { getLevelInfo } from "@/lib/services/timer";
+import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
+
+const AUTO_FINISH_DELAY_MS = 2000;
 
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
@@ -93,6 +99,45 @@ export function DashboardClient({ tid }: { tid: string }) {
     players,
     tables,
   });
+
+  // Phase 4.5: 残り 1 人になった時点で 2 秒後に自動で finishTournament を呼ぶ。
+  // 参加者端末（非 group メンバー）では rule 違反になるため dashboard（運営者側）のみで trigger。
+  // 冪等性は finishTournament 内部で担保（state === "finished" なら no-op）。
+  //
+  // 依存は primitive (winner?.id / data?.state 等) に絞り、Firestore snapshot の
+  // 再発行で deps オブジェクト参照が変わっても不要な再装填を起こさないようにする。
+  const winner = useMemo(
+    () => (data ? resolveWinner(data, players) : null),
+    [data, players],
+  );
+  const winnerId = winner?.id ?? null;
+  const dataId = data?.id;
+  const dataState = data?.state;
+  const dataGroupId = data?.groupId;
+  const userUid = user?.uid;
+
+  const autoFinishInflightRef = useRef(false);
+  useEffect(() => {
+    if (!userUid || !dataId || !dataGroupId) return;
+    if (!groupIds.includes(dataGroupId)) return;
+    if (dataState !== "running" && dataState !== "paused") return;
+    if (!winnerId) return;
+    if (autoFinishInflightRef.current) return;
+
+    autoFinishInflightRef.current = true;
+    const capturedGroupIds = groupIds;
+    const timer = setTimeout(() => {
+      void finishTournament(dataId, userUid, capturedGroupIds).catch((e) => {
+        const code = e instanceof AppError ? e.code : "unknown";
+        logger.warn("auto finish failed", { code, tid: dataId });
+        autoFinishInflightRef.current = false;
+      });
+    }, AUTO_FINISH_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      autoFinishInflightRef.current = false;
+    };
+  }, [winnerId, dataId, dataState, dataGroupId, userUid, groupIds]);
 
   async function onDelete() {
     if (!user) return;
@@ -177,6 +222,8 @@ export function DashboardClient({ tid }: { tid: string }) {
       ) : null}
 
       <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+
+      {winner ? <WinnerBanner winner={winner} /> : null}
 
       {isMember ? (
         <TimerControls
