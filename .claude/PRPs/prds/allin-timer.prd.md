@@ -193,6 +193,7 @@
 | 生成 AI による実装で仕様理解が甘くなる | M | 特にバランシングロジックは AI 出力を鵜呑みにせず、自分で TDA ルールを読み込んで検証 |
 | GitHub 公開時の秘密情報漏洩 | M | `.env.local` で Firebase 認証情報を管理、`.gitignore` 徹底。サークル固有データは Firestore にのみ保存 |
 | 招待コード `usesCount` の悪意ある第三者による空消費（DoS） | L（現行） / M（`maxUses` UI 追加時） | Phase 2.5 の rule は `usesCount + 1` 更新を全認証ユーザーに許可しており、コードが流出すると加入意図のない第三者が `maxUses` まで空消費して無効化できる。**現行は default `maxUses: null`（無制限）のため顕在化しない**。Phase 3+ で `maxUses` を運営者 UI から設定可能にする際は、`usesCount` 更新と `groups/{gid}.memberUids` への自分追加を atomic に検証する仕組みが必須（Cloud Functions 化が現実解）。詳細は [.claude/rules/group-membership.md](../../rules/group-membership.md) |
+| dev 依存の esbuild 脆弱性（GHSA-67mh-4wv8-2f99） | L（dev-only） | Phase 4.5 時点で `npm audit` が 6 moderate を検出。すべて `esbuild <= 0.24.2`（vite / vitest 経由の dev dependency）由来で**本番バンドル外**。攻撃成立条件は「ローカル dev サーバ稼働中に悪意のあるサイトを同時に開く」という限定的シナリオ。修正には `vitest@4.1.5` への破壊的アップグレード（API 変更 + 既存 296+ tests の書き直しリスク）が必要なため、**Phase 5 以降の独立タスクとして遅延対応**する。`npm audit fix --force` は絶対に実行しないこと（テストスイートが壊れる）。対応時は `vitest v4 migration` plan を `/prp-plan` で新設する。 |
 
 ---
 
@@ -212,7 +213,7 @@
 | 2.5 | Group (サークル) Management | `groups/{gid}` コレクション新設、複数運営者共有、招待コードでメンバー加入、structures/tournaments を group 配下に破壊的移行 | complete | - | 2 | [completed/phase-2.5-group-management.plan.md](../plans/completed/phase-2.5-group-management.plan.md) — 実装レポート: [phase-2.5-group-management-report.md](../reports/phase-2.5-group-management-report.md) |
 | 3 | Timer & Realtime & Viewer | タイマーコア、Firestore `onSnapshot` 同期、接続切断 UI、参加者閲覧画面 | complete | with 4 | 2.5 | [completed/phase-3-timer-realtime-viewer.plan.md](../plans/completed/phase-3-timer-realtime-viewer.plan.md) — 実装レポート: [phase-3-timer-realtime-viewer-report.md](../reports/phase-3-timer-realtime-viewer-report.md) |
 | 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | complete | with 3 | 2.5 | [completed/phase-4-seating-automation.plan.md](../plans/completed/phase-4-seating-automation.plan.md) — 実装レポート: [phase-4-seating-automation-report.md](../reports/phase-4-seating-automation-report.md) |
-| 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | in-progress | - | 4 | [phase-4.5-pre-phase5-improvements.plan.md](../plans/phase-4.5-pre-phase5-improvements.plan.md) |
+| 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | complete | - | 4 | [completed/phase-4.5-pre-phase5-improvements.plan.md](../plans/completed/phase-4.5-pre-phase5-improvements.plan.md) — 実装レポート: [phase-4.5-pre-phase5-improvements-report.md](../reports/phase-4.5-pre-phase5-improvements-report.md) |
 | 4.6 | Member Role Split | `groups/{gid}` を owner / organizer / general member の 3 階層化（`ownerUids` 複数可・`organizerUids` 新設）、一般メンバーは自サークルのトーナメント一覧閲覧＋ワンタップ参加、昇降格 UI は owner 専用、破壊的 migration あり | pending | - | 4.5 | [phase-4.6-member-role-split.plan.md](../plans/phase-4.6-member-role-split.plan.md) |
 | 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6 | - |
 
@@ -319,6 +320,8 @@
   - 賞金計算（単純分配）を余力に応じて追加
   - 初回サークル投入 → 運営者フィードバック収集
   - 即時修正と次回投入準備
+- **UX 磨き込み候補（Phase 4.5 から繰越）**:
+  - `/groups` 一覧カードの「詳細」ボタンを **「開く」** にリネーム（遷移先の意図を強調、Phase 4.5 レビューで判明した「`/groups` と `/groups/[gid]` の役割が一見して分かりづらい」への対応）
 - **Success signal**: サークル 1 回目の投入でトーナメントが完走し、運営者から継続利用の意思表明を得る
 
 ### Parallelism Notes
