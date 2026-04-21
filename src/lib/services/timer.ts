@@ -1,3 +1,4 @@
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { Level } from "@/lib/firebase/schemas/structure";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
@@ -57,6 +58,27 @@ export function getRemainingMs(tournament: TournamentDoc, nowMs: number): number
   // running
   const elapsed = nowMs - startMs - accum;
   return Math.max(0, durationMs - elapsed);
+}
+
+/**
+ * 残り 1 人（= 優勝確定）を判定する。
+ *   - running / paused / finished のいずれかで、未バストが 1 人のみかつ総参加者 2 人以上
+ *   - 上記条件を満たす場合、残った未バストプレイヤーを返す
+ *   - 該当しない場合は null
+ *
+ * Phase 4.5: Winner バナー表示と auto-finish のトリガ条件に利用する。
+ */
+export function resolveWinner(
+  tournament: TournamentDoc,
+  players: readonly PlayerDoc[],
+): PlayerDoc | null {
+  const isRunningOrPaused = tournament.state === "running" || tournament.state === "paused";
+  const isFinished = tournament.state === "finished";
+  if (!isRunningOrPaused && !isFinished) return null;
+  if (players.length < 2) return null;
+  const active = players.filter((p) => !p.isBusted);
+  if (active.length !== 1) return null;
+  return active[0];
 }
 
 /**
