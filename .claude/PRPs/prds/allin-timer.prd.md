@@ -212,7 +212,9 @@
 | 2.5 | Group (サークル) Management | `groups/{gid}` コレクション新設、複数運営者共有、招待コードでメンバー加入、structures/tournaments を group 配下に破壊的移行 | complete | - | 2 | [completed/phase-2.5-group-management.plan.md](../plans/completed/phase-2.5-group-management.plan.md) — 実装レポート: [phase-2.5-group-management-report.md](../reports/phase-2.5-group-management-report.md) |
 | 3 | Timer & Realtime & Viewer | タイマーコア、Firestore `onSnapshot` 同期、接続切断 UI、参加者閲覧画面 | complete | with 4 | 2.5 | [completed/phase-3-timer-realtime-viewer.plan.md](../plans/completed/phase-3-timer-realtime-viewer.plan.md) — 実装レポート: [phase-3-timer-realtime-viewer-report.md](../reports/phase-3-timer-realtime-viewer-report.md) |
 | 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | complete | with 3 | 2.5 | [completed/phase-4-seating-automation.plan.md](../plans/completed/phase-4-seating-automation.plan.md) — 実装レポート: [phase-4-seating-automation-report.md](../reports/phase-4-seating-automation-report.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4 | - |
+| 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | in-progress | - | 4 | [phase-4.5-pre-phase5-improvements.plan.md](../plans/phase-4.5-pre-phase5-improvements.plan.md) |
+| 4.6 | Member Role Split | `groups/{gid}` を owner / organizer / general member の 3 階層化（`ownerUids` 複数可・`organizerUids` 新設）、一般メンバーは自サークルのトーナメント一覧閲覧＋ワンタップ参加、昇降格 UI は owner 専用、破壊的 migration あり | pending | - | 4.5 | [phase-4.6-member-role-split.plan.md](../plans/phase-4.6-member-role-split.plan.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6 | - |
 
 ### Phase Details
 
@@ -278,6 +280,37 @@
   - バランシングロジックの単体テスト
 - **Success signal**: 架空の 20 人・3 テーブルトーナメントで、バスト発生 → バランス指示が TDA ルール通りに算出され、進行中の新規参加も自動配席される
 
+**Phase 4.5: Pre-Phase 5 Improvements**
+- **Goal**: Phase 5 のドライラン前に、Phase 4 完了時点で洗い出された UX / 運用の摩擦を一括整理する
+- **背景**: 受付・席管理・バランシングは Phase 4 で完結したが、`/groups` 画面からの導線不足・ヘッダーの email 表示・Winner 演出の欠如・匿名アカウントの蓄積・未使用の Email Link 方式など、実投入前に潰しておきたい 7 件の改善要望が発生
+- **Scope**:
+  - 運営者ダッシュボード（setup）に「自分も参加する」ワンクリック導線追加
+  - `/groups/[gid]` からトーナメント / ストラクチャへの直接遷移ボタン追加
+  - ヘッダーのユーザー表示を `displayName` 優先に変更（email はフォールバック）
+  - 未ログイン時のトップ画面を「ログイン/新規登録」1 ボタンに簡素化
+  - 残り 1 人を検知した時点で Winner バナー表示 → 2 秒後に `finishTournament` を運営者端末から自動呼出
+  - トーナメント終了 / ログアウト / 参加取消時、匿名ユーザーの Firebase Auth + `users/{uid}` を client-side best-effort で自己削除
+  - Email Link サインイン方式の完全撤廃（ルート・UI タブ・auth-actions・receipt・localStorage・テストすべて削除）
+- **Success signal**: 7 件すべての挙動を手動確認し、typecheck / lint / test / build が green、Phase 5 のドライラン準備が整う
+
+**Phase 4.6: Member Role Split**
+- **Goal**: サークル所属を「運営（organizer）」と「一般メンバー（general member）」に分離し、一般メンバーがアプリ上から参加サークルのトーナメントを見てワンタップ参加できるようにする
+- **背景**: Phase 2.5 のフラットな `memberUids` モデルでは「見るだけ・参加だけ」の権限レベルが存在せず、実サークルで非運営者をそのままメンバーに加えると全員が CRUD 権限を持ってしまう。実運用では「運営 2-3 人 + 参加する側の一般メンバー多数」の構成が必要
+- **Scope**:
+  - `groups/{gid}` スキーマ拡張: `ownerUid: string` → `ownerUids: string[]`（**オーナー複数可**）、`organizerUids: string[]` 新設（`memberUids ⊇ organizerUids ⊇ ownerUids` の invariant）
+  - 既存メンバーは全員 organizer として migration（運営権限は保持、破壊なし）。既存 `ownerUid` は `ownerUids: [ownerUid]` に昇格
+  - 招待コード加入のデフォルトを「一般メンバー」に変更（`memberUids` のみ +1、organizerUids / ownerUids には追加しない）
+  - ロール昇降格 UI は **オーナー専用**（owner のみ member ↔ organizer ↔ owner を操作可能）
+  - 最後のオーナーは降格 / 脱退 / group 削除不可（service + rule の二重ガード）
+  - `/tournaments` 一覧は一般メンバーも閲覧可能、カードに「参加する」ボタン追加（`joinAsCurrentUser` ワンタップ）
+  - 一般メンバーが `/tournaments/{tid}` （運営ダッシュボード）URL を直打ちした場合、`/tournaments/{tid}/live` にリダイレクト
+  - Firestore Security Rules: structures / tournaments / groupJoinCodes の write 条件を `isGroupMember` → `isOrganizer` に強化、groups の rename / delete / roles update は `isOwner` 判定（ownerUids 配列対応）
+  - 既存データ移行用 migration スクリプト（admin SDK、dry-run 対応）
+- **Success signal**:
+  - Owner / Organizer / Member の 3 視点でブラウザ検証がすべて通る（運営 UI の表示/非表示、参加ボタンの挙動、ロール変更の反映）
+  - Migration スクリプトが既存 groups を破壊せず新スキーマに揃える
+  - 最後のオーナー保護などの invariant が service + rule 両層で enforce されている
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -292,7 +325,9 @@
 
 - **Phase 2.5（Group Management）は破壊的スキーマ変更**のため、Phase 3 / 4 をブロックする。Phase 2 完了後に単独で進める
 - Phase 3（タイマー／同期）と Phase 4（席管理）は、Phase 2.5 完了後は相互独立なので並列可能
-- Phase 5（実地テスト）は全機能結合が前提のため、3 と 4 の双方完了後
+- Phase 4.5（UX 整理）は Phase 4 完了後の後付け改善。Phase 5 のドライラン前に完了させる
+- Phase 4.6（ロール分離）は Phase 4.5 完了後に単独実施。**破壊的スキーマ変更**のため他 phase とは並行しない
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 の完了後
 
 ---
 
