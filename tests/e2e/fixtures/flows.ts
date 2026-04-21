@@ -1,0 +1,134 @@
+import { expect, type Page } from "@playwright/test";
+
+/**
+ * UI 経由のセットアップフロー。E2E のテスト冒頭で使う。
+ *
+ * 原則として Server Actions や Admin SDK を使わず、実ユーザ操作と同じ経路で
+ * 「運営者として登録済み + group + structure + tournament(setup)」状態を作る。
+ *
+ * いずれの helper もログイン状態を維持する（page は同一セッション）。
+ */
+
+export interface OrganizerCredentials {
+  email: string;
+  password: string;
+  displayName: string;
+}
+
+export function randomOrganizer(prefix = "organizer"): OrganizerCredentials {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return {
+    email: `${prefix}-${suffix}@e2e.local`,
+    password: "pass123456",
+    displayName: `${prefix}-${suffix}`,
+  };
+}
+
+/** /login の 新規登録タブから organizer アカウントを作成。 */
+export async function registerOrganizer(page: Page, creds: OrganizerCredentials): Promise<void> {
+  await page.goto("/login");
+  await page.getByRole("tab", { name: "新規登録" }).click();
+  await page.getByLabel("表示名").fill(creds.displayName);
+  await page.getByLabel("メールアドレス").fill(creds.email);
+  await page.getByLabel("パスワード").fill(creds.password);
+  await Promise.all([
+    page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 }),
+    page.getByRole("button", { name: "新規登録" }).click(),
+  ]);
+}
+
+/** /groups/new から作成 → 遷移した `/groups/[gid]` の gid を返す。 */
+export async function createGroup(page: Page, name: string): Promise<string> {
+  await page.goto("/groups/new");
+  await page.getByLabel("サークル名").fill(name);
+  await Promise.all([
+    // `/groups/new` にマッチしないよう negative lookahead で除外。
+    page.waitForURL(
+      (url) => {
+        const m = url.pathname.match(/^\/groups\/([^/]+)$/);
+        return m !== null && m[1] !== "new" && m[1] !== "join";
+      },
+      { timeout: 15_000 },
+    ),
+    page.getByRole("button", { name: /^作成$/ }).click(),
+  ]);
+  const m = page.url().match(/\/groups\/([^/?#]+)/);
+  if (!m) throw new Error(`failed to parse gid from ${page.url()}`);
+  return m[1];
+}
+
+/** /structures/new から最小のストラクチャを作成（default の 2 レベルを利用）。 */
+export async function createDefaultStructure(page: Page, name: string): Promise<void> {
+  await page.goto("/structures/new");
+  await page.getByLabel("ストラクチャ名").fill(name);
+  await Promise.all([
+    page.waitForURL("**/structures", { timeout: 15_000 }),
+    page.getByRole("button", { name: /^作成$/ }).click(),
+  ]);
+}
+
+/** /tournaments/new から作成 → 遷移した `/tournaments/[tid]` の tid を返す。 */
+export async function createTournament(
+  page: Page,
+  name: string,
+  seatsPerTable = 9,
+): Promise<string> {
+  await page.goto("/tournaments/new");
+  await page.getByLabel("トーナメント名").fill(name);
+  const seats = page.getByLabel("1 卓あたりの席数");
+  await seats.fill(String(seatsPerTable));
+  await Promise.all([
+    // `/tournaments/new` にマッチしないよう negative lookahead で除外。
+    page.waitForURL(
+      (url) => {
+        const m = url.pathname.match(/^\/tournaments\/([^/]+)$/);
+        return m !== null && m[1] !== "new";
+      },
+      { timeout: 15_000 },
+    ),
+    page.getByRole("button", { name: /^作成$/ }).click(),
+  ]);
+  const m = page.url().match(/\/tournaments\/([^/?#]+)/);
+  if (!m) throw new Error(`failed to parse tid from ${page.url()}`);
+  return m[1];
+}
+
+/**
+ * 組織者登録 → group → structure → tournament(setup) まで一括作成。
+ * Phase 4.5 のテストで共通の初期状態。
+ */
+export async function seedOrganizerTournament(
+  page: Page,
+  options: {
+    organizer: OrganizerCredentials;
+    groupName?: string;
+    structureName?: string;
+    tournamentName?: string;
+    seatsPerTable?: number;
+  },
+): Promise<{ gid: string; tid: string }> {
+  await registerOrganizer(page, options.organizer);
+  const gid = await createGroup(page, options.groupName ?? "E2E サークル");
+  await createDefaultStructure(page, options.structureName ?? "E2E Default");
+  const tid = await createTournament(
+    page,
+    options.tournamentName ?? "E2E Tournament",
+    options.seatsPerTable ?? 9,
+  );
+  return { gid, tid };
+}
+
+/** 新しい context ページから匿名ゲストとして受付する。 */
+export async function joinAsGuest(
+  page: Page,
+  tid: string,
+  displayName: string,
+): Promise<void> {
+  await page.goto(`/join/${tid}`);
+  await page.getByRole("tab", { name: "ゲスト" }).click();
+  await page.getByLabel("表示名").fill(displayName);
+  await page.getByRole("button", { name: /ゲストで受付/ }).click();
+  // Cold emulator では signInAnonymously + 2 Firestore writes に時間が掛かるため 30s 許容。
+  // shadcn の CardTitle は <div> 実装で role=heading を持たないので getByText を使う。
+  await expect(page.getByText(/受付完了|既に参加済み/)).toBeVisible({ timeout: 30_000 });
+}
