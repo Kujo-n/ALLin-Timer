@@ -15,12 +15,17 @@ interface OrganizerCredentials {
   displayName: string;
 }
 
-export function randomOrganizer(prefix = "organizer"): OrganizerCredentials {
+export function randomOrganizer(prefix = "op"): OrganizerCredentials {
   const suffix = Math.random().toString(36).slice(2, 8);
+  // Phase 4.7: displayName は 15 文字上限（`DISPLAY_NAME_MAX_LENGTH`）。
+  // `<Input maxLength>` は先頭 15 文字のみ残すため、それを超える値を assertion で
+  // 使うと listitem 一致が壊れる。prefix は suffix と区切り文字含めて 15 文字以内に収める。
+  const fullName = `${prefix}-${suffix}`;
+  const displayName = fullName.slice(0, 15);
   return {
     email: `${prefix}-${suffix}@e2e.local`,
     password: "pass123456",
-    displayName: `${prefix}-${suffix}`,
+    displayName,
   };
 }
 
