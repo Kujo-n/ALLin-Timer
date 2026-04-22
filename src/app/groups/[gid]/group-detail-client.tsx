@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup } from "@/lib/firebase/repositories/groups";
-import { getUserProfile } from "@/lib/firebase/repositories/users";
 import { deriveRole, type GroupDoc, type MemberRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
@@ -73,14 +72,14 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       const g = await getGroup(gid);
       setGroup(g);
       setRenameValue(g.name);
-      const settled = await Promise.allSettled(g.memberUids.map((uid) => getUserProfile(uid)));
-      const lines: MemberLine[] = g.memberUids.map((uid, i) => {
-        const r = settled[i];
-        if (r.status === "fulfilled" && r.value) {
-          return { uid, displayName: r.value.displayName };
-        }
-        return { uid, displayName: uid };
-      });
+      // Phase 4.7: 他メンバーの users/{uid} は rule で read できないため、
+      // group.memberDisplayNames の snapshot を表示する。未登録 / 空文字は uid フォールバック。
+      //   `??` は空文字を通してしまうため `||` で falsy も除外する。
+      const nameMap = g.memberDisplayNames ?? {};
+      const lines: MemberLine[] = g.memberUids.map((uid) => ({
+        uid,
+        displayName: nameMap[uid] || uid,
+      }));
       setMembers(lines);
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得失敗");

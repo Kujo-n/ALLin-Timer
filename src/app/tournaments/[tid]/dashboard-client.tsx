@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { QrPanel } from "@/components/qr/QrPanel";
+import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { PlayerList } from "@/components/tournament/PlayerList";
@@ -245,6 +246,8 @@ export function DashboardClient({ tid }: { tid: string }) {
       ) : null}
 
       <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+
+      <AverageStackCard tournament={data} players={players} />
 
       {winner ? <WinnerBanner winner={winner} /> : null}
 

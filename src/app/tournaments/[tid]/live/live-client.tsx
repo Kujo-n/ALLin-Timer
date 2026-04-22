@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
@@ -115,6 +116,8 @@ export function LiveClient({ tid }: { tid: string }) {
         levelInfo={levelInfo}
         className="w-full max-w-md"
       />
+
+      <AverageStackCard tournament={tournament} players={players} className="w-full max-w-md" />
 
       {winner ? <WinnerBanner winner={winner} /> : null}
 
