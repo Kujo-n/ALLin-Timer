@@ -94,6 +94,8 @@ export function StructureEditClient({ sid }: { sid: string }) {
         initialValue={{
           name: data.name,
           initialStack: data.initialStack,
+          rebuyStack: data.rebuyStack ?? null,
+          addOnStack: data.addOnStack ?? null,
           lateEntryDeadlineLevel: data.lateEntryDeadlineLevel,
           levels: data.levels,
         }}

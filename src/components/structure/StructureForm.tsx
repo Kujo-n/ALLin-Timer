@@ -15,6 +15,8 @@ import {
 interface StructureFormInitialValue {
   name: string;
   initialStack: number;
+  rebuyStack: number | null;
+  addOnStack: number | null;
   lateEntryDeadlineLevel: number;
   levels: Level[];
 }
@@ -24,13 +26,23 @@ function parseNonNegativeInt(value: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+function parseOptionalPositiveInt(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const n = Number.parseInt(trimmed, 10);
+  if (Number.isNaN(n) || n <= 0) return null;
+  return n;
+}
+
 const DEFAULT_INITIAL: StructureFormInitialValue = {
   name: "",
   initialStack: 10000,
+  rebuyStack: null,
+  addOnStack: null,
   lateEntryDeadlineLevel: 6,
   levels: [
-    { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 },
-    { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600 },
+    { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+    { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
   ],
 };
 
@@ -53,6 +65,8 @@ export function StructureForm({
 }: Props) {
   const [name, setName] = useState(initialValue.name);
   const [initialStack, setInitialStack] = useState(initialValue.initialStack);
+  const [rebuyStack, setRebuyStack] = useState<number | null>(initialValue.rebuyStack);
+  const [addOnStack, setAddOnStack] = useState<number | null>(initialValue.addOnStack);
   const [lateEntryDeadlineLevel, setLateEntryDeadlineLevel] = useState(
     initialValue.lateEntryDeadlineLevel,
   );
@@ -68,6 +82,8 @@ export function StructureForm({
       createdByUid,
       name,
       initialStack,
+      rebuyStack,
+      addOnStack,
       lateEntryDeadlineLevel,
       levels,
     };
@@ -119,6 +135,30 @@ export function StructureForm({
             value={lateEntryDeadlineLevel}
             onChange={(e) => setLateEntryDeadlineLevel(parseNonNegativeInt(e.target.value))}
             required
+          />
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="s-rebuy">リバイ スタック（任意）</Label>
+          <Input
+            id="s-rebuy"
+            type="number"
+            min={1}
+            value={rebuyStack ?? ""}
+            onChange={(e) => setRebuyStack(parseOptionalPositiveInt(e.target.value))}
+            placeholder="リバイなしの場合は空欄"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="s-addon">アドオン スタック（任意）</Label>
+          <Input
+            id="s-addon"
+            type="number"
+            min={1}
+            value={addOnStack ?? ""}
+            onChange={(e) => setAddOnStack(parseOptionalPositiveInt(e.target.value))}
+            placeholder="アドオンなしの場合は空欄"
           />
         </div>
       </div>

@@ -36,6 +36,19 @@ export function LevelTable({ levels, onChange }: Props) {
     onChange(next);
   }
 
+  function toggleBreak(index: number, checked: boolean) {
+    const next = levels.map((l, i) => {
+      if (i !== index) return l;
+      if (checked) {
+        // ブレイク化: SB/BB/Ante を 0 にリセットする。これで zod の `!isBreak && bb<=0` refine を通過できる。
+        return { ...l, isBreak: true, sb: 0, bb: 0, ante: 0 };
+      }
+      // ブレイク解除: BB は最低 1 に戻して refine を通過させる。
+      return { ...l, isBreak: false, bb: Math.max(1, l.bb) };
+    });
+    onChange(next);
+  }
+
   function removeRow(index: number) {
     const next = levels.filter((_, i) => i !== index).map((l, i) => ({ ...l, level: i + 1 }));
     onChange(next);
@@ -47,11 +60,12 @@ export function LevelTable({ levels, onChange }: Props) {
       ? {
           level: levels.length + 1,
           sb: last.sb * 2,
-          bb: last.bb * 2,
+          bb: Math.max(1, last.bb * 2),
           ante: last.ante,
           durationSec: last.durationSec,
+          isBreak: false,
         }
-      : { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 };
+      : { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false };
     onChange([...levels, base]);
   }
 
@@ -66,6 +80,7 @@ export function LevelTable({ levels, onChange }: Props) {
               <th className="px-2 py-1">BB</th>
               <th className="px-2 py-1">Ante</th>
               <th className="px-2 py-1">分</th>
+              <th className="px-2 py-1">BREAK</th>
               <th className="w-10 px-2 py-1" aria-label="delete" />
             </tr>
           </thead>
@@ -78,6 +93,7 @@ export function LevelTable({ levels, onChange }: Props) {
                     type="number"
                     min={0}
                     value={l.sb}
+                    disabled={l.isBreak}
                     onChange={(e) => updateChip(i, "sb", e.target.value)}
                     aria-label={`level-${l.level}-sb`}
                   />
@@ -85,8 +101,9 @@ export function LevelTable({ levels, onChange }: Props) {
                 <td className="px-2 py-1">
                   <Input
                     type="number"
-                    min={1}
+                    min={0}
                     value={l.bb}
+                    disabled={l.isBreak}
                     onChange={(e) => updateChip(i, "bb", e.target.value)}
                     aria-label={`level-${l.level}-bb`}
                   />
@@ -96,6 +113,7 @@ export function LevelTable({ levels, onChange }: Props) {
                     type="number"
                     min={0}
                     value={l.ante}
+                    disabled={l.isBreak}
                     onChange={(e) => updateChip(i, "ante", e.target.value)}
                     aria-label={`level-${l.level}-ante`}
                   />
@@ -107,6 +125,14 @@ export function LevelTable({ levels, onChange }: Props) {
                     value={secToMin(l.durationSec)}
                     onChange={(e) => updateDurationMin(i, e.target.value)}
                     aria-label={`level-${l.level}-duration-min`}
+                  />
+                </td>
+                <td className="px-2 py-1 text-center">
+                  <input
+                    type="checkbox"
+                    checked={l.isBreak}
+                    onChange={(e) => toggleBreak(i, e.target.checked)}
+                    aria-label={`level-${l.level}-is-break`}
                   />
                 </td>
                 <td className="px-2 py-1 text-right">
