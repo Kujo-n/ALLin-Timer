@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { deriveRole, groupBodySchema, type GroupBody } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
 import { playerBodySchema } from "./player";
-import { structureBodySchema } from "./structure";
+import { levelSchema, structureBodySchema } from "./structure";
 import { tournamentBodySchema } from "./tournament";
 import { userProfileBodySchema } from "./user";
 
@@ -77,6 +77,82 @@ describe("structureBodySchema", () => {
       levels: [{ level: 1, sb: -1, bb: 50, ante: 0, durationSec: 600 }],
     });
     expect(result.success).toBe(false);
+  });
+
+  // Phase 4.7: rebuy/addOn は optional で旧 doc は default null で受容される
+  it("defaults rebuyStack / addOnStack to null when omitted", () => {
+    const parsed = structureBodySchema.parse(baseStructure);
+    expect(parsed.rebuyStack).toBeNull();
+    expect(parsed.addOnStack).toBeNull();
+  });
+
+  it("accepts positive rebuyStack / addOnStack", () => {
+    const parsed = structureBodySchema.parse({
+      ...baseStructure,
+      rebuyStack: 10000,
+      addOnStack: 15000,
+    });
+    expect(parsed.rebuyStack).toBe(10000);
+    expect(parsed.addOnStack).toBe(15000);
+  });
+
+  it("rejects zero or negative rebuyStack", () => {
+    const result = structureBodySchema.safeParse({
+      ...baseStructure,
+      rebuyStack: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// Phase 4.7: levelSchema に isBreak を追加
+describe("levelSchema", () => {
+  it("defaults isBreak to false when omitted (legacy doc)", () => {
+    const parsed = levelSchema.parse({
+      level: 1,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+    });
+    expect(parsed.isBreak).toBe(false);
+  });
+
+  it("accepts break level with sb/bb/ante=0", () => {
+    const parsed = levelSchema.parse({
+      level: 5,
+      sb: 0,
+      bb: 0,
+      ante: 0,
+      durationSec: 300,
+      isBreak: true,
+    });
+    expect(parsed.isBreak).toBe(true);
+    expect(parsed.bb).toBe(0);
+  });
+
+  it("rejects play level with bb=0", () => {
+    const result = levelSchema.safeParse({
+      level: 2,
+      sb: 0,
+      bb: 0,
+      ante: 0,
+      durationSec: 300,
+      isBreak: false,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts play level with bb>0", () => {
+    const parsed = levelSchema.parse({
+      level: 2,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+      isBreak: false,
+    });
+    expect(parsed.bb).toBe(50);
   });
 });
 
@@ -298,6 +374,54 @@ describe("groupBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // Phase 4.7: memberDisplayNames の値制約 — 1〜15 文字
+  it("accepts memberDisplayNames with 1〜15 char values", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1", "u2"],
+      memberDisplayNames: { u1: "A", u2: "123456789012345" },
+      createdAt: now,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects memberDisplayNames with empty-string value", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      memberDisplayNames: { u1: "" },
+      createdAt: now,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects memberDisplayNames with >15 char value", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      memberDisplayNames: { u1: "1234567890123456" }, // 16 chars
+      createdAt: now,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("defaults memberDisplayNames to {} for legacy docs without the field", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.memberDisplayNames).toEqual({});
+  });
 });
 
 describe("deriveRole", () => {
@@ -306,6 +430,7 @@ describe("deriveRole", () => {
     ownerUids: ["u-owner"],
     organizerUids: ["u-owner", "u-org"],
     memberUids: ["u-owner", "u-org", "u-mem"],
+    memberDisplayNames: {},
     createdAt: now,
   };
 

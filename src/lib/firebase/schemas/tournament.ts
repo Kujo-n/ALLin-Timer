@@ -9,6 +9,9 @@ export type TournamentState = z.infer<typeof tournamentStateSchema>;
 export const structureSnapshotSchema = z.object({
   name: z.string().min(1),
   initialStack: z.number().int().positive(),
+  // Phase 4.7: リバイ／アドオン用のチップ量（任意）。旧 snapshot は default null で受容。
+  rebuyStack: z.number().int().positive().nullable().default(null),
+  addOnStack: z.number().int().positive().nullable().default(null),
   lateEntryDeadlineLevel: z.number().int().positive(),
   levels: z.array(levelSchema).min(1),
 });

@@ -77,10 +77,12 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
+      rebuyStack: null,
+      addOnStack: null,
       lateEntryDeadlineLevel: 6,
       levels: [
-        { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 },
-        { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600 },
+        { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+        { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
       ],
     },
     state: "running",
@@ -131,8 +133,10 @@ describe("createTournament", () => {
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
+      rebuyStack: null,
+      addOnStack: null,
       lateEntryDeadlineLevel: 6,
-      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 }],
+      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false }],
     },
     seatsPerTable: 9,
   };

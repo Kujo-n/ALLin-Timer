@@ -25,8 +25,10 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
+      rebuyStack: null,
+      addOnStack: null,
       lateEntryDeadlineLevel: 6,
-      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 }],
+      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false }],
     },
     state: "running",
     startedAt: ts,

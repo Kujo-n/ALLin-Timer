@@ -2,6 +2,17 @@ import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
 /**
+ * サークル内表示名の最大文字数。
+ *
+ * Phase 4.7: スマートフォンの 1 行に収まり改行されない値として 15 に設定。
+ *   - Firestore Rules 側でも同じ上限を強制する（`firestore.rules` の self-add / self-update）
+ *   - UI の `<Input maxLength={DISPLAY_NAME_MAX_LENGTH}>` もこの値を参照する
+ *   - `auth.displayName` / `users/{uid}.displayName` / `groups/{gid}.memberDisplayNames[uid]`
+ *     すべてで同一の制約にそろえる。
+ */
+export const DISPLAY_NAME_MAX_LENGTH = 15;
+
+/**
  * `groups/{gid}` の本体スキーマ。サークル単位の所有権モデル。
  *
  * Phase 4.6 以降は 3 階層ロール:
@@ -19,6 +30,14 @@ export const groupBodySchema = z
     // 監査用ではなく rule の consumption proof。owner が自由に null に戻してよい。
     // 既存（Phase 4.6 まで）の doc では存在しないため optional。
     joinCodeId: z.string().min(1).nullable().optional(),
+    // Phase 4.7: uid → displayName のマップ snapshot（各メンバーが自分の entry を書込）。
+    //   - 旧 doc（Phase 4.6 以前）は default({}) で受容、UI は UID フォールバック
+    //   - rule は self-key 書込のみ許可: diff().affectedKeys().hasOnly([auth.uid])
+    //   - 値は 1〜DISPLAY_NAME_MAX_LENGTH 文字に制限（スマホ 1 行表示を担保、rule 側でも強制）
+    //   - propagate は `updateDisplayName` / `consumeJoinCode` / `removeMemberSelf` で実施
+    memberDisplayNames: z
+      .record(z.string().min(1), z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH))
+      .default({}),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

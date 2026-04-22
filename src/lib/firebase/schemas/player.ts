@@ -1,6 +1,8 @@
 import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
+import { DISPLAY_NAME_MAX_LENGTH } from "./group";
+
 export const playerBodySchema = z.object({
   displayName: z.string().min(1),
   uid: z.string().nullable(),
@@ -18,7 +20,16 @@ export type PlayerBody = z.infer<typeof playerBodySchema>;
 /** UI が扱うプレイヤー（body + 合成した id、id は通常 auth.uid と同一）。 */
 export type PlayerDoc = PlayerBody & { id: string };
 
+/**
+ * Phase 4.7: 受付フローのゲスト表示名入力バリデーション。
+ *   auth.displayName / users.displayName / groups.memberDisplayNames[uid] と同じ上限に揃える
+ *   （スマホ 1 行表示制約）。
+ */
 export const joinInputSchema = z.object({
   tid: z.string().min(1),
-  displayName: z.string().trim().min(1, "表示名を入力してください").max(40, "表示名は 40 文字以内"),
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "表示名を入力してください")
+    .max(DISPLAY_NAME_MAX_LENGTH, `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください`),
 });
