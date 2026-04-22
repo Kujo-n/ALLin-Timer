@@ -28,6 +28,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   getGroup: vi.fn(),
   listMyGroups: vi.fn(),
   updateGroupName: vi.fn(),
+  updateGroupRoles: vi.fn(),
   removeMemberSelf: vi.fn(),
   deleteGroup: vi.fn(),
 }));
@@ -65,6 +66,7 @@ import {
   getGroup,
   removeMemberSelf,
   updateGroupName,
+  updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
 import { createJoinCode, getJoinCode } from "@/lib/firebase/repositories/groupJoinCodes";
 import {
@@ -77,8 +79,12 @@ import {
   consumeJoinCode,
   createGroupWithOwner,
   deleteGroupByOwner,
+  demoteOwner,
+  demoteToMember,
   generateJoinCode,
   leaveGroup,
+  promoteToOrganizer,
+  promoteToOwner,
   renameGroup,
 } from "./group";
 
@@ -87,11 +93,15 @@ const future = Timestamp.fromDate(new Date("2026-05-01T00:00:00Z"));
 const past = Timestamp.fromDate(new Date("2026-04-01T00:00:00Z"));
 
 function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
+  const ownerUids = overrides.ownerUids ?? ["u-owner"];
+  const organizerUids = overrides.organizerUids ?? [...ownerUids];
+  const memberUids = overrides.memberUids ?? [...organizerUids];
   return {
     id: "g1",
     name: "Saturday",
-    ownerUid: "u-owner",
-    memberUids: ["u-owner"],
+    ownerUids,
+    organizerUids,
+    memberUids,
     createdAt: now,
     ...overrides,
   };
@@ -116,6 +126,7 @@ beforeEach(() => {
   vi.mocked(removeMemberSelf).mockReset();
   vi.mocked(deleteGroup).mockReset();
   vi.mocked(updateGroupName).mockReset();
+  vi.mocked(updateGroupRoles).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
@@ -178,7 +189,6 @@ describe("consumeJoinCode", () => {
 
   it("runs transaction and adds groupId to user on happy path", async () => {
     vi.mocked(getJoinCode).mockResolvedValue(makeCode());
-    // user has no groups yet → not already a member
     vi.mocked(getUserProfile).mockResolvedValue({
       uid: "u-new",
       displayName: "Bob",
@@ -211,17 +221,42 @@ describe("consumeJoinCode", () => {
 });
 
 describe("leaveGroup", () => {
-  it("rejects when uid is the owner", async () => {
-    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u1", memberUids: ["u1"] }));
+  it("rejects when uid is the last owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ ownerUids: ["u1"], organizerUids: ["u1"], memberUids: ["u1"] }),
+    );
     await expect(leaveGroup({ gid: "g1", uid: "u1" })).rejects.toMatchObject({
-      code: "group/owner-cannot-leave",
+      code: "group/last-owner-cannot-leave",
     });
     expect(removeMemberSelf).not.toHaveBeenCalled();
   });
 
+  it("allows owner to leave when another owner remains", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u1", "u2"],
+        organizerUids: ["u1", "u2"],
+        memberUids: ["u1", "u2"],
+      }),
+    );
+    vi.mocked(updateGroupRoles).mockResolvedValue();
+    vi.mocked(removeMemberSelf).mockResolvedValue();
+    vi.mocked(removeGroupIdFromUser).mockResolvedValue();
+
+    await leaveGroup({ gid: "g1", uid: "u1" });
+
+    expect(updateGroupRoles).toHaveBeenCalledWith("g1", { ownerUids: ["u2"] });
+    expect(removeMemberSelf).toHaveBeenCalledWith("g1", "u1");
+    expect(removeGroupIdFromUser).toHaveBeenCalledWith("u1", "g1");
+  });
+
   it("removes member and updates user groupIds for non-owner", async () => {
     vi.mocked(getGroup).mockResolvedValue(
-      makeGroup({ ownerUid: "u-owner", memberUids: ["u-owner", "u-new"] }),
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-new"],
+      }),
     );
     vi.mocked(removeMemberSelf).mockResolvedValue();
     vi.mocked(removeGroupIdFromUser).mockResolvedValue();
@@ -230,6 +265,7 @@ describe("leaveGroup", () => {
 
     expect(removeMemberSelf).toHaveBeenCalledWith("g1", "u-new");
     expect(removeGroupIdFromUser).toHaveBeenCalledWith("u-new", "g1");
+    expect(updateGroupRoles).not.toHaveBeenCalled();
   });
 
   it("is idempotent when uid is not currently a member", async () => {
@@ -265,7 +301,7 @@ describe("generateJoinCode", () => {
 
 describe("deleteGroupByOwner", () => {
   it("rejects non-owner", async () => {
-    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
+    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUids: ["u-owner"] }));
     await expect(deleteGroupByOwner({ gid: "g1", uid: "u-other" })).rejects.toMatchObject({
       code: "group/not-owner",
     });
@@ -273,7 +309,7 @@ describe("deleteGroupByOwner", () => {
   });
 
   it("deletes group and removes own groupIds", async () => {
-    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
+    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUids: ["u-owner"] }));
     vi.mocked(deleteGroup).mockResolvedValue();
     vi.mocked(removeGroupIdFromUser).mockResolvedValue();
 
@@ -293,7 +329,7 @@ describe("renameGroup", () => {
   });
 
   it("rejects non-owner", async () => {
-    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
+    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUids: ["u-owner"] }));
     await expect(renameGroup({ gid: "g1", uid: "u-other", name: "New" })).rejects.toMatchObject({
       code: "group/not-owner",
     });
@@ -301,11 +337,202 @@ describe("renameGroup", () => {
   });
 
   it("trims name and calls updateGroupName when owner", async () => {
-    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUid: "u-owner" }));
+    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUids: ["u-owner"] }));
     vi.mocked(updateGroupName).mockResolvedValue();
 
     await renameGroup({ gid: "g1", uid: "u-owner", name: "  New name  " });
 
     expect(updateGroupName).toHaveBeenCalledWith("g1", "New name");
+  });
+});
+
+describe("promoteToOrganizer", () => {
+  it("adds target to organizerUids when actor is owner and target is a plain member", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(updateGroupRoles).mockResolvedValue();
+
+    await promoteToOrganizer({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).toHaveBeenCalledWith("g1", {
+      organizerUids: ["u-owner", "u-target"],
+    });
+  });
+
+  it("throws group/not-owner when actor is not an owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-actor"],
+        memberUids: ["u-owner", "u-actor", "u-target"],
+      }),
+    );
+    await expect(
+      promoteToOrganizer({ gid: "g1", actorUid: "u-actor", targetUid: "u-target" }),
+    ).rejects.toMatchObject({ code: "group/not-owner" });
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+
+  it("throws group/not-member when target is not in memberUids", async () => {
+    vi.mocked(getGroup).mockResolvedValue(makeGroup({ ownerUids: ["u-owner"] }));
+    await expect(
+      promoteToOrganizer({ gid: "g1", actorUid: "u-owner", targetUid: "u-stranger" }),
+    ).rejects.toMatchObject({ code: "group/not-member" });
+  });
+
+  it("is idempotent when target is already an organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+
+    await promoteToOrganizer({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+});
+
+describe("demoteToMember", () => {
+  it("removes target from organizerUids", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(updateGroupRoles).mockResolvedValue();
+
+    await demoteToMember({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).toHaveBeenCalledWith("g1", { organizerUids: ["u-owner"] });
+  });
+
+  it("throws group/target-is-owner when target is also an owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner", "u-target"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    await expect(
+      demoteToMember({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" }),
+    ).rejects.toMatchObject({ code: "group/target-is-owner" });
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when target is already a plain member", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+
+    await demoteToMember({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+});
+
+describe("promoteToOwner", () => {
+  it("adds target to ownerUids when target is already an organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(updateGroupRoles).mockResolvedValue();
+
+    await promoteToOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).toHaveBeenCalledWith("g1", {
+      ownerUids: ["u-owner", "u-target"],
+    });
+  });
+
+  it("throws group/target-not-organizer when target is not organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    await expect(
+      promoteToOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" }),
+    ).rejects.toMatchObject({ code: "group/target-not-organizer" });
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when target is already an owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner", "u-target"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+
+    await promoteToOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+});
+
+describe("demoteOwner", () => {
+  it("removes one of multiple owners", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner", "u-target"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(updateGroupRoles).mockResolvedValue();
+
+    await demoteOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).toHaveBeenCalledWith("g1", { ownerUids: ["u-owner"] });
+  });
+
+  it("throws group/last-owner when demoting the only owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner"],
+      }),
+    );
+    await expect(
+      demoteOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-owner" }),
+    ).rejects.toMatchObject({ code: "group/last-owner" });
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when target is not an owner", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+
+    await demoteOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(updateGroupRoles).not.toHaveBeenCalled();
   });
 });

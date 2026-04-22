@@ -18,6 +18,10 @@ vi.mock("@/lib/firebase/repositories/players", () => ({
 vi.mock("@/lib/firebase/repositories/users", () => ({
   deleteUserProfile: vi.fn(),
 }));
+// receipt.ts は firebase client を import するため、必要な関数のみ軽量 mock する。
+vi.mock("@/lib/services/receipt", () => ({
+  joinAsCurrentUser: vi.fn().mockResolvedValue("created"),
+}));
 
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";

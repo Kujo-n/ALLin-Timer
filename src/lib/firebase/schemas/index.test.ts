@@ -1,7 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 
-import { groupBodySchema } from "./group";
+import { deriveRole, groupBodySchema, type GroupBody } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
 import { playerBodySchema } from "./player";
 import { structureBodySchema } from "./structure";
@@ -222,11 +222,23 @@ describe("userProfileBodySchema", () => {
 });
 
 describe("groupBodySchema", () => {
-  it("parses a valid group", () => {
+  it("parses a valid group with all 3 role arrays", () => {
     const result = groupBodySchema.safeParse({
       name: "Saturday Circle",
-      ownerUid: "u1",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
       memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts multi-owner groups", () => {
+    const result = groupBodySchema.safeParse({
+      name: "Big Circle",
+      ownerUids: ["u1", "u2"],
+      organizerUids: ["u1", "u2", "u3"],
+      memberUids: ["u1", "u2", "u3", "u4"],
       createdAt: now,
     });
     expect(result.success).toBe(true);
@@ -235,8 +247,20 @@ describe("groupBodySchema", () => {
   it("rejects empty memberUids", () => {
     const result = groupBodySchema.safeParse({
       name: "X",
-      ownerUid: "u1",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
       memberUids: [],
+      createdAt: now,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty ownerUids", () => {
+    const result = groupBodySchema.safeParse({
+      name: "X",
+      ownerUids: [],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
       createdAt: now,
     });
     expect(result.success).toBe(false);
@@ -245,11 +269,60 @@ describe("groupBodySchema", () => {
   it("rejects empty name", () => {
     const result = groupBodySchema.safeParse({
       name: "",
-      ownerUid: "u1",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
       memberUids: ["u1"],
       createdAt: now,
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects owners that are not organizers (invariant)", () => {
+    const result = groupBodySchema.safeParse({
+      name: "X",
+      ownerUids: ["u1"],
+      organizerUids: ["u2"],
+      memberUids: ["u1", "u2"],
+      createdAt: now,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects organizers that are not members (invariant)", () => {
+    const result = groupBodySchema.safeParse({
+      name: "X",
+      ownerUids: ["u1"],
+      organizerUids: ["u1", "u9"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("deriveRole", () => {
+  const baseGroup: GroupBody = {
+    name: "G",
+    ownerUids: ["u-owner"],
+    organizerUids: ["u-owner", "u-org"],
+    memberUids: ["u-owner", "u-org", "u-mem"],
+    createdAt: now,
+  };
+
+  it("returns 'owner' when uid is in ownerUids", () => {
+    expect(deriveRole(baseGroup, "u-owner")).toBe("owner");
+  });
+
+  it("returns 'organizer' when uid is organizer-only", () => {
+    expect(deriveRole(baseGroup, "u-org")).toBe("organizer");
+  });
+
+  it("returns 'member' when uid is member-only", () => {
+    expect(deriveRole(baseGroup, "u-mem")).toBe("member");
+  });
+
+  it("returns null when uid is not in the group at all", () => {
+    expect(deriveRole(baseGroup, "u-stranger")).toBeNull();
   });
 });
 
