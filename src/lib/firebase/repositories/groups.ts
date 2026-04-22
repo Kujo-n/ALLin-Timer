@@ -3,6 +3,7 @@ import {
   arrayRemove,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   serverTimestamp,
@@ -13,6 +14,7 @@ import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
+  DISPLAY_NAME_MAX_LENGTH,
   groupBodySchema,
   type CreateGroupInput,
   type GroupDoc,
@@ -27,13 +29,22 @@ export function groupDocRef(gid: string) {
   return doc(groupsRef, gid);
 }
 
-export async function createGroup(input: CreateGroupInput): Promise<string> {
+export async function createGroup(
+  input: CreateGroupInput & { ownerDisplayName?: string | null },
+): Promise<string> {
   try {
+    const ownerDisplayName = input.ownerDisplayName?.trim();
+    // Phase 4.7: memberDisplayNames にはオーナー自身の entry を初期登録する（displayName が取れれば）。
+    //           空の場合は後続の updateDisplayName / propagateDisplayNameToGroups で backfill される。
+    const memberDisplayNames: Record<string, string> = ownerDisplayName
+      ? { [input.ownerUid]: ownerDisplayName }
+      : {};
     const ref = await addDoc(groupsRef, {
       name: input.name,
       ownerUids: [input.ownerUid],
       organizerUids: [input.ownerUid],
       memberUids: [input.ownerUid],
+      memberDisplayNames,
       createdAt: serverTimestamp(),
       joinCodeId: null,
     });
@@ -128,6 +139,8 @@ export async function updateGroupRoles(
  * self-leave：自分を memberUids / organizerUids / ownerUids の 3 配列から同時に外す。
  * rule 側は「自分が ownerUids に含まれない」状態での self-leave のみ許可するため、
  * owner が残る想定では本関数は呼ばない（service 側で事前に降格させる）。
+ *
+ * Phase 4.7: `memberDisplayNames` マップからも自分の entry を同時に削除する。
  */
 export async function removeMemberSelf(gid: string, uid: string): Promise<void> {
   try {
@@ -135,10 +148,47 @@ export async function removeMemberSelf(gid: string, uid: string): Promise<void> 
       memberUids: arrayRemove(uid),
       organizerUids: arrayRemove(uid),
       ownerUids: arrayRemove(uid),
+      [`memberDisplayNames.${uid}`]: deleteField(),
     });
     logger.info("group remove member ok", { gid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "サークル脱退に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, gid, uid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4.7: サインイン中のユーザーが自分の `memberDisplayNames[uid]` を書き込む。
+ * `updateDisplayName` からの propagate と join flow の両方で利用する。
+ * Rule 側は map の `auth.uid` キーのみ変更を許可（他フィールドは immutable）。
+ */
+export async function setMemberDisplayName(
+  gid: string,
+  uid: string,
+  displayName: string,
+): Promise<void> {
+  const trimmed = displayName.trim();
+  if (!trimmed) {
+    throw new AppError("表示名が空です", "validation/display-name-required");
+  }
+  if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+    throw new AppError(
+      `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください`,
+      "validation/display-name-too-long",
+    );
+  }
+  try {
+    await updateDoc(groupDocRef(gid), {
+      [`memberDisplayNames.${uid}`]: trimmed,
+    });
+    logger.info("group member displayName set ok", { gid, uid });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "メンバー表示名の更新に失敗しました",
+    );
     logger.warn(wrapped.message, { code: wrapped.code, gid, uid });
     throw wrapped;
   }

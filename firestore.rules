@@ -66,7 +66,8 @@ service cloud.firestore {
       // 非メンバーは「自分を memberUids に +1 追加、organizerUids / ownerUids は不変」のみ（招待コード加入）／
       // 非 owner メンバーは「自分を memberUids / organizerUids から -1 除外」のみ。
       allow update: if (
-        // owner update（name / ロール配列 / memberUids 自由、ただし ownerUids 空不可・createdAt 不変）
+        // owner update（name / ロール配列 / memberUids / memberDisplayNames 自由、
+        //   ただし ownerUids 空不可・createdAt 不変）
         isSignedIn()
         && request.auth.uid in resource.data.ownerUids
         && request.resource.data.ownerUids.size() >= 1
@@ -75,6 +76,9 @@ service cloud.firestore {
         // self-add（招待コード経由の参加）— 一般メンバーとして加入。
         // Phase 4.6.1: request.resource.data.joinCodeId で参照される groupJoinCodes doc の
         // 有効性と「この request 内での usesCount +1 消費」を rule 側で強制する。
+        // Phase 4.7: memberDisplayNames にも自分の entry を追加可能（他人の entry は不変）。
+        //   値は 1〜15 文字の string に制限（UI 側のスマホ 1 行表示可能長に揃える）。
+        //   diff 比較は両辺 .get(..., {}) で legacy doc（フィールド無し）でも evaluate 可能にする。
         isSignedIn()
         && !(request.auth.uid in resource.data.memberUids)
         && request.auth.uid in request.resource.data.memberUids
@@ -88,10 +92,19 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.joinCodeId is string
         && hasValidJoinCodeConsumption(gid, request.resource.data.joinCodeId)
+        && request.resource.data.get('memberDisplayNames', {})
+             .diff(resource.data.get('memberDisplayNames', {}))
+             .affectedKeys()
+             .hasOnly([request.auth.uid])
+        && request.resource.data.memberDisplayNames[request.auth.uid] is string
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() >= 1
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() <= 15
       ) || (
         // self-leave（非 owner のみ）— 自分を memberUids / organizerUids から除外
         // organizerUids は「自分が含まれていれば 1 減、含まれていなければ不変」を厳密に enforce
         // （これを怠ると、自己脱退を偽装して他の organizer を降格できてしまう）。
+        // Phase 4.7: memberDisplayNames からも自分の entry を削除する（他人の entry は不変）。
+        //   両辺 .get(..., {}) で包むことで legacy doc（フィールド無し）でも deleteField() が通る。
         isSignedIn()
         && request.auth.uid in resource.data.memberUids
         && !(request.auth.uid in resource.data.ownerUids)
@@ -114,7 +127,31 @@ service cloud.firestore {
         && request.resource.data.ownerUids == resource.data.ownerUids
         && request.resource.data.name == resource.data.name
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.joinCodeId == resource.data.joinCodeId
+        && request.resource.data.get('joinCodeId', null) == resource.data.get('joinCodeId', null)
+        && request.resource.data.get('memberDisplayNames', {})
+             .diff(resource.data.get('memberDisplayNames', {}))
+             .affectedKeys()
+             .hasOnly([request.auth.uid])
+      ) || (
+        // Phase 4.7: self-key displayName update — 既メンバーが自分の memberDisplayNames entry を更新。
+        //   他フィールドは全て immutable にチェックし、map の差分は auth.uid キーに限定する。
+        //   値は 1〜15 文字の string に制限（self-add と同じ）。
+        //   両辺 .get(..., {}) で legacy doc 互換。
+        isSignedIn()
+        && request.auth.uid in resource.data.memberUids
+        && request.resource.data.memberUids == resource.data.memberUids
+        && request.resource.data.organizerUids == resource.data.organizerUids
+        && request.resource.data.ownerUids == resource.data.ownerUids
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.get('joinCodeId', null) == resource.data.get('joinCodeId', null)
+        && request.resource.data.get('memberDisplayNames', {})
+             .diff(resource.data.get('memberDisplayNames', {}))
+             .affectedKeys()
+             .hasOnly([request.auth.uid])
+        && request.resource.data.memberDisplayNames[request.auth.uid] is string
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() >= 1
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() <= 15
       );
 
       allow delete: if isSignedIn()

@@ -30,6 +30,9 @@ export async function createStructure(input: CreateStructureInput): Promise<stri
   try {
     const ref = await addDoc(structuresRef, {
       ...input,
+      // Phase 4.7: Firestore は undefined を drop するため null に正規化して書込の整合性を保つ。
+      rebuyStack: input.rebuyStack ?? null,
+      addOnStack: input.addOnStack ?? null,
       createdAt: serverTimestamp(),
     });
     logger.info("structure create ok", { sid: ref.id, gid: input.groupId });
@@ -88,7 +91,13 @@ export async function listStructuresByGroup(groupId: string): Promise<StructureD
 
 export async function updateStructure(sid: string, patch: UpdateStructureInput): Promise<void> {
   try {
-    await updateDoc(doc(structuresRef, sid), patch);
+    // Phase 4.7: createStructure と同じく undefined → null 正規化で非対称を解消する。
+    //   patch にキー自体が存在しない場合は touch しない（既存値保持）。
+    //   キーは存在するが値が undefined の場合のみ null に置換する。
+    const normalized: Record<string, unknown> = { ...patch };
+    if ("rebuyStack" in patch) normalized.rebuyStack = patch.rebuyStack ?? null;
+    if ("addOnStack" in patch) normalized.addOnStack = patch.addOnStack ?? null;
+    await updateDoc(doc(structuresRef, sid), normalized);
     logger.info("structure update ok", { sid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "ストラクチャ更新に失敗しました");
