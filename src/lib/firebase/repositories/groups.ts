@@ -31,7 +31,8 @@ export async function createGroup(input: CreateGroupInput): Promise<string> {
   try {
     const ref = await addDoc(groupsRef, {
       name: input.name,
-      ownerUid: input.ownerUid,
+      ownerUids: [input.ownerUid],
+      organizerUids: [input.ownerUid],
       memberUids: [input.ownerUid],
       createdAt: serverTimestamp(),
     });
@@ -103,9 +104,37 @@ export async function updateGroupName(gid: string, name: string): Promise<void> 
   }
 }
 
+/**
+ * group のロール配列（ownerUids / organizerUids / memberUids）を一括更新する。
+ * 呼び出し側で整合性を保った配列を組み立ててから渡す（オーナーは organizer/member にも含める等）。
+ * Rule 側で ownerUids.size() >= 1 や invariant が検証される。
+ */
+export async function updateGroupRoles(
+  gid: string,
+  patch: { ownerUids?: string[]; organizerUids?: string[]; memberUids?: string[] },
+): Promise<void> {
+  try {
+    await updateDoc(groupDocRef(gid), patch);
+    logger.info("group roles updated", { gid, patchKeys: Object.keys(patch) });
+  } catch (e) {
+    const wrapped = AppError.from(e, "firestore/write_failed", "ロール更新に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, gid });
+    throw wrapped;
+  }
+}
+
+/**
+ * self-leave：自分を memberUids / organizerUids / ownerUids の 3 配列から同時に外す。
+ * rule 側は「自分が ownerUids に含まれない」状態での self-leave のみ許可するため、
+ * owner が残る想定では本関数は呼ばない（service 側で事前に降格させる）。
+ */
 export async function removeMemberSelf(gid: string, uid: string): Promise<void> {
   try {
-    await updateDoc(groupDocRef(gid), { memberUids: arrayRemove(uid) });
+    await updateDoc(groupDocRef(gid), {
+      memberUids: arrayRemove(uid),
+      organizerUids: arrayRemove(uid),
+      ownerUids: arrayRemove(uid),
+    });
     logger.info("group remove member ok", { gid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "サークル脱退に失敗しました");

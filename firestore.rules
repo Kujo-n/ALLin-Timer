@@ -6,18 +6,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // group メンバーシップは groups/{gid}.memberUids を真実源とする。
+    // Phase 4.6: 3 階層ロール。group メンバーシップは groups/{gid} の 3 つの配列で判定。
     // get() は rule 評価ごとに read 1 を消費するが、20 人 x 月 1〜2 回スケールでは無視可能。
+    // 同一評価内での同一 path の get() は cache される（Firebase の仕様）。
     function isGroupMember(gid) {
       return isSignedIn()
              && exists(/databases/$(database)/documents/groups/$(gid))
              && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.memberUids;
     }
 
-    function isGroupOwner(gid) {
+    function isOrganizer(gid) {
       return isSignedIn()
              && exists(/databases/$(database)/documents/groups/$(gid))
-             && get(/databases/$(database)/documents/groups/$(gid)).data.ownerUid == request.auth.uid;
+             && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.organizerUids;
+    }
+
+    function isOwner(gid) {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/groups/$(gid))
+             && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.ownerUids;
     }
 
     // users: 本人のみ自分のプロフィールを読書（groupIds 含む）
@@ -25,59 +32,82 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && request.auth.uid == uid;
     }
 
-    // groups: メンバーのみ read。create は自分が ownerUid かつ memberUids が自分 1 人のみ。
+    // groups: メンバーのみ read。create は自分が唯一の owner/organizer/member。
     match /groups/{gid} {
       allow read: if isSignedIn()
                   && request.auth.uid in resource.data.memberUids;
 
       allow create: if isSignedIn()
-                    && request.resource.data.ownerUid == request.auth.uid
+                    && request.resource.data.ownerUids.size() == 1
+                    && request.resource.data.ownerUids.hasOnly([request.auth.uid])
+                    && request.resource.data.organizerUids.size() == 1
+                    && request.resource.data.organizerUids.hasOnly([request.auth.uid])
                     && request.resource.data.memberUids.size() == 1
                     && request.resource.data.memberUids.hasOnly([request.auth.uid]);
 
-      // owner はフル update（ただし ownerUid は不変）／非メンバーは「自分を memberUids に +1 追加」のみ／
-      // 非 owner メンバーは「自分を memberUids から -1 除外」のみ。
+      // owner はフル update（ownerUids が空になる変更は禁止、createdAt 不変）／
+      // 非メンバーは「自分を memberUids に +1 追加、organizerUids / ownerUids は不変」のみ（招待コード加入）／
+      // 非 owner メンバーは「自分を memberUids / organizerUids から -1 除外」のみ。
       allow update: if (
-        // owner update（name / memberUids 自由、ownerUid 不変）
+        // owner update（name / ロール配列 / memberUids 自由、ただし ownerUids 空不可・createdAt 不変）
         isSignedIn()
-        && request.auth.uid == resource.data.ownerUid
-        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.auth.uid in resource.data.ownerUids
+        && request.resource.data.ownerUids.size() >= 1
+        && request.resource.data.createdAt == resource.data.createdAt
       ) || (
-        // self-add（招待コード経由の参加）
+        // self-add（招待コード経由の参加）— 一般メンバーとして加入
         isSignedIn()
         && !(request.auth.uid in resource.data.memberUids)
         && request.auth.uid in request.resource.data.memberUids
+        && !(request.auth.uid in request.resource.data.organizerUids)
+        && !(request.auth.uid in request.resource.data.ownerUids)
         && request.resource.data.memberUids.size() == resource.data.memberUids.size() + 1
         && request.resource.data.memberUids.hasAll(resource.data.memberUids)
-        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.organizerUids == resource.data.organizerUids
+        && request.resource.data.ownerUids == resource.data.ownerUids
         && request.resource.data.name == resource.data.name
         && request.resource.data.createdAt == resource.data.createdAt
       ) || (
-        // self-leave（owner 以外のメンバーが自分を外す）
+        // self-leave（非 owner のみ）— 自分を memberUids / organizerUids から除外
+        // organizerUids は「自分が含まれていれば 1 減、含まれていなければ不変」を厳密に enforce
+        // （これを怠ると、自己脱退を偽装して他の organizer を降格できてしまう）。
         isSignedIn()
         && request.auth.uid in resource.data.memberUids
-        && request.auth.uid != resource.data.ownerUid
+        && !(request.auth.uid in resource.data.ownerUids)
         && !(request.auth.uid in request.resource.data.memberUids)
+        && !(request.auth.uid in request.resource.data.organizerUids)
         && request.resource.data.memberUids.size() == resource.data.memberUids.size() - 1
         && resource.data.memberUids.hasAll(request.resource.data.memberUids)
-        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (
+          (
+            request.auth.uid in resource.data.organizerUids
+            && request.resource.data.organizerUids.size() == resource.data.organizerUids.size() - 1
+            && resource.data.organizerUids.hasAll(request.resource.data.organizerUids)
+          )
+          ||
+          (
+            !(request.auth.uid in resource.data.organizerUids)
+            && request.resource.data.organizerUids == resource.data.organizerUids
+          )
+        )
+        && request.resource.data.ownerUids == resource.data.ownerUids
         && request.resource.data.name == resource.data.name
         && request.resource.data.createdAt == resource.data.createdAt
       );
 
       allow delete: if isSignedIn()
-                    && request.auth.uid == resource.data.ownerUid;
+                    && request.auth.uid in resource.data.ownerUids;
     }
 
     // groupJoinCodes: 認証済みなら read 可（コード文字列を URL から踏める前提）。
-    // create はコード発行者が対象 group のメンバー。update は usesCount を +1 する形のみ。
+    // create は organizer のみ。update は usesCount を +1 する形のみ。
     match /groupJoinCodes/{code} {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
                     && request.resource.data.usesCount == 0
-                    && isGroupMember(request.resource.data.gid);
+                    && isOrganizer(request.resource.data.gid);
 
       allow update: if isSignedIn()
                     && request.resource.data.gid == resource.data.gid
@@ -91,27 +121,29 @@ service cloud.firestore {
                         || request.resource.data.usesCount <= resource.data.maxUses);
 
       allow delete: if isSignedIn()
-                    && isGroupOwner(resource.data.gid);
+                    && isOwner(resource.data.gid);
     }
 
-    // structures: group メンバー全員が共有
+    // structures: read は group メンバー、write は organizer のみ
     match /structures/{sid} {
-      allow read, update, delete: if isGroupMember(resource.data.groupId);
+      allow read: if isGroupMember(resource.data.groupId);
+      allow update, delete: if isOrganizer(resource.data.groupId);
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
-                    && isGroupMember(request.resource.data.groupId);
+                    && isOrganizer(request.resource.data.groupId);
     }
 
-    // tournaments: read は認証済み（受付参加者向け）／write は group メンバー
+    // tournaments: read は認証済み（受付参加者向け）／write は organizer のみ
     match /tournaments/{tid} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
-                    && isGroupMember(request.resource.data.groupId);
-      allow update, delete: if isGroupMember(resource.data.groupId);
+                    && isOrganizer(request.resource.data.groupId);
+      allow update, delete: if isOrganizer(resource.data.groupId);
 
       // 参加者ドキュメント: 本人による自己作成／更新／取消を許容（Phase 2: 受付フロー）
-      // Phase 4: update を「self: displayName のみ変更可」と「group メンバー: bust/seat 変更可」に分岐。
+      // Phase 4: update を「self: displayName のみ変更可」と「organizer: bust/seat 変更可」に分岐。
+      // Phase 4.6: organizer 経路は isOrganizer に強化（一般メンバーは他人を bust/seat できない）。
       match /players/{pid} {
         allow read: if isSignedIn();
         allow create: if isSignedIn()
@@ -121,7 +153,7 @@ service cloud.firestore {
                       && request.resource.data.tableNum == null
                       && request.resource.data.seatNum == null;
         // self-update: displayName のみ変更可。残りフィールドは immutable。
-        // organizer-update: group メンバーなら bust/seat/lastMovedAt 変更可。uid と entryAt は immutable。
+        // organizer-update: organizer なら bust/seat/lastMovedAt 変更可。uid と entryAt は immutable。
         // Phase 4 (M1 fix): organizer 経路でも tableNum / seatNum の型・範囲・整合性を rule で検証する。
         //   - 数値の場合は int 型 + 1〜MAX_TABLES (6) / 1〜MAX_SEATS_PER_TABLE (10) 範囲
         //   - tableNum と seatNum は同時 null か同時 int でなければならない（片方だけ設定不可）
@@ -146,7 +178,7 @@ service cloud.firestore {
                         ||
                         (
                           exists(/databases/$(database)/documents/tournaments/$(tid))
-                          && isGroupMember(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                          && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
                           && request.resource.data.uid == resource.data.uid
                           && request.resource.data.entryAt == resource.data.entryAt
                           && request.resource.data.isBusted is bool
@@ -168,23 +200,23 @@ service cloud.firestore {
                           )
                         )
                       );
-        // self-delete（自己取消）と group メンバーによる owner-delete を許容。
+        // self-delete（自己取消）と organizer による owner-delete を許容。
         allow delete: if isSignedIn()
                       && (
                         pid == request.auth.uid
                         || (
                           exists(/databases/$(database)/documents/tournaments/$(tid))
-                          && isGroupMember(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                          && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
                         )
                       );
       }
 
-      // その他サブコレクションは group メンバーのみ書込可、認証済みユーザーは読取可
+      // その他サブコレクションは organizer のみ書込可、認証済みユーザーは読取可
       match /{sub=**} {
         allow read: if isSignedIn();
         allow write: if isSignedIn()
                      && exists(/databases/$(database)/documents/tournaments/$(tid))
-                     && isGroupMember(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
+                     && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
       }
     }
   }
