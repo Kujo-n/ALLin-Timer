@@ -7,6 +7,7 @@ import { StructureForm } from "@/components/structure/StructureForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getStructure, updateStructure } from "@/lib/firebase/repositories/structures";
+import { deriveRole } from "@/lib/firebase/schemas/group";
 import type { CreateStructureInput, StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
@@ -14,7 +15,7 @@ import { useCurrentGroup } from "@/lib/services/current-group";
 export function StructureEditClient({ sid }: { sid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { groupIds } = useCurrentGroup();
+  const { groupIds, groups } = useCurrentGroup();
   const [data, setData] = useState<StructureDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,6 +57,19 @@ export function StructureEditClient({ sid }: { sid: string }) {
       <main className="mx-auto max-w-3xl p-8">
         <p className="text-sm text-destructive" role="alert">
           firestore/permission-denied: このサークルのメンバーのみ編集できます。
+        </p>
+      </main>
+    );
+  }
+
+  // Phase 4.6: 一般メンバー（organizer でない）は編集不可。
+  const g = groups.find((x) => x.id === data.groupId);
+  const role = g && user ? deriveRole(g, user.uid) : null;
+  if (role !== "owner" && role !== "organizer") {
+    return (
+      <main className="mx-auto max-w-3xl p-8">
+        <p className="text-sm text-destructive" role="alert">
+          firestore/permission-denied: 運営のみ編集できます。
         </p>
       </main>
     );

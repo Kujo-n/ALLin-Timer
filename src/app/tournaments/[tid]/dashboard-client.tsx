@@ -34,6 +34,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
+import { deriveRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
@@ -43,7 +44,7 @@ const AUTO_FINISH_DELAY_MS = 2000;
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { groupIds } = useCurrentGroup();
+  const { groupIds, groups, loading: groupsLoading } = useCurrentGroup();
 
   // 認証済みユーザー全員に autoAdvance opts を渡す。実際の per-tournament group
   // メンバーシップ check は useTournamentTimer 内（および orchestrator 内 tx）で
@@ -139,6 +140,20 @@ export function DashboardClient({ tid }: { tid: string }) {
     };
   }, [winnerId, dataId, dataState, dataGroupId, userUid, groupIds]);
 
+  // Phase 4.6: 一般メンバー（または非メンバー）は dashboard を閲覧できないため /live にリダイレクト。
+  // data.groupId が判明し、groups ロード完了後に判定する（判定前の flash 防止のため render 側で loading 表示）。
+  const tournamentGroupId = data?.groupId;
+  useEffect(() => {
+    if (!user) return;
+    if (groupsLoading) return;
+    if (!tournamentGroupId) return;
+    const g = groups.find((x) => x.id === tournamentGroupId);
+    const role = g ? deriveRole(g, user.uid) : null;
+    if (role !== "owner" && role !== "organizer") {
+      router.replace(`/tournaments/${tid}/live`);
+    }
+  }, [user, groupsLoading, groups, tournamentGroupId, router, tid]);
+
   async function onDelete() {
     if (!user) return;
     try {
@@ -163,6 +178,14 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   if (!data || !user) {
+    return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
+  }
+
+  // role 判定前 or 非 organizer の場合はローディング表示（useEffect で /live へ redirect 中）。
+  const currentGroup = groups.find((x) => x.id === data.groupId);
+  const myRole = currentGroup ? deriveRole(currentGroup, user.uid) : null;
+  const isOrganizer = myRole === "owner" || myRole === "organizer";
+  if (groupsLoading || !isOrganizer) {
     return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 

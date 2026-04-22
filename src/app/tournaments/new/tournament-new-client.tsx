@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 import { TournamentForm } from "@/components/tournament/TournamentForm";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -10,8 +11,20 @@ import { useCurrentGroup } from "@/lib/services/current-group";
 export function TournamentNewClient() {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { currentGroupId } = useCurrentGroup();
+  const { currentGroupId, isOrganizer, loading } = useCurrentGroup();
+
+  // Phase 4.6: 一般メンバーは URL 直打ち対策で /tournaments にリダイレクト。
+  useEffect(() => {
+    if (loading) return;
+    if (!isOrganizer) {
+      router.replace("/tournaments");
+    }
+  }, [loading, isOrganizer, router]);
+
   if (!user || !currentGroupId) return null;
+  if (loading || !isOrganizer) {
+    return <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">読込中…</main>;
+  }
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-8">

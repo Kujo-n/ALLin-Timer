@@ -19,13 +19,17 @@ import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup } from "@/lib/firebase/repositories/groups";
 import { getUserProfile } from "@/lib/firebase/repositories/users";
-import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import { deriveRole, type GroupDoc, type MemberRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import {
   deleteGroupByOwner,
+  demoteOwner,
+  demoteToMember,
   generateJoinCode,
   leaveGroup,
+  promoteToOrganizer,
+  promoteToOwner,
   renameGroup,
 } from "@/lib/services/group";
 
@@ -34,6 +38,18 @@ type MemberLine = { uid: string; displayName: string };
 function originSafe(): string {
   if (typeof window === "undefined") return "";
   return window.location.origin;
+}
+
+function roleLabel(role: MemberRole): string {
+  if (role === "owner") return "オーナー";
+  if (role === "organizer") return "運営";
+  return "一般";
+}
+
+function roleBadgeClassName(role: MemberRole): string {
+  if (role === "owner") return "rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800";
+  if (role === "organizer") return "rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800";
+  return "rounded bg-muted px-2 py-0.5 text-xs";
 }
 
 export function GroupDetailClient({ gid }: { gid: string }) {
@@ -96,7 +112,9 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
 
-  const isOwner = group.ownerUid === user.uid;
+  const myRole = deriveRole(group, user.uid);
+  const isOwner = myRole === "owner";
+  const isOrganizer = myRole === "owner" || myRole === "organizer";
 
   async function onIssueCode() {
     if (!user) return;
@@ -166,7 +184,24 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     }
   }
 
+  async function runRoleAction(fn: () => Promise<void>, errorLabel: string) {
+    setWorking(true);
+    setError(null);
+    try {
+      await fn();
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const wrapped = AppError.from(e, "group/role-change-failed", errorLabel);
+      setError(`${wrapped.code}: ${wrapped.message}`);
+    } finally {
+      setWorking(false);
+    }
+  }
+
   const inviteUrl = issuedCode ? `${originSafe()}/groups/join/${issuedCode}` : null;
+  const canIssueCode = isOrganizer;
+  const onlyOwner = group.ownerUids.length <= 1;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-8">
@@ -174,7 +209,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         <div>
           <h1 className="text-2xl font-bold">{group.name}</h1>
           <p className="text-sm text-muted-foreground">
-            メンバー {group.memberUids.length} 人 / {isOwner ? "あなたがオーナー" : "メンバー"}
+            メンバー {group.memberUids.length} 人 / オーナー {group.ownerUids.length} 人
+            {myRole ? ` / あなたは${roleLabel(myRole)}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -193,16 +229,18 @@ export function GroupDetailClient({ gid }: { gid: string }) {
           >
             トーナメント
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setCurrentGroupId(gid);
-              router.push("/structures");
-            }}
-          >
-            ストラクチャ
-          </Button>
+          {isOrganizer ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setCurrentGroupId(gid);
+                router.push("/structures");
+              }}
+            >
+              ストラクチャ
+            </Button>
+          ) : null}
           {isOwner ? (
             <Button variant="outline" size="sm" onClick={() => setRenameOpen(true)}>
               名前変更
@@ -224,51 +262,145 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         <CardHeader>
           <CardTitle>メンバー</CardTitle>
           <CardDescription>
-            このサークルに所属する運営者一覧。Phase 2.5
-            ではロールはありません（オーナー以外は対等）。
+            ロールは「オーナー / 運営 / 一般」の 3 階層。オーナーのみ昇降格できます。
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-1 text-sm">
-            {members.map((m) => (
-              <li key={m.uid} className="flex items-center gap-2">
-                <span>{m.displayName}</span>
-                {m.uid === group.ownerUid ? (
-                  <span className="rounded bg-muted px-2 py-0.5 text-xs">オーナー</span>
-                ) : null}
-                {m.uid === user.uid ? (
-                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                    あなた
-                  </span>
-                ) : null}
-              </li>
-            ))}
+          <ul className="space-y-2 text-sm">
+            {members.map((m) => {
+              const role = deriveRole(group, m.uid) ?? "member";
+              const isSelf = m.uid === user.uid;
+              const targetIsOwner = role === "owner";
+              const targetIsOrganizer = role === "organizer";
+              const targetIsMember = role === "member";
+              return (
+                <li
+                  key={m.uid}
+                  className="flex flex-wrap items-center gap-2 rounded border p-2"
+                >
+                  <span className="flex-1 truncate">{m.displayName}</span>
+                  <span className={roleBadgeClassName(role)}>{roleLabel(role)}</span>
+                  {isSelf ? (
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
+                      あなた
+                    </span>
+                  ) : null}
+                  {isOwner && !isSelf ? (
+                    <div className="flex flex-wrap gap-1">
+                      {targetIsMember ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={working}
+                          onClick={() =>
+                            void runRoleAction(
+                              () =>
+                                promoteToOrganizer({
+                                  gid,
+                                  actorUid: user.uid,
+                                  targetUid: m.uid,
+                                }),
+                              "運営へ昇格に失敗しました",
+                            )
+                          }
+                        >
+                          運営へ昇格
+                        </Button>
+                      ) : null}
+                      {targetIsOrganizer ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={working}
+                            onClick={() =>
+                              void runRoleAction(
+                                () =>
+                                  promoteToOwner({
+                                    gid,
+                                    actorUid: user.uid,
+                                    targetUid: m.uid,
+                                  }),
+                                "オーナー昇格に失敗しました",
+                              )
+                            }
+                          >
+                            オーナーへ昇格
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={working}
+                            onClick={() =>
+                              void runRoleAction(
+                                () =>
+                                  demoteToMember({
+                                    gid,
+                                    actorUid: user.uid,
+                                    targetUid: m.uid,
+                                  }),
+                                "一般へ降格に失敗しました",
+                              )
+                            }
+                          >
+                            一般へ降格
+                          </Button>
+                        </>
+                      ) : null}
+                      {targetIsOwner ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={working || onlyOwner}
+                          title={onlyOwner ? "最後のオーナーは降格できません" : undefined}
+                          onClick={() =>
+                            void runRoleAction(
+                              () =>
+                                demoteOwner({
+                                  gid,
+                                  actorUid: user.uid,
+                                  targetUid: m.uid,
+                                }),
+                              "オーナー降格に失敗しました",
+                            )
+                          }
+                        >
+                          運営へ降格
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>招待コード</CardTitle>
-          <CardDescription>
-            メンバー全員が発行できます。デフォルト 7
-            日間有効。リンクを口頭/チャットで共有してください。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Button onClick={() => void onIssueCode()} disabled={working}>
-            招待コードを発行
-          </Button>
-          {inviteUrl ? (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                以下のリンクを共有してください（7 日有効）
-              </p>
-              <Input readOnly value={inviteUrl} />
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      {canIssueCode ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>招待コード</CardTitle>
+            <CardDescription>
+              運営のみ発行できます。デフォルト 7
+              日間有効。リンクを口頭/チャットで共有してください。加入者は「一般メンバー」で入ります。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button onClick={() => void onIssueCode()} disabled={working}>
+              招待コードを発行
+            </Button>
+            {inviteUrl ? (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  以下のリンクを共有してください（7 日有効）
+                </p>
+                <Input readOnly value={inviteUrl} />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>

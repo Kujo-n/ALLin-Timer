@@ -5,12 +5,15 @@ import { useEffect, useRef, useState } from "react";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
+import { Button } from "@/components/ui/button";
+import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
+import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 
 const MOVED_BANNER_MS = 30_000;
@@ -25,6 +28,8 @@ export function LiveClient({ tid }: { tid: string }) {
   // 誤メッセージが表示される（tournament state は先に解決され、players 購読は遅延するため）。
   const [playersLoaded, setPlayersLoaded] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -122,7 +127,34 @@ export function LiveClient({ tid }: { tid: string }) {
           {!playersLoaded ? (
             <p className="text-sm text-muted-foreground">受付情報を取得中…</p>
           ) : me === null ? (
-            <p className="text-sm text-muted-foreground">受付登録されていません</p>
+            <JoinSelfPanel
+              tid={tid}
+              canJoin={
+                (tournament.state === "setup" ||
+                  tournament.state === "seating" ||
+                  tournament.state === "running") &&
+                !lateEntryClosed
+              }
+              joining={joining}
+              error={joinError}
+              onJoin={async () => {
+                setJoining(true);
+                setJoinError(null);
+                try {
+                  await joinAsCurrentUser({ tid });
+                } catch (e) {
+                  const wrapped = AppError.from(
+                    e,
+                    "tournament/join-failed",
+                    "参加登録に失敗しました",
+                  );
+                  logger.warn(wrapped.message, { code: wrapped.code, tid });
+                  setJoinError(`${wrapped.code}: ${wrapped.message}`);
+                } finally {
+                  setJoining(false);
+                }
+              }}
+            />
           ) : me.isBusted ? (
             <p className="text-sm text-muted-foreground">脱落済み</p>
           ) : me.tableNum !== null && me.seatNum !== null ? (
@@ -156,5 +188,41 @@ export function LiveClient({ tid }: { tid: string }) {
         </section>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * 未参加ユーザー向けの「参加する」パネル。
+ * late entry 締切超過や state ≠ setup/seating/running の場合は通常メッセージのみ表示。
+ */
+function JoinSelfPanel({
+  canJoin,
+  joining,
+  error,
+  onJoin,
+}: {
+  tid: string;
+  canJoin: boolean;
+  joining: boolean;
+  error: string | null;
+  onJoin: () => Promise<void>;
+}) {
+  if (!canJoin) {
+    return <p className="text-sm text-muted-foreground">受付登録されていません</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
+        まだ参加登録していません。ワンタップで参加できます。
+      </p>
+      <Button size="sm" onClick={() => void onJoin()} disabled={joining}>
+        {joining ? "登録中…" : "参加する"}
+      </Button>
+      {error ? (
+        <p className="text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

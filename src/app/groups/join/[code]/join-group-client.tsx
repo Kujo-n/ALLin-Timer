@@ -60,7 +60,9 @@ export function JoinGroupClient({ code }: { code: string }) {
       ) : null}
       {status.kind === "success" ? (
         <p className="text-sm">
-          {status.alreadyMember ? "既に加入済みです。" : "加入しました。"}
+          {status.alreadyMember
+            ? "既に加入済みです。"
+            : "一般メンバーとして加入しました。運営権限はオーナーにご相談ください。"}
           サークルに移動します…
         </p>
       ) : null}

@@ -6,7 +6,15 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { deriveRole } from "@/lib/firebase/schemas/group";
 import { useCurrentGroup } from "@/lib/services/current-group";
+
+function roleLabel(role: ReturnType<typeof deriveRole>): string {
+  if (role === "owner") return "オーナー";
+  if (role === "organizer") return "運営";
+  if (role === "member") return "一般";
+  return "";
+}
 
 export function GroupsClient() {
   const { user } = useAuthUser();
@@ -53,6 +61,7 @@ export function GroupsClient() {
         <div className="grid gap-4 md:grid-cols-2">
           {groups.map((g) => {
             const isCurrent = g.id === currentGroupId;
+            const role = deriveRole(g, user.uid);
             return (
               <Card key={g.id}>
                 <CardHeader>
@@ -65,7 +74,7 @@ export function GroupsClient() {
                     ) : null}
                   </div>
                   <CardDescription>
-                    メンバー {g.memberUids.length} 人{g.ownerUid === user.uid ? " / オーナー" : ""}
+                    メンバー {g.memberUids.length} 人{role ? ` / ${roleLabel(role)}` : ""}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex gap-2">

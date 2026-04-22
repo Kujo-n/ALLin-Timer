@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function TournamentsClient() {
-  const { currentGroupId, groups } = useCurrentGroup();
+  const { currentGroupId, groups, isOrganizer } = useCurrentGroup();
   const [items, setItems] = useState<TournamentDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,19 +49,25 @@ export function TournamentsClient() {
             {currentGroup
               ? `サークル「${currentGroup.name}」のトーナメント。`
               : "現在のサークルのトーナメント。"}
-            メンバー全員が編集／開始／削除できます。
+            {isOrganizer
+              ? "運営は編集／開始／削除ができます。"
+              : "参加するトーナメントを選んでください。"}
           </p>
         </div>
         <div className="flex gap-2">
           <Link href="/groups">
             <Button variant="outline">サークル</Button>
           </Link>
-          <Link href="/structures">
-            <Button variant="outline">ストラクチャ</Button>
-          </Link>
-          <Link href="/tournaments/new">
-            <Button>新規作成</Button>
-          </Link>
+          {isOrganizer ? (
+            <>
+              <Link href="/structures">
+                <Button variant="outline">ストラクチャ</Button>
+              </Link>
+              <Link href="/tournaments/new">
+                <Button>新規作成</Button>
+              </Link>
+            </>
+          ) : null}
         </div>
       </header>
 
@@ -75,26 +81,40 @@ export function TournamentsClient() {
         <p className="text-sm text-muted-foreground">読込中…</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          まだトーナメントがありません。「新規作成」から作成してください。
+          {isOrganizer
+            ? "まだトーナメントがありません。「新規作成」から作成してください。"
+            : "開催中のトーナメントはありません。"}
         </p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {items.map((t) => (
-            <Link key={t.id} href={`/tournaments/${t.id}`}>
-              <Card className="transition hover:bg-accent/30">
-                <CardHeader>
-                  <CardTitle>{t.name}</CardTitle>
-                  <CardDescription>
-                    <span className="mr-2 rounded bg-muted px-2 py-0.5 text-xs">{t.state}</span>
-                    {t.structureSnapshot.levels.length} レベル / 初期{" "}
-                    {t.structureSnapshot.initialStack}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="text-xs text-muted-foreground">
+            <Card key={t.id} className="transition hover:bg-accent/30">
+              <CardHeader>
+                <CardTitle>{t.name}</CardTitle>
+                <CardDescription>
+                  <span className="mr-2 rounded bg-muted px-2 py-0.5 text-xs">{t.state}</span>
+                  {t.structureSnapshot.levels.length} レベル / 初期{" "}
+                  {t.structureSnapshot.initialStack}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>
                   現在 Lv{t.currentLevel} / 締切 Lv{t.lateEntryDeadlineLevel}
-                </CardContent>
-              </Card>
-            </Link>
+                </span>
+                <div className="ml-auto flex gap-2">
+                  {isOrganizer ? (
+                    <Link href={`/tournaments/${t.id}`}>
+                      <Button size="sm" variant="outline">
+                        運営
+                      </Button>
+                    </Link>
+                  ) : null}
+                  <Link href={`/tournaments/${t.id}/live`}>
+                    <Button size="sm">{isOrganizer ? "タイマー" : "参加する"}</Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

@@ -7,6 +7,7 @@ import { TournamentForm } from "@/components/tournament/TournamentForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getTournament, updateTournament } from "@/lib/firebase/repositories/tournaments";
+import { deriveRole } from "@/lib/firebase/schemas/group";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
@@ -14,7 +15,7 @@ import { useCurrentGroup } from "@/lib/services/current-group";
 export function TournamentEditClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { groupIds } = useCurrentGroup();
+  const { groupIds, groups } = useCurrentGroup();
   const [data, setData] = useState<TournamentDoc | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +65,17 @@ export function TournamentEditClient({ tid }: { tid: string }) {
       <main className="mx-auto max-w-2xl p-8">
         <p className="text-sm text-destructive" role="alert">
           firestore/permission-denied: このサークルのメンバーのみ編集できます。
+        </p>
+      </main>
+    );
+  }
+  const g = groups.find((x) => x.id === data.groupId);
+  const role = g ? deriveRole(g, user.uid) : null;
+  if (role !== "owner" && role !== "organizer") {
+    return (
+      <main className="mx-auto max-w-2xl p-8">
+        <p className="text-sm text-destructive" role="alert">
+          firestore/permission-denied: 運営のみ編集できます。
         </p>
       </main>
     );

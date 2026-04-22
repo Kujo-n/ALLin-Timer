@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 import { StructureForm } from "@/components/structure/StructureForm";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -10,9 +11,21 @@ import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function StructureNewClient() {
   const { user } = useAuthUser();
-  const { currentGroupId } = useCurrentGroup();
+  const { currentGroupId, isOrganizer, loading } = useCurrentGroup();
   const router = useRouter();
+
+  // Phase 4.6: 一般メンバーは URL 直打ち対策で /structures にリダイレクト。
+  useEffect(() => {
+    if (loading) return;
+    if (!isOrganizer) {
+      router.replace("/structures");
+    }
+  }, [loading, isOrganizer, router]);
+
   if (!user || !currentGroupId) return null;
+  if (loading || !isOrganizer) {
+    return <main className="mx-auto max-w-3xl p-8 text-sm text-muted-foreground">読込中…</main>;
+  }
 
   async function handleSubmit(input: CreateStructureInput) {
     await createStructure(input);

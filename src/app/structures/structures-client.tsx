@@ -20,7 +20,7 @@ import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function StructuresClient() {
-  const { currentGroupId, groups } = useCurrentGroup();
+  const { currentGroupId, groups, isOrganizer } = useCurrentGroup();
   const [items, setItems] = useState<StructureDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,7 +69,7 @@ export function StructuresClient() {
             {currentGroup
               ? `サークル「${currentGroup.name}」のプリセット。`
               : "現在のサークルのプリセット。"}
-            メンバー全員で共有・編集できます。
+            {isOrganizer ? "運営で共有・編集できます。" : "閲覧のみ可能です。"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -79,9 +79,11 @@ export function StructuresClient() {
           <Link href="/tournaments">
             <Button variant="outline">トーナメント一覧へ</Button>
           </Link>
-          <Link href="/structures/new">
-            <Button>新規作成</Button>
-          </Link>
+          {isOrganizer ? (
+            <Link href="/structures/new">
+              <Button>新規作成</Button>
+            </Link>
+          ) : null}
         </div>
       </header>
 
@@ -109,14 +111,18 @@ export function StructuresClient() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex gap-2">
-                <Link href={`/structures/${s.id}/edit`}>
-                  <Button variant="outline" size="sm">
-                    編集
-                  </Button>
-                </Link>
-                <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(s)}>
-                  削除
-                </Button>
+                {isOrganizer ? (
+                  <>
+                    <Link href={`/structures/${s.id}/edit`}>
+                      <Button variant="outline" size="sm">
+                        編集
+                      </Button>
+                    </Link>
+                    <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(s)}>
+                      削除
+                    </Button>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
           ))}
