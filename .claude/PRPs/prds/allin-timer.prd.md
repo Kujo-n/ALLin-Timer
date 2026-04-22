@@ -215,8 +215,9 @@
 | 4 | Seating Automation | 初回席決め（運営者トリガー）、バストボタン、TDA 準拠テーブルバランシング（6 テーブル以下・BB 同着は席番号昇順）、進行中レイトエントリー自動配席 | complete | with 3 | 2.5 | [completed/phase-4-seating-automation.plan.md](../plans/completed/phase-4-seating-automation.plan.md) — 実装レポート: [phase-4-seating-automation-report.md](../reports/phase-4-seating-automation-report.md) |
 | 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | complete | - | 4 | [completed/phase-4.5-pre-phase5-improvements.plan.md](../plans/completed/phase-4.5-pre-phase5-improvements.plan.md) — 実装レポート: [phase-4.5-pre-phase5-improvements-report.md](../reports/phase-4.5-pre-phase5-improvements-report.md) |
 | 4.6 | Member Role Split | `groups/{gid}` を owner / organizer / general member の 3 階層化（`ownerUids` 複数可・`organizerUids` 新設）、一般メンバーは自サークルのトーナメント一覧閲覧＋ワンタップ参加、昇降格 UI は owner 専用、破壊的 migration あり | complete | - | 4.5 | [completed/phase-4.6-member-role-split.plan.md](../plans/completed/phase-4.6-member-role-split.plan.md) — 実装レポート: [phase-4.6-member-role-split-report.md](../reports/phase-4.6-member-role-split-report.md) |
-| 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、ストラクチャテンプレート（クライアント定数）、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応。schema は additive で破壊的変更なし | in-progress | - | 4.6 | [phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/phase-4.7-onboarding-polish-structure-enhancements.plan.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7 | - |
+| 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応、`groups/{gid}.memberDisplayNames` snapshot 追加（サークル一覧で UID ではなく displayName 表示）、`/tournaments` 一覧の状態別カード色分け。schema は additive、Firestore Rules は groups update に self-key 書込条件を 1 つ追加 | in-progress | - | 4.6 | [phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/phase-4.7-onboarding-polish-structure-enhancements.plan.md) |
+| 4.8 | Structure Template Library | サークル横断のテンプレート図書館。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | pending | - | 4.7 | [phase-4.8-structure-template-library.plan.md](../plans/phase-4.8-structure-template-library.plan.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8 | - |
 
 ### Phase Details
 
@@ -314,17 +315,34 @@
   - 最後のオーナー保護などの invariant が service + rule 両層で enforce されている
 
 **Phase 4.7: Onboarding Polish & Structure Enhancements**
-- **Goal**: Phase 5 のドライラン前に、実運用で挙がった 6 件の UX / 機能ペイン（Google 新規 displayName・ストラクチャテンプレート・匿名ヘッダ反映・リバイ／アドオン量・平均スタック・ブレイク）を一括解消する
-- **背景**: 運営者側からの改善要望（`tmp/08_Phase4.6_memo.md`）で、サークル SNS ニックネーム前提の運用・ストラクチャ設計の初心者ペイン・平均スタック把握要求・ブレイク運用の要件が出揃った。いずれも Phase 5 投入前に整理しておかないと本番フィードバックが混線する
+- **Goal**: Phase 5 のドライラン前に、運用で挙がった **7 件の UX / 機能ペイン**（memo-08 の 5 件 + memo-09 の 2 件）を一括解消する。テンプレート図書館は Phase 4.8 に分離
+- **背景**: 運営者側からの改善要望（`tmp/08_Phase4.6_memo.md` + `tmp/09_pahse4.7_memo.md`）で、サークル SNS ニックネーム前提の運用・平均スタック把握要求・ブレイク運用・サークルメンバー識別（UID → displayName）・トーナメント一覧の状態視認性が出揃った
 - **Scope**:
   - Google 新規ログイン時の `DisplayNameDialog` 強制表示（`additionalUserInfo.isNewUser` 判定）、既存ユーザーは skip
-  - `/structures/new` に `StructureTemplatePicker`（クライアント定数ベース 3〜4 種のプリセット）、選択でフォームに一括反映
-  - `AuthProvider.refreshUser()` を公開し、`signInAsGuest` / `registerWithEmail` / `updateDisplayName` 直後に呼び出してヘッダ displayName を即反映（`onAuthStateChanged` が `updateProfile` で再 fire しない制約への対応）
+  - `AuthProvider.refreshUser()` を公開し、`signInAsGuest` / `registerWithEmail` / `updateDisplayName` 直後に呼び出してヘッダ displayName を即反映（useReducer bump で強制再描画）
   - `structures.{rebuyStack, addOnStack}` と `structureSnapshot.{rebuyStack, addOnStack}` を nullable number として追加（schema additive、旧 doc は zod default で null）
-  - `AverageStackCard` を dashboard / live に配置（計算式: `totalEntries × initialStack ÷ activePlayers`、リバイ／アドオン実操作は未実装のため snapshot 値は計算に使わない）
+  - `AverageStackCard` を dashboard / live の TimerDisplay 枠外に独立カードとして配置（計算式: `totalEntries × initialStack ÷ activePlayers`）
   - `Level.isBreak: boolean` 追加、LevelTable にチェックボックス、TimerDisplay は "☕ BREAK" 表示に切替
-  - 破壊的 migration なし（zod default / optional / nullable で旧 doc 受容）
-- **Success signal**: 6 件すべての挙動を手動ブラウザで確認し、typecheck / lint / test / build が green。Phase 5 のドライラン準備が整う
+  - **`groups/{gid}.memberDisplayNames` snapshot 追加**（`/groups/{gid}` で UID ではなく displayName 表示）。`consumeJoinCode` 時の書込と `updateDisplayName` 時の best-effort 伝播。rule は self-key 書込条件を追加（`diff().affectedKeys().hasOnly([auth.uid])`）
+  - **`/tournaments` 一覧カードの状態別色分け**: setup/seating=slate、running/paused=emerald、finished=muted 半透明。日本語ラベル化（進行中 / 未開催 / 終了）
+  - 既存 schema は additive、Firestore Rules は groups update に 1 条件追加、破壊的 migration 不要
+- **Success signal**: 7 件すべての挙動を手動ブラウザで確認し、typecheck / lint / test / build が green
+
+**Phase 4.8: Structure Template Library**
+- **Goal**: サークル横断でストラクチャのひな形を共有できる図書館を提供。memo item 2 の初心者ペイン（SB/BB 設計に悩む）と「出先でスマホから追加できる運用」を両立する
+- **背景**: Phase 4.7 で基礎的な UX 改善は完了。初心者運営者が他サークルのベストプラクティスを再利用できる仕組みが未実装のため、テンプレート共有コレクションを新設する
+- **Scope**:
+  - **`structureTemplates/{tid}` コレクション新設**: サインイン済み全員が read・create 可、edit は本人のみ、delete は本人または管理者
+  - **`templateAdmins/{uid}` コレクション新設**: doc 存在 = テンプレート管理者。作成者脱会後のテンプレを削除する権限。bootstrap は Firestore Console で最初の 1 人を手動 seed
+  - 作成者名を template doc に `createdByDisplayName` として snapshot 保存（`users/{uid}` の self-only read 制約回避）
+  - `/templates` 一覧 / `/templates/new` / `/templates/{tid}/edit` の 3 ページ追加
+  - `/structures/new` の `StructureTemplatePicker` は `listStructureTemplates()` 経由で Firestore から取得し、選択でフォームに一括反映（Phase 4.7 時点では未実装）
+  - `firestore.rules` に `isTemplateAdmin()` helper と 2 match ブロック追加、本番デプロイ + README への管理者 seed 手順追記
+  - Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` を re-use（schema drift 防止）
+- **Success signal**:
+  - Owner / 他人 / 管理者の 3 視点でブラウザ検証がすべて通る（編集・削除ボタンの表示／非表示、実操作の成功）
+  - Firestore Rules デプロイ後、最初の管理者が Console で seed 済み
+  - `/structures/new` で Firestore から取得したテンプレが適用できる
 
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
@@ -344,8 +362,9 @@
 - Phase 3（タイマー／同期）と Phase 4（席管理）は、Phase 2.5 完了後は相互独立なので並列可能
 - Phase 4.5（UX 整理）は Phase 4 完了後の後付け改善。Phase 5 のドライラン前に完了させる
 - Phase 4.6（ロール分離）は Phase 4.5 完了後に単独実施。**破壊的スキーマ変更**のため他 phase とは並行しない
-- Phase 4.7（UX / schema additive）は Phase 4.6 完了後に単独実施。**schema は additive**（zod default / nullable）のため破壊的 migration は不要
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 の完了後
+- Phase 4.7（UX / schema additive）は Phase 4.6 完了後に単独実施。**schema は additive**（zod default / nullable / record default({})）で破壊的 migration 不要。Firestore Rules は groups update に self-key 書込条件を 1 つ追加するのみ（他 collection 変更なし）
+- Phase 4.8（Template Library）は Phase 4.7 完了後に単独実施。**新規 2 collection + Firestore Rules 追加デプロイ**と **Firestore Console での管理者 bootstrap**（`templateAdmins/{uid}` に空 doc 1 件）が必要。Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` に依存するため 4.7 → 4.8 の順で実施
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 の完了後
 
 ---
 
