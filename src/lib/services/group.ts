@@ -9,6 +9,7 @@ import {
   groupDocRef,
   removeMemberSelf,
   updateGroupName,
+  updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
 import {
   createJoinCode,
@@ -22,6 +23,7 @@ import {
   getUserProfile,
   removeGroupIdFromUser,
 } from "@/lib/firebase/repositories/users";
+import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 
 /**
@@ -42,11 +44,12 @@ export async function createGroupWithOwner({
 }
 
 /**
- * 招待コードを使って group に加入する。
+ * 招待コードを使って group に加入する（一般メンバーとして）。
  *
  * 1. `getJoinCode` で期限・最大使用回数チェック（クライアント側の早期失敗）
  * 2. 既メンバーなら no-op で gid を返す（冪等性）
  * 3. transaction で「招待コード usesCount +1」と「group memberUids に自分を追加」を atomic に
+ *    - organizerUids / ownerUids には追加しない（rule で self-add は memberUids 限定）
  * 4. transaction 外で users/{uid}.groupIds に gid を追加（rule で本人のみ更新可）
  */
 export async function consumeJoinCode({
@@ -111,21 +114,36 @@ export async function consumeJoinCode({
   return { gid: codeDoc.gid, alreadyMember: false };
 }
 
+function assertOwner(group: GroupDoc, uid: string): void {
+  if (!group.ownerUids.includes(uid)) {
+    throw new AppError("オーナーのみ実行できます", "group/not-owner");
+  }
+}
+
 /**
- * group から脱退する。owner は脱退不可（先にオーナー移譲または group 削除）。
+ * group から脱退する。最後のオーナーは脱退不可（先に別メンバーをオーナーに昇格 or group 削除）。
+ * owner が残るケース（`ownerUids.length >= 2`）では owner 自身も脱退可能。
  */
 export async function leaveGroup({ gid, uid }: { gid: string; uid: string }): Promise<void> {
   const group = await getGroup(gid);
-  if (group.ownerUid === uid) {
+  if (group.ownerUids.includes(uid) && group.ownerUids.length <= 1) {
     throw new AppError(
-      "オーナーは脱退できません。先にオーナーを移譲するか group を削除してください。",
-      "group/owner-cannot-leave",
+      "最後のオーナーは脱退できません。先に別のメンバーをオーナーに昇格するか group を削除してください。",
+      "group/last-owner-cannot-leave",
     );
   }
   if (!group.memberUids.includes(uid)) {
     logger.info("leave group: already not a member", { gid, uid });
     await removeGroupIdFromUser(uid, gid).catch(() => {});
     return;
+  }
+  // owner が残る前提の脱退（2 人以上 owner）は、ownerUids からも自分を外す必要がある。
+  // rule は self-leave で「自分が ownerUids に含まれない」状態を要求するため、
+  // owner 自身の脱退は事前に demoteOwner を済ませる必要がある。
+  if (group.ownerUids.includes(uid)) {
+    await updateGroupRoles(gid, {
+      ownerUids: group.ownerUids.filter((u) => u !== uid),
+    });
   }
   await removeMemberSelf(gid, uid);
   await removeGroupIdFromUser(uid, gid);
@@ -134,6 +152,7 @@ export async function leaveGroup({ gid, uid }: { gid: string; uid: string }): Pr
 
 /**
  * 招待コードを発行する。default 7 日有効、`maxUses` は null（無制限）。
+ * Phase 4.6: rule 側で isOrganizer チェック。一般メンバーは発行不可。
  */
 export async function generateJoinCode({
   gid,
@@ -167,9 +186,7 @@ export async function deleteGroupByOwner({
   uid: string;
 }): Promise<void> {
   const group = await getGroup(gid);
-  if (group.ownerUid !== uid) {
-    throw new AppError("オーナーのみ削除できます", "group/not-owner");
-  }
+  assertOwner(group, uid);
   await deleteGroup(gid);
   // 全メンバーの users/{uid}.groupIds は本人以外更新できないため、本人分のみ落とす。
   await removeGroupIdFromUser(uid, gid).catch(() => {});
@@ -191,8 +208,120 @@ export async function renameGroup({
     throw new AppError("名前を入力してください", "validation/invalid-input");
   }
   const group = await getGroup(gid);
-  if (group.ownerUid !== uid) {
-    throw new AppError("オーナーのみ名前変更できます", "group/not-owner");
-  }
+  assertOwner(group, uid);
   await updateGroupName(gid, trimmed);
+}
+
+/**
+ * 一般メンバー → 運営（organizer）に昇格。owner のみ実行可。
+ * target が member に居る必要あり。既に organizer なら no-op（冪等）。
+ */
+export async function promoteToOrganizer({
+  gid,
+  actorUid,
+  targetUid,
+}: {
+  gid: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  const group = await getGroup(gid);
+  assertOwner(group, actorUid);
+  if (!group.memberUids.includes(targetUid)) {
+    throw new AppError("対象はメンバーではありません", "group/not-member");
+  }
+  if (group.organizerUids.includes(targetUid)) {
+    return;
+  }
+  await updateGroupRoles(gid, {
+    organizerUids: [...group.organizerUids, targetUid],
+  });
+  logger.info("promote to organizer", { gid, actorUid, targetUid });
+}
+
+/**
+ * 運営 → 一般メンバーに降格。owner のみ実行可。
+ * 対象が owner のままだと invariant 違反になるため、先に demoteOwner が必要。
+ */
+export async function demoteToMember({
+  gid,
+  actorUid,
+  targetUid,
+}: {
+  gid: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  const group = await getGroup(gid);
+  assertOwner(group, actorUid);
+  if (group.ownerUids.includes(targetUid)) {
+    throw new AppError(
+      "オーナーは運営降格できません。先にオーナー降格してください",
+      "group/target-is-owner",
+    );
+  }
+  if (!group.organizerUids.includes(targetUid)) {
+    return;
+  }
+  await updateGroupRoles(gid, {
+    organizerUids: group.organizerUids.filter((u) => u !== targetUid),
+  });
+  logger.info("demote to member", { gid, actorUid, targetUid });
+}
+
+/**
+ * 運営 → オーナーに昇格。owner のみ実行可。
+ * 対象は既に organizer であること（一般メンバーからの直接昇格は禁止）。
+ */
+export async function promoteToOwner({
+  gid,
+  actorUid,
+  targetUid,
+}: {
+  gid: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  const group = await getGroup(gid);
+  assertOwner(group, actorUid);
+  if (!group.organizerUids.includes(targetUid)) {
+    throw new AppError(
+      "運営でないメンバーはオーナー昇格できません",
+      "group/target-not-organizer",
+    );
+  }
+  if (group.ownerUids.includes(targetUid)) {
+    return;
+  }
+  await updateGroupRoles(gid, {
+    ownerUids: [...group.ownerUids, targetUid],
+  });
+  logger.info("promote to owner", { gid, actorUid, targetUid });
+}
+
+/**
+ * オーナー → 運営に降格。owner のみ実行可。
+ * 最後のオーナーは降格不可（rule + service の二重防御）。
+ */
+export async function demoteOwner({
+  gid,
+  actorUid,
+  targetUid,
+}: {
+  gid: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  const group = await getGroup(gid);
+  assertOwner(group, actorUid);
+  if (!group.ownerUids.includes(targetUid)) {
+    return;
+  }
+  if (group.ownerUids.length <= 1) {
+    throw new AppError("最後のオーナーは降格できません", "group/last-owner");
+  }
+  await updateGroupRoles(gid, {
+    ownerUids: group.ownerUids.filter((u) => u !== targetUid),
+  });
+  logger.info("demote owner", { gid, actorUid, targetUid });
 }

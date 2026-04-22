@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -14,7 +15,7 @@ import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { listMyGroups } from "@/lib/firebase/repositories/groups";
 import { getUserProfile, removeGroupIdFromUser } from "@/lib/firebase/repositories/users";
-import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import { deriveRole, type GroupDoc, type MemberRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 
 const STORAGE_KEY = "allinpt.currentGroupId";
@@ -26,6 +27,12 @@ type GroupState = {
   currentGroupId: string | null;
   setCurrentGroupId: (gid: string | null) => void;
   refreshGroups: () => Promise<void>;
+  /** 現在選択中の group に対する、サインイン中ユーザーのロール（未選択 or 未ログインなら null） */
+  currentGroupRole: MemberRole | null;
+  /** currentGroupRole === "owner" || "organizer" */
+  isOrganizer: boolean;
+  /** currentGroupRole === "owner" */
+  isOwner: boolean;
 };
 
 const DEFAULT_STATE: GroupState = {
@@ -35,6 +42,9 @@ const DEFAULT_STATE: GroupState = {
   currentGroupId: null,
   setCurrentGroupId: () => {},
   refreshGroups: async () => {},
+  currentGroupRole: null,
+  isOrganizer: false,
+  isOwner: false,
 };
 
 const GroupContext = createContext<GroupState>(DEFAULT_STATE);
@@ -137,6 +147,16 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     void loadFor(user.uid);
   }, [user, authLoading, loadFor]);
 
+  const currentGroupRole = useMemo<MemberRole | null>(() => {
+    if (!user || !currentGroupId) return null;
+    const g = groups.find((x) => x.id === currentGroupId);
+    if (!g) return null;
+    return deriveRole(g, user.uid);
+  }, [user, currentGroupId, groups]);
+
+  const isOrganizer = currentGroupRole === "owner" || currentGroupRole === "organizer";
+  const isOwner = currentGroupRole === "owner";
+
   const value: GroupState = {
     loading,
     groupIds,
@@ -144,6 +164,9 @@ export function GroupProvider({ children }: { children: ReactNode }) {
     currentGroupId,
     setCurrentGroupId,
     refreshGroups,
+    currentGroupRole,
+    isOrganizer,
+    isOwner,
   };
 
   return <GroupContext.Provider value={value}>{children}</GroupContext.Provider>;
