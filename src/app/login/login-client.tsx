@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { AuthCredential } from "firebase/auth";
 
+import { DisplayNameDialog } from "@/components/auth/DisplayNameDialog";
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
 import { LinkAccountDialog } from "@/components/auth/LinkAccountDialog";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import {
   AccountLinkRequired,
@@ -25,7 +27,7 @@ import { sanitizeRedirect } from "@/lib/services/redirect";
 type Mode = "login" | "register";
 
 export function LoginClient() {
-  const { user, loading } = useAuthUser();
+  const { user, loading, refreshUser } = useAuthUser();
   const router = useRouter();
   const params = useSearchParams();
   const redirect = sanitizeRedirect(params.get("redirect"));
@@ -40,6 +42,7 @@ export function LoginClient() {
     email: string;
     credential: AuthCredential;
   } | null>(null);
+  const [displayNameDialogOpen, setDisplayNameDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && user && !user.isAnonymous) {
@@ -56,6 +59,8 @@ export function LoginClient() {
         await loginWithEmail(email, password);
       } else {
         await registerWithEmail(email, password, displayName);
+        // Phase 4.7: register で updateProfile した displayName をヘッダに即反映
+        refreshUser();
       }
       router.replace(redirect);
     } catch (e) {
@@ -71,7 +76,13 @@ export function LoginClient() {
     setError(null);
     setSubmitting(true);
     try {
-      await signInWithGoogle();
+      const { isNewUser } = await signInWithGoogle();
+      if (isNewUser) {
+        // Phase 4.7: 新規ユーザーは displayName 設定ダイアログを必須表示。
+        // redirect は dialog の onDone で行う。
+        setDisplayNameDialogOpen(true);
+        return;
+      }
       router.replace(redirect);
     } catch (e) {
       if (e instanceof AccountLinkRequired) {
@@ -152,11 +163,13 @@ export function LoginClient() {
                 <Input
                   id="reg-name"
                   required
+                  maxLength={DISPLAY_NAME_MAX_LENGTH}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  トーナメント参加時に席表・参加者一覧に表示される名前です。
+                  トーナメント参加時に席表・参加者一覧に表示される名前です（
+                  {DISPLAY_NAME_MAX_LENGTH} 文字以内）。
                 </p>
               </div>
             ) : null}
@@ -204,6 +217,16 @@ export function LoginClient() {
           email={linkRequest.email}
           pendingCredential={linkRequest.credential}
           onLinked={() => {
+            router.replace(redirect);
+          }}
+        />
+      ) : null}
+
+      {displayNameDialogOpen ? (
+        <DisplayNameDialog
+          open={displayNameDialogOpen}
+          onDone={() => {
+            setDisplayNameDialogOpen(false);
             router.replace(redirect);
           }}
         />

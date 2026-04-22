@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { joinInputSchema } from "@/lib/firebase/schemas/player";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
@@ -32,7 +33,7 @@ type Status =
   | { kind: "cancelled" };
 
 export function JoinClient({ tid }: { tid: string }) {
-  const { user, loading: authLoading } = useAuthUser();
+  const { user, loading: authLoading, refreshUser } = useAuthUser();
   const [tab, setTab] = useState<Tab>("guest");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -99,6 +100,9 @@ export function JoinClient({ tid }: { tid: string }) {
         tid,
         displayName: parsed.data.displayName,
       });
+      // Phase 4.7: updateProfile 直後に onAuthStateChanged は発火しないため、
+      // AuthBadge 等のヘッダ表示を即更新するために refreshUser を呼ぶ。
+      refreshUser();
       setStatus({ kind: "joined", result });
     } catch (e) {
       wrapError(e);
@@ -288,7 +292,11 @@ export function JoinClient({ tid }: { tid: string }) {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   required
+                  maxLength={DISPLAY_NAME_MAX_LENGTH}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください。
+                </p>
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? "処理中…" : "ゲストで受付"}

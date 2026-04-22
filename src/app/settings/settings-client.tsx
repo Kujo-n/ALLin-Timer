@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getUserProfile } from "@/lib/firebase/repositories/users";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { updateDisplayName } from "@/lib/services/auth-actions";
 
@@ -20,7 +21,7 @@ type Status =
   | { kind: "error"; message: string };
 
 export function SettingsClient() {
-  const { user } = useAuthUser();
+  const { user, refreshUser } = useAuthUser();
   const [displayName, setDisplayName] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -62,6 +63,8 @@ export function SettingsClient() {
     setStatus({ kind: "saving" });
     try {
       await updateDisplayName(displayName);
+      // Phase 4.7: updateProfile 後のヘッダ即反映
+      refreshUser();
       setStatus({ kind: "saved" });
     } catch (e) {
       const wrapped = AppError.from(e, "auth/unknown", "更新に失敗しました");
@@ -98,9 +101,13 @@ export function SettingsClient() {
               <Input
                 id="display-name"
                 required
+                maxLength={DISPLAY_NAME_MAX_LENGTH}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                {DISPLAY_NAME_MAX_LENGTH} 文字以内。スマートフォンで 1 行に収まる長さに揃えています。
+              </p>
             </div>
             {status.kind === "error" ? (
               <p className="text-sm text-destructive" role="alert">
