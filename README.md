@@ -152,7 +152,7 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 
 #### Phase 4.6 での変更点（3 階層ロール）
 
-Phase 4.6 でメンバーを 3 階層に分割した。既存メンバーは全員 `organizer` として扱われる（migration 必要、後述）。
+Phase 4.6 でメンバーを 3 階層に分割した（スキーマ破壊的変更・互換レイヤなし、Phase 2.5 と同じ方針）。
 
 | ロール | 権限 |
 | ------ | ---- |
@@ -165,29 +165,28 @@ Phase 4.6 でメンバーを 3 階層に分割した。既存メンバーは全�
 - 最後のオーナーは降格 / 脱退不可
 - 一般メンバーが `/tournaments/[tid]` を直接踏んでも自動的に `/live` にリダイレクトされる
 
-##### Phase 4.6 Migration（owner 単数 → 配列 + organizer 追加）
+##### Phase 4.6 移行手順（Phase 2.5 と同じく全消去パス）
 
-Phase 4.5 までに作成された `groups/{gid}` は `ownerUid: string` のみ。Phase 4.6 の rules を有効化する前に以下のスクリプトで一括変換する（破壊的・互換レイヤなし）:
+`groups/{gid}` の旧 `ownerUid: string` は新 rules + zod schema では読めなくなる。**本番運用開始前の段階では全消去が最もシンプルかつ安全**（Phase 2.5 の先例に従う）:
 
-1. **Firebase Console で backup を取得**（Firestore → Import/Export → Export）
-2. `firebase-admin` が入ったサービスアカウント鍵を用意し、環境変数に設定:
-   ```bash
-   export GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
-   ```
-3. dry-run で patch 内容を確認:
-   ```bash
-   npx tsx scripts/migrate-phase-4.6-roles.ts --dry-run
-   ```
-4. 本実行:
-   ```bash
-   npx tsx scripts/migrate-phase-4.6-roles.ts
-   ```
-5. rules を再デプロイ:
+1. **Firebase Console → Firestore → データ** から以下の top-level collection を全ドキュメント削除:
+   - `groups`
+   - `groupJoinCodes`
+   - `structures`
+   - `tournaments`（配下の `players` / `tables` サブコレクション含む）
+   - `users`
+2. **Firebase Console → Authentication → Users** から全ユーザを削除（`users/{uid}.groupIds` との drift 防止）
+3. rules をデプロイ:
    ```bash
    firebase deploy --only firestore:rules
    ```
+4. アプリから新規登録 → `/groups/new` で新しいサークルを作り直す
 
-スクリプトは `ownerUids: [ownerUid]` / `organizerUids: [...memberUids]` を書込み、旧 `ownerUid` フィールドを削除する。既に `ownerUids` が設定された doc は skip（冪等）。
+> 消す前に `Firestore → Import/Export` で backup を取るのを推奨（復旧用途というより「あのストラクチャどうだったっけ」の参照用）。
+
+##### 既存データを保持したい場合（本番投入後の再 migration 用）
+
+本番投入後で既存 `groups` を保持したまま移行する必要が出たら、[scripts/migrate-phase-4.6-roles.ts](scripts/migrate-phase-4.6-roles.ts) を参考に admin SDK スクリプトを実行する。**現状（Phase 4.6 デプロイ時）は全消去パスを推奨**するため、本スクリプトは予備実装として残置しているだけ（実行前に dry-run 必須）。
 
 #### 制約事項
 
