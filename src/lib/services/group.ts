@@ -48,8 +48,9 @@ export async function createGroupWithOwner({
  *
  * 1. `getJoinCode` で期限・最大使用回数チェック（クライアント側の早期失敗）
  * 2. 既メンバーなら no-op で gid を返す（冪等性）
- * 3. transaction で「招待コード usesCount +1」と「group memberUids に自分を追加」を atomic に
+ * 3. transaction で「招待コード usesCount +1」と「group memberUids に自分を追加 + joinCodeId を code で記録」を atomic に
  *    - organizerUids / ownerUids には追加しない（rule で self-add は memberUids 限定）
+ *    - joinCodeId は rule の consumption proof（存在・gid 一致・期限・usesCount +1 / maxUses を rule 側で再検証する）
  * 4. transaction 外で users/{uid}.groupIds に gid を追加（rule で本人のみ更新可）
  */
 export async function consumeJoinCode({
@@ -101,7 +102,7 @@ export async function consumeJoinCode({
         );
       }
       tx.update(codeRef, { usesCount: increment(1) });
-      tx.update(groupRef, { memberUids: arrayUnion(uid) });
+      tx.update(groupRef, { memberUids: arrayUnion(uid), joinCodeId: code });
     });
   } catch (e) {
     const wrapped = AppError.from(e, "group/join-failed", "サークル加入に失敗しました");

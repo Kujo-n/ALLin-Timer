@@ -15,6 +15,10 @@ export const groupBodySchema = z
     organizerUids: z.array(z.string().min(1)).min(1),
     memberUids: z.array(z.string().min(1)).min(1),
     createdAt: z.instanceof(Timestamp),
+    // Phase 4.6.1: self-add rule が検証する「最後の加入で消費された招待コード ID」。
+    // 監査用ではなく rule の consumption proof。owner が自由に null に戻してよい。
+    // 既存（Phase 4.6 まで）の doc では存在しないため optional。
+    joinCodeId: z.string().min(1).nullable().optional(),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

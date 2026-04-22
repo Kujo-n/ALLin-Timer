@@ -11,12 +11,27 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / createdAt
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / createdAt / **joinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
+  - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
 - `groupJoinCodes/{code}` — gid / expiresAt / maxUses / usedCount
 - `users/{uid}.groupIds` — 逆引き
 - `structures/{sid}` / `tournaments/{tid}` — `groupId` + `createdByUid`
+
+### 招待コードの rule 側検証（Phase 4.6.1）
+
+`groups/{gid}` self-add 経路（非メンバーによる自己加入）は以下を **Firestore Rules** で atomic に強制する:
+
+1. 書込ペイロードに `joinCodeId: <code doc id>` が含まれること（`is string`）
+2. `groupJoinCodes/{joinCodeId}` が存在し、`gid` が現在の group と一致
+3. `expiresAt > request.time`
+4. `getAfter(groupJoinCodes/{joinCodeId}).usesCount == get(...).usesCount + 1`（同 request 内で +1 消費）
+5. `maxUses == null || getAfter(...).usesCount <= maxUses`
+
+これにより、認証済みユーザーが `updateDoc(groups/{gid}, { memberUids: arrayUnion })` を **service 層経由せず直接呼ぶ攻撃を rule 側で deny** する（[firestore.rules](../../firestore.rules) の `hasValidJoinCodeConsumption` 参照）。
+
+また `groupJoinCodes` は `allow get` のみ許可し `allow list: if false`。認証済みユーザーによる全コード／全 gid の列挙を防ぐ（gid を知らないと攻撃起点が作れない）。
 
 ## ロール定義（Phase 4.6）
 
@@ -72,6 +87,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 **攻撃シナリオ**: 招待コード文字列がチャット等で第三者に流出した場合、加入意図のない第三者が `usesCount` だけを繰り返しインクリメントし、`maxUses` まで到達させてコードを無効化できる（DoS）。
 
 **現行の緩和**: Phase 2.5 の `generateJoinCode` の default は `maxUses: null`（無制限）。UI からも `maxUses` 設定機能を提供していないため、本番運用上は顕在化しない。Phase 4.6 では rule を `isOrganizer` に強化したが、update ルール自体は認証済みユーザー全員に開かれているため本質的リスクは残存。
+
+Phase 4.6.1 で `groupJoinCodes` の `allow read` は `get` に限定（list 禁止）。これにより認証済みユーザーが全コード文字列を列挙する経路は塞がれたが、コード文字列が何らかの形で流出した場合の DoS は引き続き攻撃可能。
 
 **`maxUses` UI を追加する際の必須対応**:
 

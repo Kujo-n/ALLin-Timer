@@ -27,6 +27,23 @@ service cloud.firestore {
              && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.ownerUids;
     }
 
+    // Phase 4.6.1: self-add 経路で「招待コードが有効で、この request 内で usesCount が +1 消費される」
+    // ことを atomic に検証する。これがないと、認証済みユーザーが `updateDoc(groups/{gid}, { memberUids: arrayUnion })`
+    // を直接呼び、招待コード validation を skip して任意の group に member として加入できてしまう（security.md 要件違反）。
+    //
+    // getAfter() により、同 request 内で groupJoinCodes/{code} の usesCount が +1 されることを強制する。
+    // これは maxUses の rule 側 enforcement にも効く（後続の usesCount <= maxUses 検証と合わせる）。
+    function hasValidJoinCodeConsumption(gid, code) {
+      return exists(/databases/$(database)/documents/groupJoinCodes/$(code))
+             && get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.gid == gid
+             && get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.expiresAt.toMillis() > request.time.toMillis()
+             && getAfter(/databases/$(database)/documents/groupJoinCodes/$(code)).data.usesCount
+                == get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.usesCount + 1
+             && (get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.maxUses == null
+                 || getAfter(/databases/$(database)/documents/groupJoinCodes/$(code)).data.usesCount
+                    <= get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.maxUses);
+    }
+
     // users: 本人のみ自分のプロフィールを読書（groupIds 含む）
     match /users/{uid} {
       allow read, write: if isSignedIn() && request.auth.uid == uid;
@@ -55,7 +72,9 @@ service cloud.firestore {
         && request.resource.data.ownerUids.size() >= 1
         && request.resource.data.createdAt == resource.data.createdAt
       ) || (
-        // self-add（招待コード経由の参加）— 一般メンバーとして加入
+        // self-add（招待コード経由の参加）— 一般メンバーとして加入。
+        // Phase 4.6.1: request.resource.data.joinCodeId で参照される groupJoinCodes doc の
+        // 有効性と「この request 内での usesCount +1 消費」を rule 側で強制する。
         isSignedIn()
         && !(request.auth.uid in resource.data.memberUids)
         && request.auth.uid in request.resource.data.memberUids
@@ -67,6 +86,8 @@ service cloud.firestore {
         && request.resource.data.ownerUids == resource.data.ownerUids
         && request.resource.data.name == resource.data.name
         && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.joinCodeId is string
+        && hasValidJoinCodeConsumption(gid, request.resource.data.joinCodeId)
       ) || (
         // self-leave（非 owner のみ）— 自分を memberUids / organizerUids から除外
         // organizerUids は「自分が含まれていれば 1 減、含まれていなければ不変」を厳密に enforce
@@ -93,16 +114,20 @@ service cloud.firestore {
         && request.resource.data.ownerUids == resource.data.ownerUids
         && request.resource.data.name == resource.data.name
         && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.joinCodeId == resource.data.joinCodeId
       );
 
       allow delete: if isSignedIn()
                     && request.auth.uid in resource.data.ownerUids;
     }
 
-    // groupJoinCodes: 認証済みなら read 可（コード文字列を URL から踏める前提）。
+    // groupJoinCodes: コード文字列を知るユーザーが `get` できる前提（URL 踏み経由の加入）。
+    // Phase 4.6.1: `list` は明示的に禁止する。認証済みの任意ユーザーが全コード・全 gid を
+    // 列挙できると、gid ベースの攻撃（groups self-add への不正加入）が trivial になる。
     // create は organizer のみ。update は usesCount を +1 する形のみ。
     match /groupJoinCodes/{code} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn();
+      allow list: if false;
 
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid

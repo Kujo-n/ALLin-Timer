@@ -191,6 +191,7 @@ describe("consumeJoinCode", () => {
       groupIds: [],
       createdAt: now,
     });
+    const txUpdate = vi.fn();
     vi.mocked(runTransaction).mockImplementation(async (_db, fn) => {
       const tx = {
         get: vi.fn().mockResolvedValue({
@@ -198,7 +199,7 @@ describe("consumeJoinCode", () => {
           id: "code123",
           data: () => makeCode(),
         }),
-        update: vi.fn(),
+        update: txUpdate,
         set: vi.fn(),
         delete: vi.fn(),
       };
@@ -212,6 +213,14 @@ describe("consumeJoinCode", () => {
     expect(result).toEqual({ gid: "g1", alreadyMember: false });
     expect(runTransaction).toHaveBeenCalledTimes(1);
     expect(addGroupIdToUser).toHaveBeenCalledWith("u-new", "g1");
+
+    // code doc は usesCount を +1、group doc は memberUids + joinCodeId を同 transaction で書く
+    // （rule 側 self-add は joinCodeId を consumption proof として検証する）。
+    const groupUpdateCall = txUpdate.mock.calls.find(
+      ([ref]) => (ref as { __ref?: string }).__ref === "groups",
+    );
+    expect(groupUpdateCall).toBeDefined();
+    expect(groupUpdateCall?.[1]).toMatchObject({ joinCodeId: "code123" });
   });
 });
 

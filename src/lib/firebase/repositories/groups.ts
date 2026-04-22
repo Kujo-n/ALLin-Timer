@@ -35,6 +35,7 @@ export async function createGroup(input: CreateGroupInput): Promise<string> {
       organizerUids: [input.ownerUid],
       memberUids: [input.ownerUid],
       createdAt: serverTimestamp(),
+      joinCodeId: null,
     });
     logger.info("group create ok", { gid: ref.id });
     return ref.id;

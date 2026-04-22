@@ -58,6 +58,7 @@ describe("createGroup", () => {
       ownerUids: ["u1"],
       organizerUids: ["u1"],
       memberUids: ["u1"],
+      joinCodeId: null,
     });
   });
 });
