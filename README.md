@@ -150,11 +150,50 @@ Phase 2 までで作成した `structures` / `tournaments` には `groupId` が�
 
 > 削除前にデータを残したい場合は Firebase Console の `データのエクスポート` で先にバックアップを取得すること。Phase 2.5 開始時点では本番運用が無い前提のため、移行スクリプトは用意していない。
 
-#### 制約事項（Phase 2.5）
+#### Phase 4.6 での変更点（3 階層ロール）
 
-- ロール（admin / editor / viewer）は未実装。オーナー以外のメンバーは全員対等に編集可。
+Phase 4.6 でメンバーを 3 階層に分割した。既存メンバーは全員 `organizer` として扱われる（migration 必要、後述）。
+
+| ロール | 権限 |
+| ------ | ---- |
+| **owner** | サークルの名前変更・削除・ロール昇降格ができる最上位。複数人設定可 |
+| **organizer**（運営） | structures / tournaments / 招待コードの CRUD、トーナメント進行操作 |
+| **member**（一般） | トーナメント一覧閲覧 / 参加、structures 閲覧のみ（編集不可） |
+
+- 招待コードから加入すると**デフォルトで一般メンバー**。運営昇格は owner が `/groups/[gid]` 画面から実施
+- `organizer` → `owner` の昇格も owner が実施（直接 `member` → `owner` は不可）
+- 最後のオーナーは降格 / 脱退不可
+- 一般メンバーが `/tournaments/[tid]` を直接踏んでも自動的に `/live` にリダイレクトされる
+
+##### Phase 4.6 Migration（owner 単数 → 配列 + organizer 追加）
+
+Phase 4.5 までに作成された `groups/{gid}` は `ownerUid: string` のみ。Phase 4.6 の rules を有効化する前に以下のスクリプトで一括変換する（破壊的・互換レイヤなし）:
+
+1. **Firebase Console で backup を取得**（Firestore → Import/Export → Export）
+2. `firebase-admin` が入ったサービスアカウント鍵を用意し、環境変数に設定:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
+   ```
+3. dry-run で patch 内容を確認:
+   ```bash
+   npx tsx scripts/migrate-phase-4.6-roles.ts --dry-run
+   ```
+4. 本実行:
+   ```bash
+   npx tsx scripts/migrate-phase-4.6-roles.ts
+   ```
+5. rules を再デプロイ:
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+
+スクリプトは `ownerUids: [ownerUid]` / `organizerUids: [...memberUids]` を書込み、旧 `ownerUid` フィールドを削除する。既に `ownerUids` が設定された doc は skip（冪等）。
+
+#### 制約事項
+
 - サークルを削除しても配下の `structures` / `tournaments` は **削除されない**（誰からも見えなくなるだけ）。先に各画面で配下データを削除しておくのが安全。
 - 招待コードはコード文字列の発行のみ。メール招待リンク送信は範囲外（Phase 5 以降の検討）。
+- Phase 4.6 では招待コードは 1 種類のみ（「運営専用コード」はなし）。加入後に owner が手動で昇格させる前提。
 
 ### 6. Vercel にデプロイ
 
