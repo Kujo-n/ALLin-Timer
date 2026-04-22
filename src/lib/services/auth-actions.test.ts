@@ -24,6 +24,8 @@ vi.mock("firebase/auth", async () => {
     fetchSignInMethodsForEmail: vi.fn(),
     linkWithCredential: vi.fn(),
     signOut: vi.fn(),
+    // Phase 4.7: signInWithGoogle が isNewUser 判定に使用。default は false（既存ユーザー）。
+    getAdditionalUserInfo: vi.fn().mockReturnValue({ isNewUser: false }),
     GoogleAuthProvider: Object.assign(
       vi.fn().mockImplementation(() => ({})),
       {
@@ -36,6 +38,13 @@ vi.mock("firebase/auth", async () => {
 vi.mock("@/lib/firebase/repositories/users", () => ({
   upsertUserProfile: vi.fn(),
   deleteUserProfile: vi.fn(),
+  getUserProfile: vi.fn().mockResolvedValue(null),
+}));
+
+// Phase 4.7: updateDisplayName が propagateDisplayNameToGroups を呼ぶため、
+// services/group を空実装で mock してモジュール副作用（firestore.collection）を避ける。
+vi.mock("@/lib/services/group", () => ({
+  propagateDisplayNameToGroups: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
@@ -50,7 +59,12 @@ import {
   updateProfile,
 } from "firebase/auth";
 
-import { deleteUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
+import {
+  deleteUserProfile,
+  getUserProfile,
+  upsertUserProfile,
+} from "@/lib/firebase/repositories/users";
+import { propagateDisplayNameToGroups } from "@/lib/services/group";
 
 import {
   AccountLinkRequired,
@@ -87,6 +101,8 @@ beforeEach(() => {
   vi.mocked(GoogleAuthProvider.credentialFromError).mockReset();
   vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
   vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
+  vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+  vi.mocked(propagateDisplayNameToGroups).mockReset().mockResolvedValue(undefined);
   mockAuthState.currentUser = null;
   if (typeof window !== "undefined") {
     window.localStorage.clear();
@@ -134,6 +150,14 @@ describe("registerWithEmail", () => {
   it("rejects blank displayName before calling Firebase", async () => {
     await expect(registerWithEmail("a@b.com", "pw", "  ")).rejects.toMatchObject({
       code: "validation/display-name-required",
+    });
+    expect(createUserWithEmailAndPassword).not.toHaveBeenCalled();
+  });
+
+  // Phase 4.7 (M3): 15 文字超の displayName を reject
+  it("rejects displayName longer than 15 chars", async () => {
+    await expect(registerWithEmail("a@b.com", "pw", "1234567890123456")).rejects.toMatchObject({
+      code: "validation/display-name-too-long",
     });
     expect(createUserWithEmailAndPassword).not.toHaveBeenCalled();
   });
@@ -201,18 +225,29 @@ describe("signInAsGuest", () => {
 });
 
 describe("signInWithGoogle", () => {
-  it("upserts profile when displayName present", async () => {
+  // Phase 4.7: 新規ユーザーは DisplayNameDialog 経由で users/{uid} を作成、
+  //          既存ユーザーはサークル用 displayName を保護するため上書きしない。
+  //          いずれの場合も signInWithGoogle は users/{uid} に書き込まない。
+  it("returns { user, isNewUser: false } for existing user and does not upsert", async () => {
     const user = makeUser();
     vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
 
     const result = await signInWithGoogle();
 
-    expect(result).toBe(user);
-    expect(upsertUserProfile).toHaveBeenCalledWith({
-      uid: "u1",
-      displayName: "Alice",
-      email: "alice@example.com",
-    });
+    expect(result).toEqual({ user, isNewUser: false });
+    expect(upsertUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("returns { user, isNewUser: true } for new user and does not upsert (dialog handles it)", async () => {
+    const { getAdditionalUserInfo } = await import("firebase/auth");
+    vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
+    const user = makeUser();
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+
+    const result = await signInWithGoogle();
+
+    expect(result).toEqual({ user, isNewUser: true });
+    expect(upsertUserProfile).not.toHaveBeenCalled();
   });
 
   it("skips upsert when displayName missing", async () => {
@@ -338,6 +373,60 @@ describe("updateDisplayName", () => {
     await expect(updateDisplayName("Alice")).rejects.toMatchObject({
       code: "auth/update-profile-failed",
     });
+  });
+
+  // Phase 4.7: user が group に所属している場合、propagateDisplayNameToGroups を呼ぶ
+  it("propagates displayName to all groups when user has groupIds", async () => {
+    const user = makeUser();
+    mockAuthState.currentUser = user;
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u1",
+      displayName: "old",
+      email: "alice@example.com",
+      groupIds: ["g1", "g2"],
+      createdAt: { toMillis: () => 0 } as never,
+    });
+
+    await updateDisplayName("Alice");
+
+    expect(propagateDisplayNameToGroups).toHaveBeenCalledWith("u1", ["g1", "g2"], "Alice");
+  });
+
+  it("skips propagation when user has no groupIds", async () => {
+    mockAuthState.currentUser = makeUser();
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u1",
+      displayName: "old",
+      email: "alice@example.com",
+      groupIds: [],
+      createdAt: { toMillis: () => 0 } as never,
+    });
+
+    await updateDisplayName("Alice");
+
+    expect(propagateDisplayNameToGroups).not.toHaveBeenCalled();
+  });
+
+  it("swallows propagation errors (best-effort, does not throw)", async () => {
+    mockAuthState.currentUser = makeUser();
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u1",
+      displayName: "old",
+      email: "alice@example.com",
+      groupIds: ["g1"],
+      createdAt: { toMillis: () => 0 } as never,
+    });
+    vi.mocked(propagateDisplayNameToGroups).mockRejectedValue(new Error("boom"));
+
+    await expect(updateDisplayName("Alice")).resolves.toBeUndefined();
+  });
+
+  it("still succeeds when getUserProfile itself fails (fallback to no groupIds)", async () => {
+    mockAuthState.currentUser = makeUser();
+    vi.mocked(getUserProfile).mockRejectedValue(new Error("read failed"));
+
+    await expect(updateDisplayName("Alice")).resolves.toBeUndefined();
+    expect(propagateDisplayNameToGroups).not.toHaveBeenCalled();
   });
 });
 

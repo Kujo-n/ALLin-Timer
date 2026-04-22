@@ -1,13 +1,14 @@
 import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
-import { firestore } from "@/lib/firebase/client";
+import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import {
   createGroup,
   deleteGroup,
   getGroup,
   groupDocRef,
   removeMemberSelf,
+  setMemberDisplayName,
   updateGroupName,
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
@@ -29,6 +30,11 @@ import { logger } from "@/lib/logger";
 /**
  * group を作成し、作成者の users/{uid}.groupIds に逆引きを追加する。
  * 失敗時は AppError を伝播させる（部分成功はそのまま：reverse 修復は本 Phase 範囲外）。
+ *
+ * Phase 4.7: `memberDisplayNames` にオーナーの表示名 snapshot を初期登録する。
+ *   - currentUser.displayName（trim 後）を採用し、取れなければ uid にフォールバック。
+ *   - **email にはフォールバックしない**（group メンバー全員に read される場所のため、
+ *     生 email が PII として意図せず露出するのを避ける）。
  */
 export async function createGroupWithOwner({
   name,
@@ -37,7 +43,9 @@ export async function createGroupWithOwner({
   name: string;
   ownerUid: string;
 }): Promise<string> {
-  const gid = await createGroup({ name, ownerUid });
+  const authUser = firebaseAuth.currentUser;
+  const ownerDisplayName = authUser?.displayName?.trim() || ownerUid;
+  const gid = await createGroup({ name, ownerUid, ownerDisplayName });
   await addGroupIdToUser(ownerUid, gid);
   logger.info("create group with owner ok", { gid, ownerUid });
   return gid;
@@ -86,6 +94,13 @@ export async function consumeJoinCode({
     return { gid: codeDoc.gid, alreadyMember: true };
   }
 
+  // Phase 4.7: 自分の表示名を group.memberDisplayNames に同時登録する。
+  //   email をフォールバックにすると PII がメンバー全員に露出するため、
+  //   auth.displayName → users/{uid}.displayName → uid の順で解決する。
+  const authUser = firebaseAuth.currentUser;
+  const selfDisplayName =
+    authUser?.displayName?.trim() || profile?.displayName?.trim() || uid;
+
   try {
     await runTransaction(firestore, async (tx) => {
       const codeRef = joinCodeDocRef(code);
@@ -102,7 +117,11 @@ export async function consumeJoinCode({
         );
       }
       tx.update(codeRef, { usesCount: increment(1) });
-      tx.update(groupRef, { memberUids: arrayUnion(uid), joinCodeId: code });
+      tx.update(groupRef, {
+        memberUids: arrayUnion(uid),
+        joinCodeId: code,
+        [`memberDisplayNames.${uid}`]: selfDisplayName,
+      });
     });
   } catch (e) {
     const wrapped = AppError.from(e, "group/join-failed", "サークル加入に失敗しました");
@@ -113,6 +132,51 @@ export async function consumeJoinCode({
   await addGroupIdToUser(uid, codeDoc.gid);
   logger.info("consume join code ok", { code, uid, gid: codeDoc.gid });
   return { gid: codeDoc.gid, alreadyMember: false };
+}
+
+/**
+ * Phase 4.7: 自分の displayName を所属全 group の `memberDisplayNames[uid]` に反映する。
+ * best-effort — 個別 group の書込失敗は warn で記録し、呼出元全体は throw させない。
+ * `updateDisplayName` service 内から呼ばれる想定。
+ *
+ * 失敗した gid / error code は個別に warn ログへ出す（M1 類似の rule 不整合を
+ * 発見しやすくするため）。サマリ（total / failed）もあわせて残す。
+ */
+export async function propagateDisplayNameToGroups(
+  uid: string,
+  groupIds: readonly string[],
+  displayName: string,
+): Promise<void> {
+  const trimmed = displayName.trim();
+  if (!trimmed || groupIds.length === 0) return;
+  const results = await Promise.allSettled(
+    groupIds.map((gid) => setMemberDisplayName(gid, uid, trimmed)),
+  );
+  let failed = 0;
+  results.forEach((r, i) => {
+    if (r.status !== "rejected") return;
+    failed += 1;
+    const gid = groupIds[i];
+    const reason = r.reason;
+    const code =
+      reason && typeof reason === "object" && "code" in reason
+        ? ((reason as { code?: unknown }).code as string | undefined) ?? "unknown"
+        : "unknown";
+    logger.warn("propagate displayName per-group fail", {
+      code: "group/propagate-per-group-fail",
+      gid,
+      uid,
+      reasonCode: code,
+    });
+  });
+  if (failed > 0) {
+    logger.warn("propagate displayName partial fail", {
+      code: "group/propagate-partial-fail",
+      uid,
+      total: groupIds.length,
+      failed,
+    });
+  }
 }
 
 function assertOwner(group: GroupDoc, uid: string): void {

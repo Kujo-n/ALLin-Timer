@@ -104,7 +104,9 @@ export async function joinAsExistingUser({
 }
 
 export async function joinViaGoogle({ tid }: { tid: string }): Promise<ReceiptResult> {
-  const user = await signInWithGoogle();
+  // Phase 4.7: signInWithGoogle は { user, isNewUser } を返すが、受付フローでは
+  // displayName ダイアログを挟まず Google プロフィール名のまま参加できる方針のため isNewUser は無視。
+  const { user } = await signInWithGoogle();
   const result = await ensurePlayerCreated(tid, user);
   logger.info("join via google ok", { tid, uid: user.uid, result });
   return result;

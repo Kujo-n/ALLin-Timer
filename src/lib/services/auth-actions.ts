@@ -2,6 +2,7 @@ import { FirebaseError } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
+  getAdditionalUserInfo,
   GoogleAuthProvider,
   linkWithCredential,
   signInAnonymously,
@@ -15,8 +16,34 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
-import { deleteUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
+import {
+  deleteUserProfile,
+  getUserProfile,
+  upsertUserProfile,
+} from "@/lib/firebase/repositories/users";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
+import { propagateDisplayNameToGroups } from "@/lib/services/group";
+
+/**
+ * 表示名（Auth displayName / users.displayName / groups.memberDisplayNames[uid]）の
+ * 共通バリデータ。trim 済み文字列を返す。
+ *
+ * Phase 4.7: 空文字拒否 + 上限 DISPLAY_NAME_MAX_LENGTH で統一（スマホ 1 行制約）。
+ */
+function validateDisplayName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new AppError("表示名を入力してください", "validation/display-name-required");
+  }
+  if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+    throw new AppError(
+      `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください`,
+      "validation/display-name-too-long",
+    );
+  }
+  return trimmed;
+}
 
 function normalizeAuthCode(code: string): string {
   switch (code) {
@@ -74,10 +101,7 @@ export async function registerWithEmail(
   password: string,
   displayName: string,
 ): Promise<User> {
-  const trimmed = displayName.trim();
-  if (!trimmed) {
-    throw new AppError("表示名を入力してください", "validation/display-name-required");
-  }
+  const trimmed = validateDisplayName(displayName);
   try {
     const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     // 端末跨ぎで共有するため Firebase Auth プロフィールに displayName を書き込む
@@ -112,9 +136,19 @@ export class AccountLinkRequired extends AppError {
   }
 }
 
+/** Phase 4.7: signInWithGoogle の戻り値。`isNewUser` は新規アカウント判定（DisplayNameDialog 発火用）。 */
+export interface GoogleSignInResult {
+  user: User;
+  isNewUser: boolean;
+}
+
 /**
  * Google アカウントでログイン。新規ユーザーなら account 作成も一括で完了する。
- * displayName / email は Google プロフィールから自動取得され、`users/{uid}` へ反映する。
+ * displayName / email は Google プロフィールから自動取得されるが、
+ * **Phase 4.7 から既存ユーザーの `users/{uid}` 上書きはしない**
+ * （サークル用ニックネーム設定を保護するため）。
+ * 新規ユーザー判定は `additionalUserInfo.isNewUser` で行い、UI 側で displayName 設定
+ * ダイアログを出させるために戻り値に含める。
  *
  * PC / スマホ共に signInWithPopup を使用。スマホで popup がブロックされる環境
  * （iOS Safari 一部バージョン等）では `auth/popup-blocked` を返すため、UI 側で
@@ -124,20 +158,18 @@ export class AccountLinkRequired extends AppError {
  * `AccountLinkRequired` を throw する。UI はパスワード入力を求めて
  * `linkGoogleWithPassword` を呼び、Google を既存アカウントに連携する。
  */
-export async function signInWithGoogle(): Promise<User> {
+export async function signInWithGoogle(): Promise<GoogleSignInResult> {
   const provider = new GoogleAuthProvider();
   try {
     const cred = await signInWithPopup(firebaseAuth, provider);
-    // Google プロフィールの displayName / email を users/{uid} の真実源に保存。
-    if (cred.user.displayName) {
-      await upsertUserProfile({
-        uid: cred.user.uid,
-        displayName: cred.user.displayName,
-        email: cred.user.email ?? null,
-      });
-    }
-    logger.info("google sign-in ok", { uid: cred.user.uid });
-    return cred.user;
+    const additional = getAdditionalUserInfo(cred);
+    const isNewUser = additional?.isNewUser ?? false;
+    // Phase 4.7:
+    //   - 新規ユーザー: `users/{uid}` は DisplayNameDialog → updateDisplayName が作成する。
+    //   - 既存ユーザー: サークル用 displayName を保護するため Google プロフィールで上書きしない。
+    // いずれの場合も本関数では users/{uid} に書き込まない。
+    logger.info("google sign-in ok", { uid: cred.user.uid, isNewUser });
+    return { user: cred.user, isNewUser };
   } catch (e) {
     if (e instanceof FirebaseError && e.code === "auth/account-exists-with-different-credential") {
       const pending = GoogleAuthProvider.credentialFromError(e);
@@ -207,10 +239,7 @@ export async function linkGoogleWithPassword(
 }
 
 export async function signInAsGuest(displayName: string): Promise<User> {
-  const trimmed = displayName.trim();
-  if (!trimmed) {
-    throw new AppError("表示名を入力してください", "validation/display-name-required");
-  }
+  const trimmed = validateDisplayName(displayName);
   try {
     const cred = await signInAnonymously(firebaseAuth);
     await updateProfile(cred.user, { displayName: trimmed });
@@ -232,10 +261,7 @@ export async function updateDisplayName(newName: string): Promise<void> {
   if (!user) {
     throw new AppError("ログインしてください", "auth/not-authenticated");
   }
-  const trimmed = newName.trim();
-  if (!trimmed) {
-    throw new AppError("表示名を入力してください", "validation/display-name-required");
-  }
+  const trimmed = validateDisplayName(newName);
   try {
     await updateProfile(user, { displayName: trimmed });
     await upsertUserProfile({
@@ -243,6 +269,19 @@ export async function updateDisplayName(newName: string): Promise<void> {
       displayName: trimmed,
       email: user.email ?? null,
     });
+    // Phase 4.7: 所属 group の memberDisplayNames[uid] にも反映（best-effort、失敗しても throw しない）
+    const profile = await getUserProfile(user.uid).catch(() => null);
+    const groupIds = profile?.groupIds ?? [];
+    if (groupIds.length > 0) {
+      await propagateDisplayNameToGroups(user.uid, groupIds, trimmed).catch((err) => {
+        const wrapped = AppError.from(
+          err,
+          "group/propagate-failed",
+          "表示名の group 伝播に失敗しました",
+        );
+        logger.warn(wrapped.message, { code: wrapped.code, uid: user.uid });
+      });
+    }
     logger.info("display name updated", { uid: user.uid });
   } catch (e) {
     const wrapped = wrapAuthError(e, "auth/update-profile-failed", "表示名の更新に失敗しました");

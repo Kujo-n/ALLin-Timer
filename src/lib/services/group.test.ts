@@ -30,6 +30,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   updateGroupRoles: vi.fn(),
   removeMemberSelf: vi.fn(),
   deleteGroup: vi.fn(),
+  setMemberDisplayName: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
@@ -60,6 +61,7 @@ import {
   deleteGroup,
   getGroup,
   removeMemberSelf,
+  setMemberDisplayName,
   updateGroupName,
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
@@ -80,6 +82,7 @@ import {
   leaveGroup,
   promoteToOrganizer,
   promoteToOwner,
+  propagateDisplayNameToGroups,
   renameGroup,
 } from "./group";
 
@@ -97,6 +100,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     ownerUids,
     organizerUids,
     memberUids,
+    memberDisplayNames: {},
     createdAt: now,
     ...overrides,
   };
@@ -122,6 +126,7 @@ beforeEach(() => {
   vi.mocked(deleteGroup).mockReset();
   vi.mocked(updateGroupName).mockReset();
   vi.mocked(updateGroupRoles).mockReset();
+  vi.mocked(setMemberDisplayName).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
@@ -138,8 +143,35 @@ describe("createGroupWithOwner", () => {
     const gid = await createGroupWithOwner({ name: "Saturday", ownerUid: "u1" });
 
     expect(gid).toBe("g-new");
-    expect(createGroup).toHaveBeenCalledWith({ name: "Saturday", ownerUid: "u1" });
+    // Phase 4.7: createGroup に ownerDisplayName も渡されるようになった
+    expect(createGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Saturday", ownerUid: "u1" }),
+    );
     expect(addGroupIdToUser).toHaveBeenCalledWith("u1", "g-new");
+  });
+
+  // Phase 4.7 (M2): currentUser に displayName が無い場合、email ではなく uid にフォールバックする
+  // （PII 露出を防ぐ）。
+  it("falls back to uid instead of email when authUser.displayName is missing", async () => {
+    vi.mocked(createGroup).mockResolvedValue("g-new");
+    vi.mocked(addGroupIdToUser).mockResolvedValue();
+
+    // firebaseAuth singleton を mock モジュールごと差し替え。ただし既に vi.mock で
+    // currentUser: null として登録してあるため、ここでは動的に上書きする。
+    const clientMock = await import("@/lib/firebase/client");
+    Object.defineProperty(clientMock, "firebaseAuth", {
+      configurable: true,
+      value: {
+        currentUser: { displayName: null, email: "leak@example.com" },
+      },
+    });
+
+    await createGroupWithOwner({ name: "Saturday", ownerUid: "u1" });
+
+    // email が ownerDisplayName に入らないことを確認
+    expect(createGroup).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Saturday", ownerUid: "u1", ownerDisplayName: "u1" }),
+    );
   });
 });
 
@@ -221,6 +253,23 @@ describe("consumeJoinCode", () => {
     );
     expect(groupUpdateCall).toBeDefined();
     expect(groupUpdateCall?.[1]).toMatchObject({ joinCodeId: "code123" });
+  });
+
+  it("wraps transaction failures as group/join-failed and does not add groupId to user", async () => {
+    vi.mocked(getJoinCode).mockResolvedValue(makeCode());
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u-new",
+      displayName: "Bob",
+      email: null,
+      groupIds: [],
+      createdAt: now,
+    });
+    vi.mocked(runTransaction).mockRejectedValue(new Error("firestore write aborted"));
+
+    await expect(consumeJoinCode({ code: "code123", uid: "u-new" })).rejects.toMatchObject({
+      code: "group/join-failed",
+    });
+    expect(addGroupIdToUser).not.toHaveBeenCalled();
   });
 });
 
@@ -538,5 +587,45 @@ describe("demoteOwner", () => {
     await demoteOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
 
     expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+});
+
+describe("propagateDisplayNameToGroups", () => {
+  it("no-ops for blank displayName", async () => {
+    await propagateDisplayNameToGroups("u1", ["g1", "g2"], "   ");
+    expect(setMemberDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("no-ops for empty groupIds", async () => {
+    await propagateDisplayNameToGroups("u1", [], "Alice");
+    expect(setMemberDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("trims displayName and writes to each group", async () => {
+    vi.mocked(setMemberDisplayName).mockResolvedValue();
+    await propagateDisplayNameToGroups("u1", ["g1", "g2"], "  Alice  ");
+    expect(setMemberDisplayName).toHaveBeenCalledTimes(2);
+    expect(setMemberDisplayName).toHaveBeenNthCalledWith(1, "g1", "u1", "Alice");
+    expect(setMemberDisplayName).toHaveBeenNthCalledWith(2, "g2", "u1", "Alice");
+  });
+
+  it("continues on per-group failure and does not throw (best-effort)", async () => {
+    vi.mocked(setMemberDisplayName).mockImplementation(async (gid: string) => {
+      if (gid === "g1") throw new AppError("denied", "firestore/permission-denied");
+    });
+    await expect(
+      propagateDisplayNameToGroups("u1", ["g1", "g2"], "Alice"),
+    ).resolves.toBeUndefined();
+    expect(setMemberDisplayName).toHaveBeenCalledTimes(2);
+  });
+
+  it("handles non-AppError rejection reasons (falls back to unknown code)", async () => {
+    vi.mocked(setMemberDisplayName).mockImplementation(async (gid: string) => {
+      if (gid === "g1") throw "string thrown"; // non-object
+    });
+    await expect(
+      propagateDisplayNameToGroups("u1", ["g1", "g2"], "Alice"),
+    ).resolves.toBeUndefined();
+    expect(setMemberDisplayName).toHaveBeenCalledTimes(2);
   });
 });

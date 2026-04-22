@@ -63,8 +63,10 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
+      rebuyStack: null,
+      addOnStack: null,
       lateEntryDeadlineLevel: 6,
-      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 }],
+      levels: [{ level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false }],
     },
     state: "setup",
     startedAt: null,
@@ -410,11 +412,15 @@ describe("joinViaGoogle", () => {
   });
 
   it("signs in with google and creates player on happy path", async () => {
+    // Phase 4.7: signInWithGoogle は { user, isNewUser } を返すようになった
     vi.mocked(signInWithGoogle).mockResolvedValue({
-      uid: "u-google",
-      email: "alice@example.com",
-      displayName: "Alice",
-    } as unknown as Awaited<ReturnType<typeof signInWithGoogle>>);
+      user: {
+        uid: "u-google",
+        email: "alice@example.com",
+        displayName: "Alice",
+      } as unknown as Awaited<ReturnType<typeof signInWithGoogle>>["user"],
+      isNewUser: false,
+    });
 
     const result = await joinViaGoogle({ tid: "t1" });
 
