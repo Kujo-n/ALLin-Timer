@@ -65,7 +65,9 @@ tests/e2e/
 ├── email-link-removed.spec.ts
 ├── organizer-self-join.spec.ts
 ├── winner-banner-and-auto-finish.spec.ts
-└── anonymous-self-delete.spec.ts
+├── anonymous-self-delete.spec.ts
+├── groups-navigation.spec.ts
+└── member-role-split.spec.ts     # Phase 4.6: 一般メンバーの role gate / ワンタップ参加
 ```
 
 ## テスト間の隔離

@@ -132,3 +132,38 @@ export async function joinAsGuest(
   // shadcn の CardTitle は <div> 実装で role=heading を持たないので getByText を使う。
   await expect(page.getByText(/受付完了|既に参加済み/)).toBeVisible({ timeout: 30_000 });
 }
+
+/**
+ * Phase 4.6: オーナーが `/groups/[gid]` で招待コードを発行し、その URL を返す。
+ * 発行ボタン押下後、readonly Input に表示されるフル URL を読み取る。
+ */
+export async function issueInviteUrl(page: Page, gid: string): Promise<string> {
+  await page.goto(`/groups/${gid}`);
+  await page.getByRole("button", { name: "招待コードを発行" }).click();
+  const input = page.locator('input[readonly]').first();
+  await expect(input).toBeVisible({ timeout: 15_000 });
+  const url = await input.inputValue();
+  if (!url.includes("/groups/join/")) {
+    throw new Error(`unexpected invite url: ${url}`);
+  }
+  return url;
+}
+
+/**
+ * Phase 4.6: 招待コード URL を踏んで一般メンバーとして加入する。
+ * 加入成功後、`/groups/[gid]` にリダイレクトされることを確認。
+ */
+export async function consumeInviteUrl(page: Page, inviteUrl: string): Promise<string> {
+  const url = new URL(inviteUrl);
+  await page.goto(url.pathname);
+  await page.waitForURL(
+    (u) => {
+      const m = u.pathname.match(/^\/groups\/([^/]+)$/);
+      return m !== null && m[1] !== "new" && m[1] !== "join";
+    },
+    { timeout: 15_000 },
+  );
+  const m = page.url().match(/\/groups\/([^/?#]+)/);
+  if (!m) throw new Error(`failed to parse gid from ${page.url()}`);
+  return m[1];
+}
