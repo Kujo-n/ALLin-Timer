@@ -9,7 +9,7 @@ import { expect, type Page } from "@playwright/test";
  * いずれの helper もログイン状態を維持する（page は同一セッション）。
  */
 
-export interface OrganizerCredentials {
+interface OrganizerCredentials {
   email: string;
   password: string;
   displayName: string;

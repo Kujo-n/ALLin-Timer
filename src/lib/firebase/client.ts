@@ -59,7 +59,7 @@ if (typeof window !== "undefined") {
   }
 }
 
-export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const firebaseAuth = getAuth(firebaseApp);
 // Firebase Auth が送信するシステムメール（メールリンク／パスワードリセット等）の
 // 既定テンプレート言語を日本語に固定する。Console のテンプレート編集と併用。

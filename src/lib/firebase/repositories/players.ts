@@ -3,7 +3,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -32,18 +31,6 @@ export async function getPlayer(tid: string, uid: string): Promise<PlayerDoc | n
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/read_failed", "参加者取得に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid, uid });
-    throw wrapped;
-  }
-}
-
-export async function listPlayers(tid: string): Promise<PlayerDoc[]> {
-  try {
-    const q = query(playersRef(tid), orderBy("entryAt", "asc"));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "参加者一覧取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
     throw wrapped;
   }
 }

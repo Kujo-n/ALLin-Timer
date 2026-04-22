@@ -21,7 +21,6 @@ vi.mock("@/lib/firebase/repositories/tournaments", () => ({
 vi.mock("@/lib/firebase/repositories/players", () => ({
   getPlayer: vi.fn(),
   upsertPlayer: vi.fn(),
-  listPlayers: vi.fn(),
   deletePlayer: vi.fn(),
 }));
 vi.mock("@/lib/firebase/repositories/users", () => ({

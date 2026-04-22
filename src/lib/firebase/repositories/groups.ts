@@ -19,7 +19,7 @@ import {
 } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 
-export const groupsRef = collection(firestore, "groups").withConverter(
+const groupsRef = collection(firestore, "groups").withConverter(
   zodConverter(groupBodySchema, "groups"),
 );
 

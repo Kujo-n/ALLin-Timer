@@ -47,13 +47,13 @@ export interface Seat {
   seatNum: number;
 }
 
-export interface SeatAssignment {
+interface SeatAssignment {
   playerId: string;
   tableNum: number;
   seatNum: number;
 }
 
-export interface InitialSeatingPlan {
+interface InitialSeatingPlan {
   assignments: SeatAssignment[];
   /** upsertTables() に渡す tableNum の配列（昇順）。 */
   tableNums: number[];
@@ -65,7 +65,7 @@ export interface BalancingMove {
   to: Seat;
 }
 
-export interface TableBreakPlan {
+interface TableBreakPlan {
   brokenTableNum: number;
   /** 解散したテーブルから生存テーブルへの全件移動指示。 */
   moves: BalancingMove[];

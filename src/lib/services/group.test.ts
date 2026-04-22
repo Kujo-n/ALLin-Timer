@@ -22,7 +22,6 @@ vi.mock("firebase/firestore", async () => {
 });
 
 vi.mock("@/lib/firebase/repositories/groups", () => ({
-  groupsRef: {},
   groupDocRef: vi.fn((gid: string) => ({ __ref: "groups", gid })),
   createGroup: vi.fn(),
   getGroup: vi.fn(),
@@ -34,13 +33,9 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
-  groupJoinCodesRef: {},
   joinCodeDocRef: vi.fn((code: string) => ({ __ref: "joinCode", code })),
   createJoinCode: vi.fn(),
   getJoinCode: vi.fn(),
-  incrementUsesCount: vi.fn(),
-  deleteJoinCode: vi.fn(),
-  generateCodeString: vi.fn(),
   isJoinCodeUsable: (codeDoc: GroupJoinCodeDoc, now: Date = new Date()): boolean => {
     if (codeDoc.expiresAt.toMillis() <= now.getTime()) return false;
     if (codeDoc.maxUses !== null && codeDoc.usesCount >= codeDoc.maxUses) {

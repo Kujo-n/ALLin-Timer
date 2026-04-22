@@ -1,12 +1,9 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
-  increment,
   serverTimestamp,
   setDoc,
-  updateDoc,
   Timestamp,
 } from "firebase/firestore";
 
@@ -20,7 +17,7 @@ import {
 } from "@/lib/firebase/schemas/groupJoinCode";
 import { logger } from "@/lib/logger";
 
-export const groupJoinCodesRef = collection(firestore, "groupJoinCodes").withConverter(
+const groupJoinCodesRef = collection(firestore, "groupJoinCodes").withConverter(
   zodConverter(groupJoinCodeBodySchema, "groupJoinCodes"),
 );
 
@@ -37,7 +34,7 @@ const CODE_LENGTH = 16;
  * 衝突は 20 人 × 月 1〜2 回スケールではまず発生しないが、
  * setDoc 衝突回避のため呼び出し側で `getJoinCode` 確認＋リトライする。
  */
-export function generateCodeString(): string {
+function generateCodeString(): string {
   const bytes = new Uint8Array(CODE_LENGTH);
   if (typeof crypto === "undefined" || !crypto.getRandomValues) {
     throw new AppError("crypto.getRandomValues が利用できません", "runtime/no-crypto");
@@ -85,35 +82,6 @@ export async function getJoinCode(code: string): Promise<GroupJoinCodeDoc | null
     return { id: snap.id, ...snap.data() };
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/read_failed", "招待コード取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
-}
-
-/**
- * 単独で usesCount を +1 する。トランザクション内で呼ぶときは使用しないこと
- * （`tx.update` で同等処理を書く）。
- */
-export async function incrementUsesCount(code: string): Promise<void> {
-  try {
-    await updateDoc(joinCodeDocRef(code), { usesCount: increment(1) });
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "招待コードの使用回数更新に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
-}
-
-export async function deleteJoinCode(code: string): Promise<void> {
-  try {
-    await deleteDoc(joinCodeDocRef(code));
-    logger.info("join code delete ok", { code });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "招待コード削除に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }

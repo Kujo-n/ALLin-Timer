@@ -3,26 +3,17 @@ import type { APIRequestContext } from "@playwright/test";
 /**
  * Firebase Emulator に対する操作ヘルパ。
  *
- * テスト間の状態隔離:
- *   - `resetFirestore(request, projectId)`: 全ドキュメント削除（`/emulator/v1/.../documents` DELETE）
- *   - `resetAuth(request, projectId)`: 全ユーザ削除（`/emulator/v1/projects/{pid}/accounts` DELETE）
- *
- * ユーザ作成・取得:
- *   - `createUserViaEmulator(...)`: Identity Toolkit API の accounts:signUp を叩き、
- *     fresh な localId + idToken を返す
- *   - `listUsers(...)`: accounts:query で全ユーザの minimal スナップショット取得
- *   - `getUser(...)`: localId 単体取得（自己削除テストの確認に使用）
- *
+ * テスト間の状態隔離: `resetEmulators(request)` が Firestore / Auth を一括リセットする。
+ * ユーザ列挙は `listUsers` / `userExists`、ドキュメント取得は `getDocument` を使用する。
  * 全て Emulator の unauthenticated endpoint を使用する（本番では動作しない）。
  */
 
-export const E2E_PROJECT_ID = "allin-pokertimer-e2e";
+const E2E_PROJECT_ID = "allin-pokertimer-e2e";
 const AUTH_EMULATOR = "http://127.0.0.1:9099";
 const FIRESTORE_EMULATOR = "http://127.0.0.1:8080";
-const FAKE_API_KEY = "fake-api-key";
 
 /** Firestore Emulator: 全ドキュメント削除。 */
-export async function resetFirestore(
+async function resetFirestore(
   request: APIRequestContext,
   projectId = E2E_PROJECT_ID,
 ): Promise<void> {
@@ -35,7 +26,7 @@ export async function resetFirestore(
 }
 
 /** Auth Emulator: 全ユーザ削除。 */
-export async function resetAuth(
+async function resetAuth(
   request: APIRequestContext,
   projectId = E2E_PROJECT_ID,
 ): Promise<void> {
@@ -53,53 +44,6 @@ export async function resetEmulators(
   projectId = E2E_PROJECT_ID,
 ): Promise<void> {
   await Promise.all([resetFirestore(request, projectId), resetAuth(request, projectId)]);
-}
-
-export interface EmulatorUser {
-  email: string;
-  password: string;
-  displayName: string;
-  localId: string;
-  idToken: string;
-  refreshToken: string;
-}
-
-/**
- * Identity Toolkit の signUp を叩いてユーザを作成する。
- * 戻り値の localId は Firebase Auth uid と一致する。
- */
-export async function createUserViaEmulator(
-  request: APIRequestContext,
-  params: { email: string; password: string; displayName: string },
-): Promise<EmulatorUser> {
-  const res = await request.post(
-    `${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FAKE_API_KEY}`,
-    {
-      data: {
-        email: params.email,
-        password: params.password,
-        displayName: params.displayName,
-        returnSecureToken: true,
-      },
-      headers: { "Content-Type": "application/json" },
-    },
-  );
-  if (!res.ok()) {
-    throw new Error(`createUserViaEmulator failed: ${res.status()} ${await res.text()}`);
-  }
-  const body = (await res.json()) as {
-    localId: string;
-    idToken: string;
-    refreshToken: string;
-  };
-  return {
-    email: params.email,
-    password: params.password,
-    displayName: params.displayName,
-    localId: body.localId,
-    idToken: body.idToken,
-    refreshToken: body.refreshToken,
-  };
 }
 
 interface EmulatorUserSnapshot {

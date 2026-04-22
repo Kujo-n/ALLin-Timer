@@ -1,4 +1,4 @@
-import { test as base, type Page } from "@playwright/test";
+import { test as base } from "@playwright/test";
 
 import { LoginPage } from "../pages/LoginPage";
 import { TopPage } from "../pages/TopPage";
@@ -59,21 +59,3 @@ export const test = base.extend<{
 });
 
 export { expect } from "@playwright/test";
-
-/**
- * ログアウト状態でスタートするための helper。localStorage / sessionStorage / cookie を
- * クリアして fresh なセッションから始める。
- */
-export async function startFresh(page: Page) {
-  await page.context().clearCookies();
-  await page.goto("/");
-  // 一度何らかのページに訪問しないと localStorage にアクセスできない。
-  await page.evaluate(() => {
-    try {
-      window.localStorage.clear();
-      window.sessionStorage.clear();
-    } catch {
-      /* ignore */
-    }
-  });
-}

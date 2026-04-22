@@ -3,7 +3,7 @@
  * `Math.random` だと engine の test が再現困難なため自前実装。
  * 32bit seed → [0, 1) の double を返す関数を返す。外部 dep を増やさないために自作。
  */
-export function mulberry32(seed: number): () => number {
+function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return function rng(): number {
     a = (a + 0x6d2b79f5) >>> 0;

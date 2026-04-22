@@ -8,7 +8,7 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { getRemainingMs, shouldAutoAdvance } from "@/lib/services/timer";
 
-export interface TimerState {
+interface TimerState {
   tournament: TournamentDoc | null;
   remainingMs: number | null;
   fromCache: boolean;
@@ -18,7 +18,7 @@ export interface TimerState {
   error: AppError | null;
 }
 
-export interface UseTournamentTimerOptions {
+interface UseTournamentTimerOptions {
   /**
    * 指定すると残り 0 で transaction による auto-advance を試みる。
    * 運営者ダッシュボード専用。`/live` 等の参加者ビューでは渡さないこと

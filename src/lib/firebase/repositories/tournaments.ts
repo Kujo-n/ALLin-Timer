@@ -355,7 +355,7 @@ export async function finishTournament(
   }
 }
 
-export interface TournamentSnapshotPayload {
+interface TournamentSnapshotPayload {
   doc: TournamentDoc | null;
   fromCache: boolean;
   hasPendingWrites: boolean;

@@ -12,7 +12,7 @@ import {
   type Level,
 } from "@/lib/firebase/schemas/structure";
 
-export interface StructureFormInitialValue {
+interface StructureFormInitialValue {
   name: string;
   initialStack: number;
   lateEntryDeadlineLevel: number;
