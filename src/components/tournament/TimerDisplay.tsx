@@ -77,16 +77,27 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
       ) : null}
 
       {current ? (
-        <div className="text-base text-muted-foreground">
-          SB {current.sb} / BB {current.bb} / Ante {current.ante}
-        </div>
+        current.isBreak ? (
+          <div className="flex items-center gap-2 text-xl font-semibold text-amber-700 dark:text-amber-400">
+            <span aria-hidden>☕</span>
+            <span>BREAK</span>
+          </div>
+        ) : (
+          <div className="text-base text-muted-foreground">
+            SB {current.sb} / BB {current.bb} / Ante {current.ante}
+          </div>
+        )
       ) : null}
 
       {next ? (
-        <div className="text-sm text-muted-foreground">
-          Next: Lv {next.level} ({next.sb} / {next.bb}
-          {next.ante > 0 ? ` / ante ${next.ante}` : ""})
-        </div>
+        next.isBreak ? (
+          <div className="text-sm text-muted-foreground">Next: Lv {next.level} (☕ BREAK)</div>
+        ) : (
+          <div className="text-sm text-muted-foreground">
+            Next: Lv {next.level} ({next.sb} / {next.bb}
+            {next.ante > 0 ? ` / ante ${next.ante}` : ""})
+          </div>
+        )
       ) : levelInfo && tournament.currentLevel >= tournament.structureSnapshot.levels.length ? (
         <div className="text-sm text-muted-foreground">最終レベル</div>
       ) : null}

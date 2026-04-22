@@ -38,6 +38,8 @@ function snapshotFromStructure(s: StructureDoc): StructureSnapshot {
   return {
     name: s.name,
     initialStack: s.initialStack,
+    rebuyStack: s.rebuyStack ?? null,
+    addOnStack: s.addOnStack ?? null,
     lateEntryDeadlineLevel: s.lateEntryDeadlineLevel,
     levels: s.levels.map((l) => ({ ...l })),
   };

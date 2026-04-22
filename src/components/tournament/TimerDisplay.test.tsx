@@ -19,11 +19,13 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
+      rebuyStack: null,
+      addOnStack: null,
       lateEntryDeadlineLevel: 6,
       levels: [
-        { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 },
-        { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600 },
-        { level: 3, sb: 75, bb: 150, ante: 25, durationSec: 600 },
+        { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+        { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+        { level: 3, sb: 75, bb: 150, ante: 25, durationSec: 600, isBreak: false },
       ],
     },
     state: "running",
@@ -125,5 +127,65 @@ describe("TimerDisplay — running / paused / finished", () => {
       />,
     );
     expect(screen.getByText("最終レベル")).toBeInTheDocument();
+  });
+});
+
+describe("TimerDisplay — break level (Phase 4.7)", () => {
+  it("shows ☕ BREAK instead of SB/BB/Ante when current level is a break", () => {
+    const tournament = makeTournament({
+      state: "running",
+      currentLevel: 2,
+      structureSnapshot: {
+        name: "With break",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 0, bb: 0, ante: 0, durationSec: 300, isBreak: true },
+          { level: 3, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+    });
+    render(
+      <TimerDisplay
+        tournament={tournament}
+        remainingMs={180_000}
+        levelInfo={getLevelInfo(tournament)}
+      />,
+    );
+    expect(screen.getByText("BREAK")).toBeInTheDocument();
+    // SB / BB 表示は出ない
+    expect(screen.queryByText((t) => t.startsWith("SB 0"))).not.toBeInTheDocument();
+  });
+
+  it("shows Next: Lv X (☕ BREAK) when next level is a break", () => {
+    const tournament = makeTournament({
+      state: "running",
+      currentLevel: 1,
+      structureSnapshot: {
+        name: "With break next",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 0, bb: 0, ante: 0, durationSec: 300, isBreak: true },
+          { level: 3, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+    });
+    render(
+      <TimerDisplay
+        tournament={tournament}
+        remainingMs={595_000}
+        levelInfo={getLevelInfo(tournament)}
+      />,
+    );
+    expect(
+      screen.getByText((t) => t.includes("Next: Lv 2") && t.includes("BREAK")),
+    ).toBeInTheDocument();
   });
 });
