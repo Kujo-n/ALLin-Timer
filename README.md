@@ -196,7 +196,7 @@ Phase 4.6 でメンバーを 3 階層に分割した（スキーマ破壊的変�
 
 ### 5.5. Phase 4.8: テンプレート管理者の bootstrap
 
-Phase 4.8 でサークル横断の **テンプレート図書館**（`structureTemplates`）を導入した。作成者脱会後のテンプレ整理のために、**最初の管理者は Firestore Console で手動作成**する必要がある（Firestore Security Rules が管理者の create を「既存管理者による操作」に限定しており、chicken-and-egg を避けるため）。
+Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates`）を導入した。作成者脱会後のテンプレ整理のために、**最初の管理者は Firestore Console で手動作成**する必要がある（Firestore Security Rules が管理者の create を「既存管理者による操作」に限定しており、chicken-and-egg を避けるため）。
 
 1. Firebase Console で対象プロジェクトの Firestore を開く
 2. コレクション ID: `templateAdmins` を作成（初回のみ）

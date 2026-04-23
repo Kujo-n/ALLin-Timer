@@ -453,7 +453,7 @@ describe("deriveRole", () => {
   });
 });
 
-// Phase 4.8: structureTemplates — サークル横断のテンプレ図書館
+// Phase 4.8: structureTemplates — サークル横断の Structure Templates
 describe("structureTemplateBodySchema", () => {
   const baseTemplate = {
     name: "Standard 20min",

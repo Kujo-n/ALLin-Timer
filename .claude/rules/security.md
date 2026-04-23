@@ -39,7 +39,7 @@
 
 詳細モデルは [group-membership.md](group-membership.md) 参照。
 
-## テンプレート図書館（Phase 4.8 以降）
+## Structure Templates（Phase 4.8 以降）
 
 サークル横断の `structureTemplates/{tid}` コレクションと、そのクリーンアップ権限を持つ `templateAdmins/{uid}` コレクションの運用規約。
 

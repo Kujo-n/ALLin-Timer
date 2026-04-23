@@ -216,7 +216,7 @@
 | 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | complete | - | 4 | [completed/phase-4.5-pre-phase5-improvements.plan.md](../plans/completed/phase-4.5-pre-phase5-improvements.plan.md) — 実装レポート: [phase-4.5-pre-phase5-improvements-report.md](../reports/phase-4.5-pre-phase5-improvements-report.md) |
 | 4.6 | Member Role Split | `groups/{gid}` を owner / organizer / general member の 3 階層化（`ownerUids` 複数可・`organizerUids` 新設）、一般メンバーは自サークルのトーナメント一覧閲覧＋ワンタップ参加、昇降格 UI は owner 専用、破壊的 migration あり | complete | - | 4.5 | [completed/phase-4.6-member-role-split.plan.md](../plans/completed/phase-4.6-member-role-split.plan.md) — 実装レポート: [phase-4.6-member-role-split-report.md](../reports/phase-4.6-member-role-split-report.md) |
 | 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応、`groups/{gid}.memberDisplayNames` snapshot 追加（サークル一覧で UID ではなく displayName 表示）、`/tournaments` 一覧の状態別カード色分け。schema は additive、Firestore Rules は groups update に self-key 書込条件を 1 つ追加 | complete | - | 4.6 | [completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md) — 実装レポート: [phase-4.7-onboarding-polish-structure-enhancements-report.md](../reports/phase-4.7-onboarding-polish-structure-enhancements-report.md) |
-| 4.8 | Structure Template Library | サークル横断のテンプレート図書館。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | in-progress | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
+| 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | in-progress | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
 | 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8 | - |
 
 ### Phase Details
@@ -315,7 +315,7 @@
   - 最後のオーナー保護などの invariant が service + rule 両層で enforce されている
 
 **Phase 4.7: Onboarding Polish & Structure Enhancements**
-- **Goal**: Phase 5 のドライラン前に、運用で挙がった **7 件の UX / 機能ペイン**（memo-08 の 5 件 + memo-09 の 2 件）を一括解消する。テンプレート図書館は Phase 4.8 に分離
+- **Goal**: Phase 5 のドライラン前に、運用で挙がった **7 件の UX / 機能ペイン**（memo-08 の 5 件 + memo-09 の 2 件）を一括解消する。Structure Templates は Phase 4.8 に分離
 - **背景**: 運営者側からの改善要望（`tmp/08_Phase4.6_memo.md` + `tmp/09_pahse4.7_memo.md`）で、サークル SNS ニックネーム前提の運用・平均スタック把握要求・ブレイク運用・サークルメンバー識別（UID → displayName）・トーナメント一覧の状態視認性が出揃った
 - **Scope**:
   - Google 新規ログイン時の `DisplayNameDialog` 強制表示（`additionalUserInfo.isNewUser` 判定）、既存ユーザーは skip
@@ -329,7 +329,7 @@
 - **Success signal**: 7 件すべての挙動を手動ブラウザで確認し、typecheck / lint / test / build が green
 
 **Phase 4.8: Structure Template Library**
-- **Goal**: サークル横断でストラクチャのひな形を共有できる図書館を提供。memo item 2 の初心者ペイン（SB/BB 設計に悩む）と「出先でスマホから追加できる運用」を両立する
+- **Goal**: サークル横断でストラクチャのひな形を共有できる Structure Templates を提供。memo item 2 の初心者ペイン（SB/BB 設計に悩む）と「出先でスマホから追加できる運用」を両立する
 - **背景**: Phase 4.7 で基礎的な UX 改善は完了。初心者運営者が他サークルのベストプラクティスを再利用できる仕組みが未実装のため、テンプレート共有コレクションを新設する
 - **Scope**:
   - **`structureTemplates/{tid}` コレクション新設**: サインイン済み全員が read・create 可、edit は本人のみ、delete は本人または管理者
