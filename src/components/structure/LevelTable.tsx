@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +23,38 @@ function parseIntSafe(value: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+function inferAutoSbHalfFromLevels(levels: Level[]): boolean {
+  // プレイレベル（!isBreak）すべてで sb === floor(bb/2) を満たせば ON 推定。
+  // プレイレベルが 1 つも無い（= 全 break）場合は新規扱いで ON。
+  const playLevels = levels.filter((l) => !l.isBreak);
+  if (playLevels.length === 0) return true;
+  return playLevels.every((l) => l.sb === Math.floor(l.bb / 2));
+}
+
 export function LevelTable({ levels, onChange }: Props) {
+  const [autoSbHalf, setAutoSbHalf] = useState<boolean>(() =>
+    inferAutoSbHalfFromLevels(levels),
+  );
+
+  function handleAutoSbHalfToggle(checked: boolean) {
+    setAutoSbHalf(checked);
+    if (!checked) return;
+    // OFF→ON: プレイレベルの SB を一括で floor(bb/2) に再計算。break 行は触らない。
+    const next = levels.map((l) =>
+      l.isBreak ? l : { ...l, sb: Math.floor(l.bb / 2) },
+    );
+    onChange(next);
+  }
+
   function updateChip(index: number, field: ChipField, value: string) {
     const n = parseIntSafe(value);
-    const next = levels.map((l, i) => (i === index ? { ...l, [field]: n } : l));
+    const next = levels.map((l, i) => {
+      if (i !== index) return l;
+      if (field === "bb" && autoSbHalf) {
+        return { ...l, bb: n, sb: Math.floor(n / 2) };
+      }
+      return { ...l, [field]: n };
+    });
     onChange(next);
   }
 
@@ -71,6 +100,15 @@ export function LevelTable({ levels, onChange }: Props) {
 
   return (
     <div className="space-y-2">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={autoSbHalf}
+          onChange={(e) => handleAutoSbHalfToggle(e.target.checked)}
+          aria-label="auto-sb-half"
+        />
+        <span>SB を BB の半額で自動入力</span>
+      </label>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -93,7 +131,7 @@ export function LevelTable({ levels, onChange }: Props) {
                     type="number"
                     min={0}
                     value={l.sb}
-                    disabled={l.isBreak}
+                    disabled={l.isBreak || autoSbHalf}
                     onChange={(e) => updateChip(i, "sb", e.target.value)}
                     aria-label={`level-${l.level}-sb`}
                   />
