@@ -1,7 +1,9 @@
 import { test, expect } from "./fixtures/test-context";
 import {
+  consumeInviteUrl,
   createGroup,
   createTemplateViaUI,
+  issueInviteUrl,
   randomOrganizer,
   registerOrganizer,
 } from "./fixtures/flows";
@@ -160,5 +162,74 @@ test.describe("Phase 4.8: Structure Template Library", () => {
     // form key bump により initialValue を受けて再初期化される
     await expect(page.getByLabel("ストラクチャ名")).toHaveValue("Picker Source");
     await expect(page.getByLabel("初期スタック")).toHaveValue("30000");
+  });
+});
+
+/**
+ * `/structures` ヘッダの Structure Templates 導線。
+ *
+ * 実装理由と UX 設計は
+ * [.claude/PRPs/reports/structure-templates-nav-link-report.md] 参照。
+ *
+ * 検証内容:
+ *   - organizer は /structures で Structure Templates ボタンが見える
+ *     → クリックで /templates に遷移する
+ *   - 一般メンバー（member）には同ボタンが表示されない（isOrganizer gate）
+ */
+test.describe("Structure Templates nav from /structures", () => {
+  test("organizer は /structures の Structure Templates ボタンから /templates に遷移できる", async ({
+    page,
+  }) => {
+    const organizer = randomOrganizer("tpl-nav");
+    await registerOrganizer(page, organizer);
+    await createGroup(page, "Nav Group");
+
+    await page.goto("/structures");
+
+    const navButton = page.getByRole("link", { name: "Structure Templates" });
+    await expect(navButton).toBeVisible();
+
+    await Promise.all([
+      page.waitForURL("**/templates", { timeout: 15_000 }),
+      navButton.click(),
+    ]);
+
+    await expect(
+      page.getByRole("heading", { name: "Structure Templates" }),
+    ).toBeVisible();
+  });
+
+  test("一般メンバーには Structure Templates ボタンが表示されない", async ({
+    page,
+  }) => {
+    // --- owner 側: group + invite 発行 ---
+    const owner = randomOrganizer("nav-ow");
+    await registerOrganizer(page, owner);
+    const gid = await createGroup(page, "Nav Gate Group");
+    const inviteUrl = await issueInviteUrl(page, gid);
+
+    // --- member 側: 別 context で加入 → /structures 閲覧 ---
+    const browser = page.context().browser();
+    if (!browser) throw new Error("browser unavailable");
+    const memberCtx = await browser.newContext();
+    try {
+      const memberPage = await memberCtx.newPage();
+      const member = randomOrganizer("nav-mb");
+      await registerOrganizer(memberPage, member);
+      const joinedGid = await consumeInviteUrl(memberPage, inviteUrl);
+      expect(joinedGid).toBe(gid);
+
+      await memberPage.goto("/structures");
+
+      // organizer 向けヘッダボタン群が member には表示されない
+      await expect(
+        memberPage.getByRole("link", { name: "Structure Templates" }),
+      ).toHaveCount(0);
+      await expect(
+        memberPage.getByRole("link", { name: /^新規作成$/ }),
+      ).toHaveCount(0);
+    } finally {
+      await memberCtx.close();
+    }
   });
 });
