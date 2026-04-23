@@ -194,6 +194,24 @@ Phase 4.6 でメンバーを 3 階層に分割した（スキーマ破壊的変�
 - 招待コードはコード文字列の発行のみ。メール招待リンク送信は範囲外（Phase 5 以降の検討）。
 - Phase 4.6 では招待コードは 1 種類のみ（「運営専用コード」はなし）。加入後に owner が手動で昇格させる前提。
 
+### 5.5. Phase 4.8: テンプレート管理者の bootstrap
+
+Phase 4.8 でサークル横断の **テンプレート図書館**（`structureTemplates`）を導入した。作成者脱会後のテンプレ整理のために、**最初の管理者は Firestore Console で手動作成**する必要がある（Firestore Security Rules が管理者の create を「既存管理者による操作」に限定しており、chicken-and-egg を避けるため）。
+
+1. Firebase Console で対象プロジェクトの Firestore を開く
+2. コレクション ID: `templateAdmins` を作成（初回のみ）
+3. ドキュメント ID: 最初の管理者の **`uid`**（Authentication タブで確認）
+4. フィールド: `createdAt` (timestamp, 現在時刻)
+5. 保存
+
+この 1 回の操作を行わないと、**作成者不明のテンプレートを誰も削除できない状態**で運用が始まる（作成者脱会後のクリーンアップ手段がなくなる）。本 Phase では管理者の grant / revoke UI は未実装。
+
+##### 制約事項（Phase 4.8）
+
+- テンプレート作成は匿名ユーザー不可（`createdByDisplayName` の信頼性担保のため、通常アカウント必須）
+- `createdByDisplayName` は作成時の snapshot。作成者が `/settings` で rename しても既存テンプレの表示名は追従しない
+- テンプレ削除は本人または管理者のみ。**最後の管理者が 0 人になると Console で再 seed するまで復旧できない**
+
 ### 6. Vercel にデプロイ
 
 1. GitHub に本リポジトリを push

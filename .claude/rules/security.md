@@ -38,3 +38,29 @@
 - **rule 側の保護**: 加入書込は `groupJoinCodes/{code}` の有効性チェックを rule に必ず含める（クライアント検証のみに依存しない）
 
 詳細モデルは [group-membership.md](group-membership.md) 参照。
+
+## テンプレート図書館（Phase 4.8 以降）
+
+サークル横断の `structureTemplates/{tid}` コレクションと、そのクリーンアップ権限を持つ `templateAdmins/{uid}` コレクションの運用規約。
+
+### 匿名ユーザー除外（read / create）
+
+`structureTemplates` の `read` / `create` は **通常アカウント（Google / メール / メールリンク）限定**とし、匿名ユーザー（`signInAnonymously`）は rule で deny する。
+
+- **rule 側**: [firestore.rules](../../firestore.rules) の `isSignedInNotAnon()`（`token.firebase.sign_in_provider != 'anonymous'`）で判定
+- **UI 側**: `RequireAuth(allowAnonymous=false)` でも同じ gate をかけており、二重防御
+- **理由**:
+  - `createdByDisplayName` の信頼性担保（匿名は表示名を持たない）
+  - description に運用者が誤ってサークル固有事情を書いたとき、`/join/[tid]` 経由の匿名ゲストへ read 経路を空けておかない
+
+更新 / 削除は作成者本人または管理者に限定されており、匿名で create できない以上 update / delete 経路から匿名が漏れることはない。
+
+### テンプレート管理者（`templateAdmins/{uid}`）
+
+作成者脱会後のテンプレ整理のために導入したグローバル役割。`templateAdmins/{uid}` の doc 存在自体が管理者を示すマーカー。
+
+- **read**: `allow get: if request.auth.uid == uid` のみ。`allow list: if false` で **管理者一覧の列挙を明示的に禁止**（`groupJoinCodes` と同方針）
+- **write**: `allow create, delete: if isTemplateAdmin()` で既存管理者からの操作のみ許可。`allow update: if false`（空 doc のため更新不要）
+- **Bootstrap 制約**: rule が既存管理者の存在を前提とするため、**最初の 1 人目は Firestore Console で手動 seed が必須**（chicken-and-egg 回避）。手順は README の「Phase 4.8: テンプレート管理者の bootstrap」参照
+- **最後の 1 人の保護**: 管理者が 0 人になると自力復旧不可（Console で再 seed するしかない）。本 Phase では grant / revoke の UI を提供しないため事故リスクは低いが、将来 UI 化する際は「最後の 1 人の self-revoke 禁止」を rule か Callable で実装すること
+- **`createdByDisplayName` snapshot**: `users/{uid}` が self-only read のため、テンプレ一覧で他人の作成者名を表示できない制約がある。対策として `structureTemplates` doc に `createdByDisplayName` を snapshot で保存（rename 追従は仕様として放棄）
