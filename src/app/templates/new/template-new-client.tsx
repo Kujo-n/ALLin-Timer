@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -29,7 +30,26 @@ export function TemplateNewClient() {
       </main>
     );
   }
-  const displayName = user.displayName?.trim() || user.email || user.uid;
+  // Phase 4.8 (M-1 fix): `user.displayName` が空の edge case（Google プロフィールに name が無い、
+  // DisplayNameDialog を未完了でルート直打ち等）で email / uid にフォールバックすると、
+  // そのまま `createdByDisplayName` として一覧カードに表示され全サインインユーザーに露出する。
+  // 以前は `user.displayName?.trim() || user.email || user.uid` だった。
+  // プライバシー保護のため、displayName 未設定時は `/settings` への誘導に切り替える。
+  const displayName = user.displayName?.trim() ?? "";
+  if (!displayName) {
+    return (
+      <main className="mx-auto max-w-3xl space-y-4 p-8">
+        <h1 className="text-2xl font-bold">テンプレートを作成</h1>
+        <p className="text-sm text-muted-foreground">
+          テンプレの作成者名として使用する「表示名」が未設定です。
+          <Link href="/settings" className="underline">
+            /settings
+          </Link>
+          {" で表示名を設定してからお戻りください。"}
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-8">

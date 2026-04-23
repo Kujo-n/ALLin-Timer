@@ -489,6 +489,15 @@ describe("structureTemplateBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects createdByDisplayName over DISPLAY_NAME_MAX_LENGTH (15) chars", () => {
+    // firestore.rules の createdByDisplayName.size() <= 15 と同期（L-1 対応）。
+    const result = structureTemplateBodySchema.safeParse({
+      ...baseTemplate,
+      createdByDisplayName: "a".repeat(16),
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects empty createdByUid", () => {
     const result = structureTemplateBodySchema.safeParse({
       ...baseTemplate,

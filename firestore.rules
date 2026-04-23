@@ -217,19 +217,31 @@ service cloud.firestore {
     // 匿名 SDK 直叩きによるリークを塞ぐため。UI は RequireAuth(allowAnonymous=false) で
     // 同じ gate をかけているが、rule で二重防御する。
     // update は本人のみ、delete は本人またはテンプレート管理者（`templateAdmins/{uid}` 存在）。
+    //
+    // ⚠ DRIFT WARNING (L-1): string フィールドの size() 上限は以下の schema と同期:
+    //   - createdByDisplayName: <= 15 ↔ DISPLAY_NAME_MAX_LENGTH in schemas/group.ts
+    //   - description: <= 200 ↔ structureTemplateBodySchema.description.max(200) in schemas/structureTemplate.ts
+    //   schema を緩めるときは rule も同時に緩めること（逆も同様）。
+    //   size() cap がないと SDK 直叩きで Firestore 1 doc 上限（~1MiB）まで膨らませられる。
     match /structureTemplates/{tid} {
       allow read: if isSignedInNotAnon();
       allow create: if isSignedInNotAnon()
                     && request.resource.data.createdByUid == request.auth.uid
                     && request.resource.data.createdByDisplayName is string
-                    && request.resource.data.createdByDisplayName.size() > 0;
+                    && request.resource.data.createdByDisplayName.size() >= 1
+                    && request.resource.data.createdByDisplayName.size() <= 15
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() <= 200;
       // 編集は本人のみ。createdByUid / createdByDisplayName / createdAt は immutable。
       // 匿名で create できない前提なので、ここは isSignedIn() で足りる（本人 uid 一致が効く）。
+      // description は update で変更可だが、create と同じ size() 上限を再強制する。
       allow update: if isSignedIn()
                     && resource.data.createdByUid == request.auth.uid
                     && request.resource.data.createdByUid == resource.data.createdByUid
                     && request.resource.data.createdByDisplayName == resource.data.createdByDisplayName
-                    && request.resource.data.createdAt == resource.data.createdAt;
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() <= 200;
       // 削除は本人または管理者。管理者 doc は console seed 起点のため匿名経路はない。
       allow delete: if isSignedIn()
                     && (resource.data.createdByUid == request.auth.uid || isTemplateAdmin());

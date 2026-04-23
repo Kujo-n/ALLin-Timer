@@ -9,6 +9,7 @@ import {
   type StructureFormSubmitInput,
 } from "@/components/structure/StructureForm";
 import { StructureTemplatePicker } from "@/components/structure/StructureTemplatePicker";
+import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { createStructure } from "@/lib/firebase/repositories/structures";
 import type { StructureTemplateDoc } from "@/lib/firebase/schemas/structureTemplate";
@@ -52,7 +53,12 @@ export function StructureNewClient() {
 
   async function handleSubmit(input: StructureFormSubmitInput) {
     if (!input.groupId || !input.createdByUid) {
-      throw new Error("structure mode requires groupId / createdByUid");
+      // StructureForm の discriminated union 上は到達しないが、error-logging 規約に
+      // 従い AppError でラップする（直接 Error 投げは禁止）。
+      throw new AppError(
+        "structure mode requires groupId / createdByUid",
+        "validation/structure-mode",
+      );
     }
     await createStructure({
       groupId: input.groupId,
