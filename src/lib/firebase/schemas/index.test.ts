@@ -5,6 +5,8 @@ import { deriveRole, groupBodySchema, type GroupBody } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
 import { playerBodySchema } from "./player";
 import { levelSchema, structureBodySchema } from "./structure";
+import { structureTemplateBodySchema } from "./structureTemplate";
+import { templateAdminBodySchema } from "./templateAdmin";
 import { tournamentBodySchema } from "./tournament";
 import { userProfileBodySchema } from "./user";
 
@@ -448,6 +450,95 @@ describe("deriveRole", () => {
 
   it("returns null when uid is not in the group at all", () => {
     expect(deriveRole(baseGroup, "u-stranger")).toBeNull();
+  });
+});
+
+// Phase 4.8: structureTemplates — サークル横断のテンプレ図書館
+describe("structureTemplateBodySchema", () => {
+  const baseTemplate = {
+    name: "Standard 20min",
+    description: "平均的な進行",
+    initialStack: 10000,
+    lateEntryDeadlineLevel: 6,
+    levels: [
+      { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600 },
+      { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600 },
+    ],
+    createdByUid: "u1",
+    createdByDisplayName: "たろう",
+    createdAt: now,
+  };
+
+  it("parses a valid template", () => {
+    const result = structureTemplateBodySchema.safeParse(baseTemplate);
+    expect(result.success).toBe(true);
+  });
+
+  it("defaults description to '' when omitted (legacy doc)", () => {
+    const { description: _omit, ...rest } = baseTemplate;
+    void _omit;
+    const parsed = structureTemplateBodySchema.parse(rest);
+    expect(parsed.description).toBe("");
+  });
+
+  it("rejects empty createdByDisplayName", () => {
+    const result = structureTemplateBodySchema.safeParse({
+      ...baseTemplate,
+      createdByDisplayName: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty createdByUid", () => {
+    const result = structureTemplateBodySchema.safeParse({
+      ...baseTemplate,
+      createdByUid: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects description over 200 chars", () => {
+    const result = structureTemplateBodySchema.safeParse({
+      ...baseTemplate,
+      description: "a".repeat(201),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects name over 60 chars", () => {
+    const result = structureTemplateBodySchema.safeParse({
+      ...baseTemplate,
+      name: "a".repeat(61),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("defaults rebuyStack / addOnStack to null when omitted", () => {
+    const parsed = structureTemplateBodySchema.parse(baseTemplate);
+    expect(parsed.rebuyStack).toBeNull();
+    expect(parsed.addOnStack).toBeNull();
+  });
+
+  it("rejects empty levels", () => {
+    const result = structureTemplateBodySchema.safeParse({ ...baseTemplate, levels: [] });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("templateAdminBodySchema", () => {
+  it("parses a valid admin marker (createdAt only)", () => {
+    const result = templateAdminBodySchema.safeParse({ createdAt: now });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects non-Timestamp createdAt", () => {
+    const result = templateAdminBodySchema.safeParse({ createdAt: "2026-01-01" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing createdAt", () => {
+    const result = templateAdminBodySchema.safeParse({});
+    expect(result.success).toBe(false);
   });
 });
 
