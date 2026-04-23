@@ -75,7 +75,7 @@ export function TemplatesClient() {
     <main className="mx-auto max-w-4xl space-y-6 p-8">
       <header className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">テンプレート図書館</h1>
+          <h1 className="text-2xl font-bold">Structure Templates</h1>
           <p className="text-sm text-muted-foreground">
             サークル横断で共有されるストラクチャのひな形。
           </p>

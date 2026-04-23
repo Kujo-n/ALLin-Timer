@@ -80,9 +80,14 @@ export function StructuresClient() {
             <Button variant="outline">トーナメント一覧へ</Button>
           </Link>
           {isOrganizer ? (
-            <Link href="/structures/new">
-              <Button>新規作成</Button>
-            </Link>
+            <>
+              <Link href="/templates">
+                <Button variant="outline">Structure Templates</Button>
+              </Link>
+              <Link href="/structures/new">
+                <Button>新規作成</Button>
+              </Link>
+            </>
           ) : null}
         </div>
       </header>
