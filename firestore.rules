@@ -6,6 +6,16 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Phase 4.8 follow-up: 匿名ユーザー（signInAnonymously）を除外したサインイン判定。
+    // UI は `RequireAuth(allowAnonymous=false)` で匿名を弾くが、SDK 直叩き攻撃を塞ぐため
+    // テンプレート図書館のように「通常アカウント限定」の rule でのみ使う。
+    // provider id は Firebase Auth 仕様: 匿名 = 'anonymous' / メール = 'password' /
+    // Google = 'google.com' / メールリンク = 'emailLink'。
+    function isSignedInNotAnon() {
+      return isSignedIn()
+             && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
     // Phase 4.6: 3 階層ロール。group メンバーシップは groups/{gid} の 3 つの配列で判定。
     // get() は rule 評価ごとに read 1 を消費するが、20 人 x 月 1〜2 回スケールでは無視可能。
     // 同一評価内での同一 path の get() は cache される（Firebase の仕様）。
@@ -25,6 +35,13 @@ service cloud.firestore {
       return isSignedIn()
              && exists(/databases/$(database)/documents/groups/$(gid))
              && request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.ownerUids;
+    }
+
+    // Phase 4.8: グローバルなテンプレート管理者。`templateAdmins/{uid}` doc の存在で判定する。
+    // rule 評価 1 回につき 1 read を消費するが、呼び出しは structureTemplates の delete 時のみ。
+    function isTemplateAdmin() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/templateAdmins/$(request.auth.uid));
     }
 
     // Phase 4.6.1: self-add 経路で「招待コードが有効で、この request 内で usesCount が +1 消費される」
@@ -193,6 +210,40 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
                     && isOrganizer(request.resource.data.groupId);
+    }
+
+    // Phase 4.8: サークル横断のストラクチャテンプレート。
+    // read / create は通常アカウントのみ（匿名除外）— description に機密が載る運用で
+    // 匿名 SDK 直叩きによるリークを塞ぐため。UI は RequireAuth(allowAnonymous=false) で
+    // 同じ gate をかけているが、rule で二重防御する。
+    // update は本人のみ、delete は本人またはテンプレート管理者（`templateAdmins/{uid}` 存在）。
+    match /structureTemplates/{tid} {
+      allow read: if isSignedInNotAnon();
+      allow create: if isSignedInNotAnon()
+                    && request.resource.data.createdByUid == request.auth.uid
+                    && request.resource.data.createdByDisplayName is string
+                    && request.resource.data.createdByDisplayName.size() > 0;
+      // 編集は本人のみ。createdByUid / createdByDisplayName / createdAt は immutable。
+      // 匿名で create できない前提なので、ここは isSignedIn() で足りる（本人 uid 一致が効く）。
+      allow update: if isSignedIn()
+                    && resource.data.createdByUid == request.auth.uid
+                    && request.resource.data.createdByUid == resource.data.createdByUid
+                    && request.resource.data.createdByDisplayName == resource.data.createdByDisplayName
+                    && request.resource.data.createdAt == resource.data.createdAt;
+      // 削除は本人または管理者。管理者 doc は console seed 起点のため匿名経路はない。
+      allow delete: if isSignedIn()
+                    && (resource.data.createdByUid == request.auth.uid || isTemplateAdmin());
+    }
+
+    // Phase 4.8: テンプレート管理者マーカー。doc 存在 = 管理者。
+    // list 禁止（管理者 uid 列挙防止、security.md の groupJoinCodes と同方針）。
+    // get は self のみ（自身が管理者かの確認）。
+    // create/delete は既存管理者のみ（bootstrap は Firestore Console で手動 seed）。
+    match /templateAdmins/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create, delete: if isTemplateAdmin();
+      allow update: if false;
     }
 
     // tournaments: read は認証済み（受付参加者向け）／write は organizer のみ
