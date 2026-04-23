@@ -3,12 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { StructureForm } from "@/components/structure/StructureForm";
+import { StructureForm, type StructureFormSubmitInput } from "@/components/structure/StructureForm";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getStructure, updateStructure } from "@/lib/firebase/repositories/structures";
 import { deriveRole } from "@/lib/firebase/schemas/group";
-import type { CreateStructureInput, StructureDoc } from "@/lib/firebase/schemas/structure";
+import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
@@ -75,10 +75,12 @@ export function StructureEditClient({ sid }: { sid: string }) {
     );
   }
 
-  async function handleSubmit(input: CreateStructureInput) {
+  async function handleSubmit(input: StructureFormSubmitInput) {
     await updateStructure(sid, {
       name: input.name,
       initialStack: input.initialStack,
+      rebuyStack: input.rebuyStack,
+      addOnStack: input.addOnStack,
       lateEntryDeadlineLevel: input.lateEntryDeadlineLevel,
       levels: input.levels,
     });
