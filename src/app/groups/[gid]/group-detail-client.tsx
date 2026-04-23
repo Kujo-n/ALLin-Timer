@@ -17,8 +17,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import { getGroup } from "@/lib/firebase/repositories/groups";
-import { deriveRole, type GroupDoc, type MemberRole } from "@/lib/firebase/schemas/group";
+import { getGroup, setMemberDisplayName } from "@/lib/firebase/repositories/groups";
+import {
+  deriveRole,
+  DISPLAY_NAME_MAX_LENGTH,
+  type GroupDoc,
+  type MemberRole,
+} from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import {
@@ -32,7 +37,15 @@ import {
   renameGroup,
 } from "@/lib/services/group";
 
-type MemberLine = { uid: string; displayName: string };
+type MemberLine = { uid: string; displayName: string; missing: boolean };
+
+function shortUid(uid: string): string {
+  return uid.slice(0, 4);
+}
+
+function isUidLike(value: string, uid: string): boolean {
+  return value === uid;
+}
 
 function originSafe(): string {
   if (typeof window === "undefined") return "";
@@ -73,14 +86,48 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       setGroup(g);
       setRenameValue(g.name);
       // Phase 4.7: 他メンバーの users/{uid} は rule で read できないため、
-      // group.memberDisplayNames の snapshot を表示する。未登録 / 空文字は uid フォールバック。
-      //   `??` は空文字を通してしまうため `||` で falsy も除外する。
+      // group.memberDisplayNames の snapshot を表示する。未登録 or UID 生値の場合は
+      // UI 側で「名前未登録 (xxxx)」表記に置き換え、raw UID を見せない。
       const nameMap = g.memberDisplayNames ?? {};
-      const lines: MemberLine[] = g.memberUids.map((uid) => ({
-        uid,
-        displayName: nameMap[uid] || uid,
-      }));
+      const lines: MemberLine[] = g.memberUids.map((uid) => {
+        const raw = nameMap[uid]?.trim();
+        const missing = !raw || isUidLike(raw, uid);
+        return {
+          uid,
+          displayName: missing ? `名前未登録 (${shortUid(uid)})` : raw,
+          missing,
+        };
+      });
       setMembers(lines);
+
+      // 自分のエントリが未登録 / UID 生値なら auth.displayName で自動補完（self-key write）。
+      // 旧クライアントで加入したメンバーや、Phase 4.7 以前に作成された group を visitor が
+      // 自然に治す self-healing を担う。書込失敗は warn のみで throw しない。
+      const selfEntry = nameMap[user.uid]?.trim();
+      const selfMissing = !selfEntry || isUidLike(selfEntry, user.uid);
+      const authName = user.displayName?.trim();
+      if (
+        selfMissing &&
+        authName &&
+        !isUidLike(authName, user.uid) &&
+        authName.length <= DISPLAY_NAME_MAX_LENGTH
+      ) {
+        try {
+          await setMemberDisplayName(gid, user.uid, authName);
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.uid === user.uid ? { uid: m.uid, displayName: authName, missing: false } : m,
+            ),
+          );
+        } catch (e) {
+          const wrapped = AppError.from(
+            e,
+            "group/self-backfill-failed",
+            "自分の表示名の補完に失敗しました",
+          );
+          logger.warn(wrapped.message, { code: wrapped.code, gid, uid: user.uid });
+        }
+      }
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code, gid });
@@ -277,7 +324,16 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                   key={m.uid}
                   className="flex flex-wrap items-center gap-2 rounded border p-2"
                 >
-                  <span className="flex-1 truncate">{m.displayName}</span>
+                  <span
+                    className={
+                      m.missing
+                        ? "flex-1 truncate italic text-muted-foreground"
+                        : "flex-1 truncate"
+                    }
+                    title={m.missing ? `UID: ${m.uid}` : undefined}
+                  >
+                    {m.displayName}
+                  </span>
                   <span className={roleBadgeClassName(role)}>{roleLabel(role)}</span>
                   {isSelf ? (
                     <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">

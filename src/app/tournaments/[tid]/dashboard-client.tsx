@@ -323,15 +323,28 @@ export function DashboardClient({ tid }: { tid: string }) {
                 </tr>
               </thead>
               <tbody>
-                {data.structureSnapshot.levels.map((l) => (
-                  <tr key={l.level} className="border-b">
-                    <td className="px-2 py-1 font-mono">{l.level}</td>
-                    <td className="px-2 py-1">{l.sb}</td>
-                    <td className="px-2 py-1">{l.bb}</td>
-                    <td className="px-2 py-1">{l.ante}</td>
-                    <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
-                  </tr>
-                ))}
+                {data.structureSnapshot.levels.map((l) =>
+                  l.isBreak ? (
+                    <tr
+                      key={l.level}
+                      className="border-b bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                    >
+                      <td className="px-2 py-1 font-mono">{l.level}</td>
+                      <td className="px-2 py-1 font-semibold" colSpan={3}>
+                        <span aria-hidden>☕ </span>BREAK
+                      </td>
+                      <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
+                    </tr>
+                  ) : (
+                    <tr key={l.level} className="border-b">
+                      <td className="px-2 py-1 font-mono">{l.level}</td>
+                      <td className="px-2 py-1">{l.sb}</td>
+                      <td className="px-2 py-1">{l.bb}</td>
+                      <td className="px-2 py-1">{l.ante}</td>
+                      <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
