@@ -72,6 +72,36 @@ export async function createDefaultStructure(page: Page, name: string): Promise<
   ]);
 }
 
+/**
+ * Phase 4.8: `/templates/new` からストラクチャテンプレートを作成し、
+ * 完了後に `/templates` へ戻るまで待つ。
+ *
+ * 既存フォームの default level（2 件）を利用するため、最小入力は名前のみ。
+ * `description` と `initialStack` は明示指定された場合のみ上書きする。
+ */
+export async function createTemplateViaUI(
+  page: Page,
+  options: {
+    name: string;
+    description?: string;
+    initialStack?: number;
+  },
+): Promise<void> {
+  await page.goto("/templates/new");
+  await page.getByLabel("テンプレート名").fill(options.name);
+  if (options.description !== undefined) {
+    await page.getByLabel("説明（任意）").fill(options.description);
+  }
+  if (options.initialStack !== undefined) {
+    const stack = page.getByLabel("初期スタック");
+    await stack.fill(String(options.initialStack));
+  }
+  await Promise.all([
+    page.waitForURL("**/templates", { timeout: 15_000 }),
+    page.getByRole("button", { name: /^作成$/ }).click(),
+  ]);
+}
+
 /** /tournaments/new から作成 → 遷移した `/tournaments/[tid]` の tid を返す。 */
 export async function createTournament(
   page: Page,
