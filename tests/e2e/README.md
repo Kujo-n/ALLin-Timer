@@ -67,7 +67,9 @@ tests/e2e/
 ├── winner-banner-and-auto-finish.spec.ts
 ├── anonymous-self-delete.spec.ts
 ├── groups-navigation.spec.ts
-└── member-role-split.spec.ts     # Phase 4.6: 一般メンバーの role gate / ワンタップ参加
+├── displayname-propagation.spec.ts  # Phase 4.5: displayName 伝播 / 15 文字制約
+├── member-role-split.spec.ts        # Phase 4.6: 一般メンバーの role gate / ワンタップ参加
+└── structure-templates.spec.ts      # Phase 4.8: Structure Templates の作成 / 適用 / 削除導線
 ```
 
 ## テスト間の隔離

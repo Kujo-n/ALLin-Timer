@@ -267,17 +267,21 @@ src/
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
 │  ├─ structures/                 # ストラクチャプリセット CRUD（group メンバーで共有）
+│  ├─ templates/                  # Structure Templates（サークル横断のストラクチャ図書館、Phase 4.8）
 │  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
 │  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知 / Winner バナー）
 │  ├─ globals.css
 │  ├─ layout.tsx                  # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
 │  └─ page.tsx                    # 未ログイン時はログインボタンのみ、ログイン後はサークル/トーナメント導線（Phase 4.5）
 ├─ components/
-│  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon / LinkAccountDialog
+│  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon
+│  │                              # / LinkAccountDialog / DisplayNameDialog
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
 │  ├─ structure/                  # StructureForm / LevelTable
+│  │                              # / StructureTemplateCard / StructureTemplatePicker（Phase 4.8）
 │  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls / WinnerBanner
-│  │                              # / BustButton / SeatingBoard / BalancingInstructionCard / ConnectionBadge
+│  │                              # / BustButton / SeatingBoard / BalancingInstructionCard
+│  │                              # / AverageStackCard / ConnectionBadge
 │  └─ ui/                         # shadcn/ui
 ├─ lib/
 │  ├─ errors.ts                   # AppError 基底
@@ -288,10 +292,16 @@ src/
 │  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定、E2E 時は Emulator 接続）
 │  │  ├─ converters.ts            # zod ベース withConverter
 │  │  ├─ schemas/                 # 各コレクションの zod schema（Firestore 真実源）
+│  │  │                           # group / groupJoinCode / structure / structureTemplate / templateAdmin
+│  │  │                           # / tournament / player / table / user
 │  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
-│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator
+│  │                              # groups / groupJoinCodes / structures / structureTemplates
+│  │                              # / templateAdmins / tournaments / players / tables / users
+│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator / useIsTemplateAdmin
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
 │     └─ seating/                 # engine（純粋関数の TDA バランシング）/ orchestrator（Firestore 副作用）/ prng
+scripts/
+└─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```
