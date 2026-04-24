@@ -166,7 +166,7 @@ test.describe("Phase 4.8: Structure Template Library", () => {
 });
 
 /**
- * `/structures` ヘッダの Structure Templates 導線。
+ * `/structures` ⇄ `/templates` の相互ナビゲーション導線。
  *
  * 実装理由と UX 設計は
  * [.claude/PRPs/reports/structure-templates-nav-link-report.md] 参照。
@@ -175,6 +175,7 @@ test.describe("Phase 4.8: Structure Template Library", () => {
  *   - organizer は /structures で Structure Templates ボタンが見える
  *     → クリックで /templates に遷移する
  *   - 一般メンバー（member）には同ボタンが表示されない（isOrganizer gate）
+ *   - /templates のストラクチャプリセットボタンから /structures に戻れる
  */
 test.describe("Structure Templates nav from /structures", () => {
   test("organizer は /structures の Structure Templates ボタンから /templates に遷移できる", async ({
@@ -231,5 +232,28 @@ test.describe("Structure Templates nav from /structures", () => {
     } finally {
       await memberCtx.close();
     }
+  });
+
+  test("/templates のストラクチャプリセットボタンから /structures に戻れる", async ({
+    page,
+  }) => {
+    const organizer = randomOrganizer("tpl-back");
+    await registerOrganizer(page, organizer);
+    // `/structures` は RequireGroup gate があるので group を先に作る
+    await createGroup(page, "Back Nav Group");
+
+    await page.goto("/templates");
+
+    const backButton = page.getByRole("link", { name: "ストラクチャプリセット" });
+    await expect(backButton).toBeVisible();
+
+    await Promise.all([
+      page.waitForURL("**/structures", { timeout: 15_000 }),
+      backButton.click(),
+    ]);
+
+    await expect(
+      page.getByRole("heading", { name: "ストラクチャプリセット" }),
+    ).toBeVisible();
   });
 });

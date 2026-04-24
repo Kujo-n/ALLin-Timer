@@ -80,9 +80,14 @@ export function TemplatesClient() {
             サークル横断で共有されるストラクチャのひな形。
           </p>
         </div>
-        <Link href="/templates/new">
-          <Button>新規作成</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/structures">
+            <Button variant="outline">ストラクチャプリセット</Button>
+          </Link>
+          <Link href="/templates/new">
+            <Button>新規作成</Button>
+          </Link>
+        </div>
       </header>
 
       {error ? (
