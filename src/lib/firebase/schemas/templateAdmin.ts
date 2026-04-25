@@ -12,4 +12,3 @@ export const templateAdminBodySchema = z.object({
   createdAt: z.instanceof(Timestamp),
 });
 export type TemplateAdminBody = z.infer<typeof templateAdminBodySchema>;
-export type TemplateAdminDoc = TemplateAdminBody & { id: string };
