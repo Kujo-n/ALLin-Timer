@@ -56,6 +56,7 @@ tests/e2e/
 │   ├── TopPage.ts
 │   ├── LoginPage.ts
 │   ├── GroupsPage.ts
+│   ├── AudioSettingsPage.ts
 │   ├── TournamentsPage.ts
 │   └── JoinPage.ts
 ├── fixtures/
@@ -69,7 +70,8 @@ tests/e2e/
 ├── groups-navigation.spec.ts
 ├── displayname-propagation.spec.ts  # Phase 4.5: displayName 伝播 / 15 文字制約
 ├── member-role-split.spec.ts        # Phase 4.6: 一般メンバーの role gate / ワンタップ参加
-└── structure-templates.spec.ts      # Phase 4.8: Structure Templates の作成 / 適用 / 削除導線
+├── structure-templates.spec.ts      # Phase 4.8: Structure Templates の作成 / 適用 / 削除導線
+└── audio-settings.spec.ts           # Phase 4.9: 音声通知設定の保存 / role gate / banner 表示
 ```
 
 ## テスト間の隔離
