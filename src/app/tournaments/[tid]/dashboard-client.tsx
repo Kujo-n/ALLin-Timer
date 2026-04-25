@@ -322,8 +322,8 @@ export function DashboardClient({ tid }: { tid: string }) {
       {showSeatingBoard ? (
         <Card>
           <CardHeader>
-            <CardTitle>卓 / 席</CardTitle>
-            <CardDescription>★ は自分の席（運営兼任プレイヤーの場合）。</CardDescription>
+            <CardTitle>Table List</CardTitle>
+            <CardDescription>★：運営兼任プレイヤー</CardDescription>
           </CardHeader>
           <CardContent>
             <SeatingBoard

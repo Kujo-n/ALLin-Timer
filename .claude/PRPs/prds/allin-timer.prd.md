@@ -222,7 +222,8 @@
 | 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 2 種類（blind-up / victory-chime、mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | complete | - | 4.8 | [completed/phase-4.9-audio-notifications.plan.md](../plans/completed/phase-4.9-audio-notifications.plan.md) — 実装レポート: [phase-4.9-audio-notifications-report.md](../reports/phase-4.9-audio-notifications-report.md) |
 | 4.10 | Audio Notifications (Custom Upload) **[Optional]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Storage 未設定環境でも Phase 4.9 のデフォルト音源で運用継続可能（オプション機能）** | pending | - | 4.9 | - |
 | 4.11 | Timer Layout & Control Polish | Phase 4.9 投入後のフォローアップ。Live / Dashboard を 3 カラムレイアウト化（左=QR / 中=タイマー / 右=NextBreak / Avg / Players）、StructureSnapshotCard を共通化し /live にも表示、TimerDisplay の SB/BB/Ante 視認性向上、TimerControls をアイコン化＋順序整理＋SoundToggle 統合、終了時タイマーを `finishedAt` 基準で停止、`useAudioPlayer.unlocked` を `useSyncExternalStore` で全コンポーネント同期、`revertLevel`/`advanceLevel` の paused 状態 invariant 修正（pausedAt 再アーム）、`tournament.lastLevelChangeKind` 追加で手動レベル遷移時のサウンド再生をスキップ。schema は additive（`lastLevelChangeKind: "auto"\|"manual"\|null\|undefined`） | complete | - | 4.9 | 実装レポート: [phase-4.11-timer-layout-control-polish-report.md](../reports/phase-4.11-timer-layout-control-polish-report.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11（4.10 はオプション扱いで blocker 外） | - |
+| 4.12 | Dashboard Top-Row Equal-Height & "卓 → Table" Rename | Phase 4.11 後の追加フォローアップ。Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を `lg:items-stretch` で QR 高さに揃え、左右 aside の sticky を廃止、TimerDisplay フォント拡大（残時間 `lg:text-[10rem]` / SB/BB/Ante `lg:text-5xl`）、統計 3 カードのタイトルを `text-base/lg font-semibold text-foreground` 化、user-facing 文言「卓 → Table」を一括リネーム（schema フィールド名・AppError ドメインコードは不変）。Winner / SeatingBoard 等を上段 grid から下段に分離。`/live` は無変更 | in-progress | with 4.10 | 4.11 | [phase-4.12-dashboard-polish-and-table-rename.plan.md](../plans/phase-4.12-dashboard-polish-and-table-rename.plan.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12（4.10 はオプション扱いで blocker 外） | - |
 
 ### Phase Details
 
@@ -441,6 +442,33 @@
   - PC / モバイル両幅でレイアウトが崩れず、`SoundToggleButton` の 3 状態が色 + アイコンの両方で識別可能
   - typecheck / lint / test / build が green
 
+**Phase 4.12: Dashboard Top-Row Equal-Height & "卓 → Table" Rename**
+- **Goal**: Phase 4.11 後の運営者フィードバックを反映し、Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を**同じ高さに揃える**ことと、UI 全体の **「卓 → Table」用語統一**を完了させる。schema / Firestore Rules / hook を一切触らない純 UI / ラベル変更
+- **背景**: Phase 4.11 で 3 カラムレイアウトを導入したが `lg:self-start` で各列が `align-items: stretch` をオプトアウトしているため高さが揃わず、会場プロジェクター投影時に視線が上下に飛ぶ。また `/live` 側は既に `Table` ラベル化済みだが Dashboard / SeatingBoard / TournamentForm / orchestrator description などに `卓` が残存しており、用語混在が運営者から指摘された
+- **Scope**:
+  - **Dashboard 上段の等高化**: 既存 grid を「等高 3 列の上段」と「下段（中央列の残り）」に分割。`lg:items-stretch` + 各列 `h-full` で QR を基準に他 2 列が伸びる。`lg:sticky lg:top-4 lg:self-start` を廃止
+  - **state による右列縮退**: state=`setup` / `seating` で 3 統計カードがすべて null を返すケースで右 aside ごと非表示にし grid を `lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)]` の 2 列に切替
+  - **TimerDisplay フォント拡大**: 残時間 `lg:text-[10rem] lg:leading-none`、SB/BB/Ante `lg:text-5xl`、BREAK `lg:text-4xl`
+  - **統計 3 カードのスタイル更新**: タイトル → `text-base md:text-lg font-semibold text-foreground`（OKLCH トークンでライト時黒・ダーク時白）、値テキストは 1 段拡大（NextBreak `md:text-4xl` / AvgStack `md:text-5xl` / Players active `md:text-5xl`）
+  - **QrPanel に className prop 追加**: `h-full` を呼び出し側から注入
+  - **WinnerBanner / SeatingBoard / PlayerList / Structure を上段 grid 外**に分離: 中央列の縦伸長で等高 grid が乱れるのを防ぐ
+  - **「卓 → Table」一括リネーム**（user-facing 文字列のみ・コメント / docstring は日本語維持）:
+    - `dashboard-client.tsx`: `1 卓 N 席` → `1 Table N 席`、`<CardTitle>卓 / 席</CardTitle>` → `<CardTitle>Table List</CardTitle>`
+    - `SeatingBoard.tsx`: `卓 N（M 人）` → `Table N（M 人）`
+    - `BalancingInstructionCard.tsx` / `orchestrator.ts`: `卓 N を閉鎖（M 名移動）` → `Table N を閉鎖（M 名移動）`
+    - `orchestrator.ts` move description: `${X}卓${Y}席 → ${P}卓${Q}席` → `Table X / 席 Y → Table P / 席 Q`
+    - `TournamentForm.tsx`: バリデーションエラー / Label / 補足の `卓` → `Table`
+    - `orchestrator.ts` errors: `テーブル数の上限（N 卓）` → `（N Tables）`、`1 卓あたり席数の値が不正です` → `1 Table あたり席数の値が不正です`
+    - `orchestrator.test.ts` description assertion 2 件を新フォーマットに更新
+  - **schema フィールド名 / collection 名 / AppError ドメインコードは不変**（`tableNum` / `tables` / `tournament/seating-too-many-tables` 等はすべて維持）
+  - **`/live` ページは無変更**（既に Table 表記）
+- **Success signal**:
+  - Dashboard `lg+` で上段 3 列の `offsetHeight` がピクセル単位で一致
+  - state=`setup`/`seating`/`finished` での右列出し入れが破綻なく動作
+  - 統計 3 カードのタイトルがライト=黒 / ダーク=白で大きく表示
+  - user-facing 文字列の "卓" が完全に "Table" になり、orchestrator description テストが新フォーマットで pass
+  - typecheck / lint / test / build が green、`/live` 差分ゼロ
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -464,7 +492,8 @@
 - Phase 4.9（音声通知 段階1）は Phase 4.8 完了後に単独実施。**schema は additive**（`groups/{gid}.audioSettings` フィールド追加 + zod default で既存 doc を補完）、Firestore Rules は groups update に audioSettings 書込条件を 1 つ追加。Storage 不使用で破壊的 migration なし
 - Phase 4.10（音声通知 段階2）は **オプション機能**。Phase 4.9 完了後、Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
 - Phase 4.11（タイマー UI/UX フォローアップ）は Phase 4.9 完了後に単独実施。**schema は additive**（`tournaments/{tid}.lastLevelChangeKind` を optional で追加、既存 doc の missing field を許容）。Firestore Rules 変更なし、破壊的 migration なし。Phase 4.10 とは独立で並行可能（互いに別 collection / 別関数を触る）
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
+- Phase 4.12（Dashboard 等高化 & "卓 → Table" rename）は Phase 4.11 完了後に単独実施。**schema / Firestore Rules / hook / repository は完全不変**で純 UI とラベル文字列のみ。Phase 4.10 とは独立で並行可能。AppError ドメインコードと collection / フィールド名は全て維持
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
 
 ---
 
