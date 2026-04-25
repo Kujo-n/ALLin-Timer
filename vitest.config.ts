@@ -11,7 +11,12 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "text-summary"],
+      // `text` reporter has a v8 sourcemap quirk that double-counts each source
+      // file (one 100% row + one phantom 0% row), which corrupts the threshold
+      // check below into reporting ~49% even though real coverage is ~98%.
+      // Use `text-summary` for the totals; re-enable per-file with
+      // `--coverage.reporter=text` on demand for local debugging.
+      reporter: ["text-summary"],
       // ロジック層（src/lib 配下の .ts）のみ計測対象。React UI と Provider 系
       // glue は実 Firestore / DOM 環境を要するためカバレッジ対象外。
       include: ["src/lib/**/*.ts"],
