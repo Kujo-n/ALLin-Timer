@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
-import { getLevelInfo, getRemainingMs, shouldAutoAdvance } from "./timer";
+import { getLevelInfo, getNextBreakInfo, getRemainingMs, shouldAutoAdvance } from "./timer";
 
 const baseCreatedAt = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 const t0 = Timestamp.fromDate(new Date("2026-04-20T10:00:00Z"));
@@ -80,9 +80,18 @@ describe("getRemainingMs", () => {
     expect(getRemainingMs(t, t0Ms + 5_000)).toBeNull();
   });
 
-  it("returns 0 when state is finished", () => {
-    const t = makeTournament({ state: "finished" });
+  it("returns 0 when state is finished and finishedAt is null", () => {
+    // finishedAt 未確定（pending write 等）の防衛的フォールバック
+    const t = makeTournament({ state: "finished", finishedAt: null });
     expect(getRemainingMs(t, t0Ms + 5_000)).toBe(0);
+  });
+
+  it("freezes remaining at finishedAt when finished (pause-style behavior)", () => {
+    // 5 秒経過時点で finish した場合、残り 595s で表示が固定される
+    const finishedAt = Timestamp.fromMillis(t0Ms + 5_000);
+    const t = makeTournament({ state: "finished", finishedAt });
+    expect(getRemainingMs(t, t0Ms + 60_000)).toBe(600_000 - 5_000);
+    expect(getRemainingMs(t, t0Ms + 999_999)).toBe(600_000 - 5_000);
   });
 
   it("returns duration - elapsed when running", () => {
@@ -118,6 +127,75 @@ describe("getRemainingMs", () => {
   it("returns null when level info missing (currentLevel out of range)", () => {
     const t = makeTournament({ currentLevel: 99 });
     expect(getRemainingMs(t, t0Ms + 5_000)).toBeNull();
+  });
+});
+
+describe("getNextBreakInfo", () => {
+  function withBreak() {
+    return makeTournament({
+      currentLevel: 1,
+      structureSnapshot: {
+        name: "with break",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+          { level: 3, sb: 0, bb: 0, ante: 0, durationSec: 300, isBreak: true },
+          { level: 4, sb: 75, bb: 150, ante: 25, durationSec: 600, isBreak: false },
+        ],
+      },
+    });
+  }
+
+  it("returns null when no break level remains", () => {
+    const t = makeTournament();
+    expect(getNextBreakInfo(t, 600_000)).toBeNull();
+  });
+
+  it("returns null when state is setup / seating / finished", () => {
+    const t = withBreak();
+    expect(getNextBreakInfo({ ...t, state: "setup" }, 600_000)).toBeNull();
+    expect(getNextBreakInfo({ ...t, state: "seating" }, 600_000)).toBeNull();
+    expect(getNextBreakInfo({ ...t, state: "finished" }, 600_000)).toBeNull();
+  });
+
+  it("computes etaMs as remainingMs + sum(durationSec) of intermediate levels", () => {
+    const t = withBreak();
+    // current=Lv1 (remaining 500s) + Lv2 (600s) → break at Lv3, eta=1100s
+    const info = getNextBreakInfo(t, 500_000);
+    expect(info?.level.level).toBe(3);
+    expect(info?.levelsAhead).toBe(2);
+    expect(info?.etaMs).toBe(500_000 + 600_000);
+  });
+
+  it("returns levelsAhead=0 when current level itself is a break", () => {
+    const t = makeTournament({
+      currentLevel: 3,
+      structureSnapshot: {
+        name: "now break",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+          { level: 3, sb: 0, bb: 0, ante: 0, durationSec: 300, isBreak: true },
+        ],
+      },
+    });
+    const info = getNextBreakInfo(t, 120_000);
+    expect(info?.levelsAhead).toBe(0);
+    expect(info?.etaMs).toBe(120_000);
+  });
+
+  it("falls back to current.durationSec when remainingMs is null", () => {
+    const t = withBreak();
+    const info = getNextBreakInfo(t, null);
+    expect(info?.etaMs).toBe(600_000 + 600_000); // current full + Lv2 full
   });
 });
 

@@ -27,7 +27,7 @@ export function getLevelInfo(tournament: TournamentDoc): LevelInfo | null {
 /**
  * 現在 level の残り時間（ms）。
  *  - state === "setup" / "seating": null（タイマー対象外）
- *  - state === "finished": 0
+ *  - state === "finished": finishedAt 時点で固定（終了直前の残り時間で表示を止める）
  *  - state === "paused": pausedAt 固定点での残り
  *  - state === "running":
  *      remaining = duration - (nowMs - levelStartedAt - pausedAccumMs)
@@ -42,11 +42,19 @@ export function getRemainingMs(tournament: TournamentDoc, nowMs: number): number
   const durationMs = info.current.durationSec * 1000;
 
   if (tournament.state === "setup" || tournament.state === "seating") return null;
-  if (tournament.state === "finished") return 0;
 
-  if (tournament.levelStartedAt === null) return null;
+  if (tournament.levelStartedAt === null) {
+    return tournament.state === "finished" ? 0 : null;
+  }
   const startMs = tournament.levelStartedAt.toMillis();
   const accum = tournament.pausedAccumMs ?? 0;
+
+  if (tournament.state === "finished") {
+    if (tournament.finishedAt === null) return 0;
+    const finishedAtMs = tournament.finishedAt.toMillis();
+    const elapsed = finishedAtMs - startMs - accum;
+    return Math.max(0, durationMs - elapsed);
+  }
 
   if (tournament.state === "paused") {
     if (tournament.pausedAt === null) return null;
@@ -79,6 +87,60 @@ export function resolveWinner(
   const active = players.filter((p) => !p.isBusted);
   if (active.length !== 1) return null;
   return active[0];
+}
+
+/**
+ * 次の break レベルまでの情報。
+ *  - 現在 level が break のときは「現在 break 中」を意図して
+ *    `levelsAhead === 0` / `etaMs === 残り時間` を返す。
+ *  - 残り全 level に break が無ければ null。
+ *  - setup / seating / finished では null（タイマー対象外）。
+ *
+ * 計算: 現在 level の残り時間 + 現在 level の次〜break 直前 level の durationSec の総和。
+ */
+export interface NextBreakInfo {
+  /** break レベル本体。 */
+  level: Level;
+  /** 現在 level（含まず）からの level 数。break level 自身が currentLevel のときは 0。 */
+  levelsAhead: number;
+  /** 現在からブレイク開始までの推定 ms。 */
+  etaMs: number;
+}
+
+export function getNextBreakInfo(
+  tournament: TournamentDoc,
+  remainingMs: number | null,
+): NextBreakInfo | null {
+  if (
+    tournament.state === "setup" ||
+    tournament.state === "seating" ||
+    tournament.state === "finished"
+  ) {
+    return null;
+  }
+  const info = getLevelInfo(tournament);
+  if (!info) return null;
+  if (info.current.isBreak) {
+    return {
+      level: info.current,
+      levelsAhead: 0,
+      etaMs: Math.max(0, remainingMs ?? 0),
+    };
+  }
+  const levels = tournament.structureSnapshot.levels;
+  let acc = remainingMs ?? info.current.durationSec * 1000;
+  for (let i = info.levelIndex + 1; i < levels.length; i += 1) {
+    const lvl = levels[i];
+    if (lvl.isBreak) {
+      return {
+        level: lvl,
+        levelsAhead: i - info.levelIndex,
+        etaMs: Math.max(0, acc),
+      };
+    }
+    acc += lvl.durationSec * 1000;
+  }
+  return null;
 }
 
 /**
