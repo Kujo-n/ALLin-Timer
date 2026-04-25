@@ -233,8 +233,7 @@ export function DashboardClient({ tid }: { tid: string }) {
             <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
           </div>
           <p className="text-sm text-muted-foreground">
-            現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel} /{" "}
-            {data.structureSnapshot.levels.length} レベル / 1 Table {data.seatsPerTable} 席
+            レイトレジスト Lv{data.lateEntryDeadlineLevel} /{" "}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
