@@ -112,6 +112,7 @@
 | Must | **サークル（Group）単位での共有**（複数運営者で structures / tournaments を共有） | 運営者 3 人前提。個人所有モデルでは実運用にならない（Phase 2.5 で追加） |
 | Must | 接続切断時の UI 表示（最終時刻＋「接続切れ」） | 混乱を防ぐ最低ライン |
 | Must | 初回席決めは運営者トリガー、進行中レイトエントリーは自動配席 | 参加登録順の偏り防止と、運営者負担最小化の両立 |
+| Must | **音声通知**（ブラインドレベル変更時／優勝者確定時、運営者ロール（owner/organizer）の端末でのみ再生、group 単位の on/off + 音源設定、デフォルト音源 + サークル単位カスタム音源アップロード） | 運営者がブラインドアップに気付かない／優勝確定が会場全体に伝わらないという既存ペインを音で解消。Phase 4.9 で要件漏れ確認後に Must 化 |
 | Should | 賞金計算（単純分配） | AI 支援で低コスト実装可能 |
 | Could | リバイ／アドオン管理 | 実地フィードバック後に判断 |
 | Won't (v1) | ハンド・フォー・ハンド | 50 人超 Non-User のため |
@@ -216,8 +217,10 @@
 | 4.5 | Pre-Phase 5 Improvements | UX 改善（運営者自己参加ボタン・/groups からの遷移・ヘッダー displayName 表示・未ログイン時トップ簡素化）、Winner 演出＋自動終了、匿名アカウント自己削除、Email Link 方式の撤廃 | complete | - | 4 | [completed/phase-4.5-pre-phase5-improvements.plan.md](../plans/completed/phase-4.5-pre-phase5-improvements.plan.md) — 実装レポート: [phase-4.5-pre-phase5-improvements-report.md](../reports/phase-4.5-pre-phase5-improvements-report.md) |
 | 4.6 | Member Role Split | `groups/{gid}` を owner / organizer / general member の 3 階層化（`ownerUids` 複数可・`organizerUids` 新設）、一般メンバーは自サークルのトーナメント一覧閲覧＋ワンタップ参加、昇降格 UI は owner 専用、破壊的 migration あり | complete | - | 4.5 | [completed/phase-4.6-member-role-split.plan.md](../plans/completed/phase-4.6-member-role-split.plan.md) — 実装レポート: [phase-4.6-member-role-split-report.md](../reports/phase-4.6-member-role-split-report.md) |
 | 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応、`groups/{gid}.memberDisplayNames` snapshot 追加（サークル一覧で UID ではなく displayName 表示）、`/tournaments` 一覧の状態別カード色分け。schema は additive、Firestore Rules は groups update に self-key 書込条件を 1 つ追加 | complete | - | 4.6 | [completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md) — 実装レポート: [phase-4.7-onboarding-polish-structure-enhancements-report.md](../reports/phase-4.7-onboarding-polish-structure-enhancements-report.md) |
-| 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | in-progress | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8 | - |
+| 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | complete | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
+| 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 1 種類（mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | in-progress | - | 4.8 | [phase-4.9-audio-notifications.plan.md](../plans/phase-4.9-audio-notifications.plan.md) |
+| 4.10 | Audio Notifications (Custom Upload) | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張 | pending | - | 4.9 | - |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10 | - |
 
 ### Phase Details
 
@@ -344,6 +347,58 @@
   - Firestore Rules デプロイ後、最初の管理者が Console で seed 済み
   - `/structures/new` で Firestore から取得したテンプレが適用できる
 
+**Phase 4.9: Audio Notifications (Default Sounds)**
+- **Goal**: ブラインドレベルが上がるタイミング／優勝者が確定したタイミングで音を鳴らし、運営者が見落とさないようにする。Phase 4.10 のカスタム音源アップロードに先立ち、デフォルト音源 1 種類で MVP として動かす
+- **背景**: PRD 当初の MVP scope に音声通知が含まれていなかったが、フィールド投入前の要件確認で「運営者がブラインドアップに気付かない」「会場で優勝確定が伝わりにくい」というペインが残っていることが判明し Must 化（要件漏れの追加）
+- **Scope**:
+  - **データモデル**: `groups/{gid}.audioSettings` フィールド追加（schema は additive）
+    - `{ enabled: boolean (default true), levelUpSoundId: string (default "default:bell"), winnerSoundId: string (default "default:bell"), volume: number (0.0–1.0, default 0.7) }`
+    - 既存 group docs は zod default で補完（破壊的 migration なし）
+  - **再生主体**: ロールベース。`useCurrentGroup()` の `currentGroupRole` が `"owner" | "organizer"` の端末でのみ再生。`member` および `/live` を見ている参加者では鳴らない
+    - `/live` を運営者が会場ディスプレイで全画面投影しているケースでは、運営者ロールで鳴る
+  - **検知ポイント**:
+    - レベル変更: `useTournamentTimer` 経由の `tournament.currentLevel` 変化を `useEffect` で観測
+    - 優勝確定: `resolveWinner(tournament, players)` の戻り値が `null → PlayerDoc` に遷移した瞬間
+    - debounce / 重複再生防止（手動 advance や reconnect 時の re-fire を抑止）
+  - **autoplay unlock**: `<SoundUnlockBanner>` を `/tournaments/[tid]` および `/tournaments/[tid]/live` で運営者ロール時のみ表示。「サウンドを有効化」ボタンクリックで `AudioContext.resume()`
+  - **設定 UI**: `/groups/[gid]/audio-settings`（organizer 以上のみアクセス可）。on/off トグル + 音源プルダウン（Phase 4.9 では `default:bell` 1 択） + 音量スライダー
+  - **デフォルト音源**: `public/sounds/level-up.{mp3,ogg}` / `public/sounds/winner.{mp3,ogg}` を bundled。ライセンス安全策として **ffmpeg の純音生成スクリプト**を `scripts/generate-default-sounds.sh` に同梱し、ファイル自体は生成物としてコミット
+  - **Firestore Rules**: `groups/{gid}` の update に「`audioSettings` だけを書き換える操作は organizer 以上」の条件を追加（既存 rule を壊さない additive 拡張）
+  - **テスト**: レベル切替検知 / `resolveWinner` 遷移検知 / ロールフィルタ / debounce のユニットテスト。実際の Audio 再生はモック
+- **Success signal**:
+  - Owner / Organizer / Member / 匿名参加者の 4 視点でブラウザ検証: 運営者ロールでは音が鳴る、参加者では鳴らない
+  - on/off 設定が group 全運営者に同期される
+  - autoplay unlock ボタンを押さないと音が鳴らない（ブラウザ仕様準拠）
+  - typecheck / lint / test / build が green
+
+**Phase 4.10: Audio Notifications (Custom Upload)**
+- **Goal**: サークルが独自の音源（自作・選曲）をアップロードして level-up / winner 通知に使えるようにする。Phase 4.9 の MVP からの自然拡張
+- **背景**: Phase 4.9 は実装シンプル化のためデフォルト音源 1 種固定。フィールドテスト前に「サークルらしさを出したい」「優勝の歓声音を別のものにしたい」要望に応えるためカスタム音源を追加
+- **Scope**:
+  - **Firebase Storage 初期導入**:
+    - プロジェクトレベルで Storage を有効化（既存 env `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` を活用）
+    - SDK インポート (`firebase/storage`) を `src/lib/firebase/client.ts` の singleton に追加
+    - `storage.rules` 新規作成、deny-by-default から開始
+  - **データモデル**: `groups/{gid}/audioAssets/{assetId}` サブコレクション新設
+    - `{ name: string, storagePath: string, contentType: "audio/mpeg" | "audio/ogg", sizeBytes: number, createdAt: Timestamp, createdByUid: string, createdByDisplayName: string }`
+    - Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `"default:bell"` または `"custom:<assetId>"` に拡張
+  - **アップロード UI**: `/groups/[gid]/audio-settings` に「音源を追加」ボタン。ファイル選択 → クライアント側で MIME / サイズ検証 → Storage に upload → Firestore に `audioAssets` doc 作成
+  - **制約**:
+    - 1 ファイル最大 1MB（クライアント + Storage Rules で二重チェック）
+    - group あたり最大 3 本（client + Firestore Rules で `getAfter()` カウント）
+    - mp3 (`audio/mpeg`) または ogg (`audio/ogg`) のみ
+  - **権限**: organizer 以上のみ create / delete 可能。**作成者本人でなくても organizer なら他者の音源を削除可**（要件 Q5 準拠）
+  - **Storage Rules**: `groups/{gid}/audioAssets/{assetId}` の path に対し、`isOrganizer(gid)` + サイズ / MIME 検証
+  - **設定 UI 拡張**: 音源プルダウンに `default:bell` + group 内のカスタム音源リストを表示
+  - **既存音源削除時の参照整合**: 削除しようとした音源が `audioSettings.{levelUp,winner}SoundId` に使われている場合は `default:bell` にフォールバック（service 層で atomic に処理）
+  - **テスト**: アップロード validation / 上限本数 / 権限 / 参照整合のユニット + 統合テスト
+- **Success signal**:
+  - 1MB 超や非 mp3/ogg のアップロードが client / Storage Rules 双方で拒否される
+  - group 内 3 本上限で 4 本目アップロードが拒否される
+  - organizer が他人の音源を削除可能、member は不可
+  - 使用中の音源を削除すると `audioSettings` が default にフォールバック
+  - typecheck / lint / test / build が green
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -364,7 +419,9 @@
 - Phase 4.6（ロール分離）は Phase 4.5 完了後に単独実施。**破壊的スキーマ変更**のため他 phase とは並行しない
 - Phase 4.7（UX / schema additive）は Phase 4.6 完了後に単独実施。**schema は additive**（zod default / nullable / record default({})）で破壊的 migration 不要。Firestore Rules は groups update に self-key 書込条件を 1 つ追加するのみ（他 collection 変更なし）
 - Phase 4.8（Template Library）は Phase 4.7 完了後に単独実施。**新規 2 collection + Firestore Rules 追加デプロイ**と **Firestore Console での管理者 bootstrap**（`templateAdmins/{uid}` に空 doc 1 件）が必要。Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` に依存するため 4.7 → 4.8 の順で実施
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 の完了後
+- Phase 4.9（音声通知 段階1）は Phase 4.8 完了後に単独実施。**schema は additive**（`groups/{gid}.audioSettings` フィールド追加 + zod default で既存 doc を補完）、Firestore Rules は groups update に audioSettings 書込条件を 1 つ追加。Storage 不使用で破壊的 migration なし
+- Phase 4.10（音声通知 段階2）は Phase 4.9 完了後に単独実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 の完了後
 
 ---
 
@@ -387,6 +444,14 @@
 | 接続切断時 UI | 最終時刻＋「接続切れ」 | 完全ブラックアウト / 警告音 | 混乱最小・誤情報表示を防ぎつつ画面遷移させない |
 | 広告収益化 | v1 対象外、v1.1 以降で検討 | v1 同梱 | まず仮説検証優先、収益化は継続使用確認後 |
 | ライセンス | MIT | プロプライエタリ / GPL 系 | GitHub 公開前提・サークル外への再利用促進。サークル固有情報は DB に隔離しリポジトリに含めない |
+| 音声通知の MVP 採否（Phase 4.9 追加） | **MVP Must に追加**（要件漏れ） | Could / Should 扱いで v1.1 へ | 運営者の「ブラインドアップ見落とし」「優勝確定が会場で伝わらない」は Phase 4.5 までに解消できていないペイン。フィールド投入前に必須化 |
+| 音声通知の Phase 分割（Phase 4.9 / 4.10） | 2 段階（4.9 デフォルト音源で動作確認 → 4.10 カスタム音源） | 1 段階で全実装 | Firebase Storage 初期導入は独立した作業量（プロジェクト設定 + Storage Rules + アップロード validation）があり、Phase 4.9 単独で MVP 動作確認できる方が安全 |
+| 音声再生主体 | **ロールベース**（owner / organizer のユーザーが見ている画面でのみ再生） | ページベース（運営ダッシュボードのみ）/ 全ユーザー / 端末オプトイン | 参加者スマホで予期せぬ音を出さない × 運営者が `/live` を会場ディスプレイで投影した場合は鳴る、を両立 |
+| 音声 on/off スコープ | **group 単位**（`groups/{gid}.audioSettings.enabled`） | 端末ローカル（localStorage）/ ユーザー横断（`users/{uid}`） | サークル運営方針で全運営者が一致した動作になる方が運用が分かりやすい。設定変更権限は organizer 以上に限定 |
+| 音源選択スコープ | group 単位（全運営者で同一音源） | 個人カスタマイズ可能 | 要件「サークルごとに音声を追加・設定できる」に素直に対応。実装シンプル |
+| autoplay unlock | **明示的「サウンドを有効化」ボタン** | 任意のクリックで暗黙的 unlock | 運営者の意図的な consent を取り、不意打ち再生を回避 |
+| デフォルト音源の調達 | ffmpeg 純音生成（`scripts/generate-default-sounds.sh` 同梱） | フリー素材サイト（Pixabay/Mixkit） | MIT 配布リポジトリのため帰属表記不要・再現可能・ライセンス問題ゼロを最優先 |
+| カスタム音源制約（Phase 4.10） | 1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg / organizer 全員が削除可能 | 容量無制限 / 本数無制限 / 作成者のみ削除 | 無料枠 Storage の保護 + サークル運営の柔軟性（脱会した運営者の音源を残された側が片付けられる） |
 
 ---
 
