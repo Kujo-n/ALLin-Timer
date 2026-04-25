@@ -64,12 +64,10 @@ test.describe("Winner 演出 + Auto-finish", () => {
       // 状態と独立して 3 player snapshot から計算されるため banner は表示される。
       const liveTab = await page.context().newPage();
       await liveTab.goto(`/tournaments/${tid}/live`);
-      await expect(
-        liveTab.getByRole("status").filter({ hasText: "優勝" }),
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(
-        liveTab.getByRole("status").filter({ hasText: "優勝" }),
-      ).toContainText("Carol");
+      // Phase 4.12（commit dec92fc）で「優勝」テキストは削除されたため 🏆 でフィルタ。
+      const liveBanner = liveTab.getByRole("status").filter({ hasText: "🏆" });
+      await expect(liveBanner).toBeVisible({ timeout: 10_000 });
+      await expect(liveBanner).toContainText("Carol");
       await liveTab.close();
 
       // ---------- 2 秒 delay 後に state=finished ----------

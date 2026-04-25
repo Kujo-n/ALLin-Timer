@@ -52,9 +52,6 @@ export class GroupDetailPage extends BasePage {
     super(page);
   }
 
-  readonly tournamentsButton: Locator = this.page.getByRole("button", { name: "トーナメント" });
-  readonly structuresButton: Locator = this.page.getByRole("button", { name: "ストラクチャ" });
-
   async goto() {
     await this.page.goto(`/groups/${this.gid}`);
     await this.waitForStable();

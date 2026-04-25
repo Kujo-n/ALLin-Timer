@@ -110,7 +110,7 @@ export async function createTournament(
 ): Promise<string> {
   await page.goto("/tournaments/new");
   await page.getByLabel("トーナメント名").fill(name);
-  const seats = page.getByLabel("1 卓あたりの席数");
+  const seats = page.getByLabel("1 Table あたりの席数");
   await seats.fill(String(seatsPerTable));
   await Promise.all([
     // `/tournaments/new` にマッチしないよう negative lookahead で除外。

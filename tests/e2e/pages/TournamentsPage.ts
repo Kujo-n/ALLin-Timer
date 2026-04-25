@@ -11,7 +11,7 @@ export class TournamentsPage extends BasePage {
 
 export class TournamentNewPage extends BasePage {
   readonly nameInput: Locator = this.page.getByLabel("トーナメント名");
-  readonly seatsInput: Locator = this.page.getByLabel("1 卓あたりの席数");
+  readonly seatsInput: Locator = this.page.getByLabel("1 Table あたりの席数");
   readonly submitButton: Locator = this.page.getByRole("button", { name: /^作成$/ });
 
   async goto() {
@@ -60,9 +60,12 @@ export class TournamentDashboardPage extends BasePage {
   readonly revertButton: Locator = this.page.getByRole("button", { name: /^前レベル$/ });
   readonly finishButton: Locator = this.page.getByRole("button", { name: /^終了$/ });
   readonly confirmFinishButton: Locator = this.page.getByRole("button", { name: /^終了する$/ });
+  // Phase 4.12（commit dec92fc）で WinnerBanner から「優勝」テキストが除去され、
+  // 🏆 emoji + winner.displayName の構成に変わった。アクセシブルネームの一部として
+  // 残っている 🏆 でフィルタする。
   readonly winnerBanner: Locator = this.page
     .getByRole("status")
-    .filter({ hasText: "優勝" });
+    .filter({ hasText: "🏆" });
   readonly stateBadge: Locator = this.page
     .locator("header")
     .getByText(/^(setup|seating|running|paused|finished)$/);
@@ -116,9 +119,12 @@ export class LivePage extends BasePage {
     super(page);
   }
 
+  // Phase 4.12（commit dec92fc）で WinnerBanner から「優勝」テキストが除去され、
+  // 🏆 emoji + winner.displayName の構成に変わった。アクセシブルネームの一部として
+  // 残っている 🏆 でフィルタする。
   readonly winnerBanner: Locator = this.page
     .getByRole("status")
-    .filter({ hasText: "優勝" });
+    .filter({ hasText: "🏆" });
 
   async goto() {
     await this.page.goto(`/tournaments/${this.tid}/live`);

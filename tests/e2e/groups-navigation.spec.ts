@@ -7,61 +7,73 @@ import {
 } from "./fixtures/flows";
 
 /**
- * Phase 4.5 Task 3: `/groups/[gid]` 詳細画面から「トーナメント」「ストラクチャ」
- * ボタンで各画面へ 1 クリック遷移できることを検証。
+ * Phase 4.5 Task 3 / Phase 4.13.1 update:
+ *   `/groups/[gid]` 詳細画面から「トーナメント」「ストラクチャ」へ遷移できることを検証。
  *
- * 注意: Task 3 のボタンは `/groups`（一覧）ではなく `/groups/[gid]`（詳細）に置かれる。
+ *   Phase 4.13.1: ヘッダ右の AuthBadge / 詳細画面のページ内ボタンを廃止し、
+ *   サイドバー（PrimaryNav）一本に集約。currentGroupId 反映はサイドバーの
+ *   「サークル」配下に表示される group 名サブ項目（href = /groups/{gid}）で確認する。
  */
 
+const SIDEBAR_LABEL = "メインナビゲーション";
+
 test.describe("/groups/[gid] からの画面遷移", () => {
-  test("group detail page shows tournaments and structures navigation buttons", async ({
+  test("group detail page では sidebar の group サブ項目が現在の gid を指す", async ({
     page,
   }) => {
     const organizer = randomOrganizer("nav");
     await registerOrganizer(page, organizer);
     const gid = await createGroup(page, "E2E Navigation");
 
-    // /groups/[gid] に居る想定
     await expect(page).toHaveURL(new RegExp(`/groups/${gid}$`));
 
-    // 2 つのボタンが visible
-    const tournamentsBtn = page.getByRole("button", { name: "トーナメント" });
-    const structuresBtn = page.getByRole("button", { name: "ストラクチャ" });
-    await expect(tournamentsBtn).toBeVisible();
-    await expect(structuresBtn).toBeVisible();
+    // sidebar に主要 nav 項目が出る
+    const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
+    await expect(sidebar.getByRole("link", { name: "トーナメント" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "ストラクチャ" })).toBeVisible();
+
+    // 「サークル」直下の group 名サブ項目が現在の gid を指す
+    await expect(sidebar.getByRole("link", { name: "E2E Navigation" })).toHaveAttribute(
+      "href",
+      `/groups/${gid}`,
+    );
   });
 
-  test("clicking トーナメント navigates to /tournaments with correct group context", async ({
+  test("sidebar の トーナメント クリックで /tournaments に遷移し、group context が維持される", async ({
     page,
   }) => {
     const organizer = randomOrganizer("nav");
     await registerOrganizer(page, organizer);
     const gid = await createGroup(page, "E2E Nav Tournaments");
 
-    await page.getByRole("button", { name: "トーナメント" }).click();
-    await page.waitForURL("**/tournaments", { timeout: 10_000 });
-    // トーナメント一覧が該当 group の context で開かれる（ヘッダーの「現在のサークル」表示）
-    await expect(page.getByRole("link", { name: "現在のサークル" })).toHaveAttribute(
+    const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
+    await Promise.all([
+      page.waitForURL("**/tournaments", { timeout: 10_000 }),
+      sidebar.getByRole("link", { name: "トーナメント" }).click(),
+    ]);
+    // /tournaments でも sidebar の group サブ項目が同じ gid を指している
+    await expect(sidebar.getByRole("link", { name: "E2E Nav Tournaments" })).toHaveAttribute(
       "href",
       `/groups/${gid}`,
     );
   });
 
-  test("clicking ストラクチャ navigates to /structures with correct group context", async ({
+  test("sidebar の ストラクチャ クリックで /structures に遷移し、group context が維持される", async ({
     page,
   }) => {
     const organizer = randomOrganizer("nav");
     await registerOrganizer(page, organizer);
     const gid = await createGroup(page, "E2E Nav Structures");
-    // ストラクチャ画面で表示させる最低限のデータ
     await page.goto(`/groups/${gid}`);
     await createDefaultStructure(page, "Nav Default");
-    // createDefaultStructure は /structures に遷移するので group 詳細に戻る
     await page.goto(`/groups/${gid}`);
 
-    await page.getByRole("button", { name: "ストラクチャ" }).click();
-    await page.waitForURL("**/structures", { timeout: 10_000 });
-    await expect(page.getByRole("link", { name: "現在のサークル" })).toHaveAttribute(
+    const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
+    await Promise.all([
+      page.waitForURL("**/structures", { timeout: 10_000 }),
+      sidebar.getByRole("link", { name: "ストラクチャ" }).click(),
+    ]);
+    await expect(sidebar.getByRole("link", { name: "E2E Nav Structures" })).toHaveAttribute(
       "href",
       `/groups/${gid}`,
     );

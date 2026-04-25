@@ -95,10 +95,12 @@ test.describe("Phase 4.9: audio settings", () => {
     });
 
     // /groups/[gid] 上の "サウンド設定" ボタンから遷移できることも確認する。
+    // Phase 4.13 でサイドバーにも同名の「サウンド設定」リンクが追加されたため、
+    // page-level の `<main id="main">` 配下に絞り込んで strict-mode violation を回避する。
     await page.goto(`/groups/${gid}`);
     await Promise.all([
       page.waitForURL(`**/groups/${gid}/audio-settings`, { timeout: 15_000 }),
-      page.getByRole("link", { name: /^サウンド設定$/ }).click(),
+      page.locator("#main").getByRole("link", { name: /^サウンド設定$/ }).click(),
     ]);
 
     const audioPage = groupAudioSettingsPage(gid);
@@ -223,46 +225,62 @@ test.describe("Phase 4.9: audio settings", () => {
     await dash.goto();
     // running 状態は維持されている（state 遷移していない）。
     await expect(dash.stateBadge).toHaveText("running");
-    // 「サウンドを有効化」ボタンは消え、OFF アイコンの設定リンクに切り替わる。
+    // 「サウンドを有効化」ボタンは消え、OFF アイコンに切り替わる。
+    // Phase 4.13: settingsHref を廃止して `<Link>` → `<Button>` に変更し、
+    // クリックで group の audioSettings.enabled を反転書込みする方式に変わった。
     await expect(
       page.getByRole("button", { name: /^サウンドを有効化$/ }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole("link", { name: /^サウンドOFF/ }),
+      page.getByRole("button", { name: /^サウンドOFF/ }),
     ).toBeVisible();
   });
 
-  test("/live の SoundUnlockBanner『設定』から開いた audio-settings は『← 全画面表示へ戻る』に文言が変わり、保存後 /live に戻る", async ({
+  test("/live の SoundUnlockBanner には『設定』リンクが無い（Phase 4.13 で廃止）", async ({
+    page,
+  }) => {
+    // Phase 4.13: 設定ページへの導線をサイドバー（「サウンド設定」）に集約したため、
+    //   SoundUnlockBanner からは settings リンクを廃止。本テストはそのリグレッション
+    //   ガードを兼ねる。`?from=live&tid=` クエリ自体は audio-settings page 側で
+    //   引き続き解釈されるため、URL 直アクセスからの戻り先切替は別ケースで検証する。
+    const organizer = randomOrganizer("audio-lban");
+    await registerOrganizer(page, organizer);
+    await createGroup(page, "Audio Live Banner");
+    await createDefaultStructure(page, "Audio Live Banner Default");
+    const tid = await createTournament(page, "Audio Live Banner Tournament");
+
+    await page.goto(`/tournaments/${tid}/live`);
+
+    // unlock CTA は表示される（organizer 兼 audioSettings.enabled=true デフォルト）
+    await expect(
+      page.getByRole("button", { name: /^サウンドを有効化$/ }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // 「設定」リンクは廃止された
+    await expect(page.getByRole("link", { name: /^設定$/ })).toHaveCount(0);
+  });
+
+  test("audio-settings に ?from=live&tid= を直接渡すと『全画面表示へ戻る』が出る（URL 契約）", async ({
     page,
     groupAudioSettingsPage,
   }) => {
-    const organizer = randomOrganizer("audio-lback");
+    // Phase 4.13 で本 UI 経路（banner からのリンク）は無くなったが、audio-settings-client.tsx の
+    // `from=live` 解釈は残っている（将来の再導線追加に備える）。URL 契約として
+    // 振る舞いが維持されているか直接ナビゲーションで確認する。
+    const organizer = randomOrganizer("audio-fl");
     await registerOrganizer(page, organizer);
-    const gid = await createGroup(page, "Audio Live Back");
-    await createDefaultStructure(page, "Audio Live Back Default");
-    const tid = await createTournament(page, "Audio Live Back Tournament");
+    const gid = await createGroup(page, "Audio From Live");
+    await createDefaultStructure(page, "Audio From Live Default");
+    const tid = await createTournament(page, "Audio From Live Tournament");
 
-    await page.goto(`/tournaments/${tid}/live`);
-    // /live の SoundUnlockBanner（unlocked=false 表示）の "設定" ボタンから遷移する。
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}/audio-settings**`, { timeout: 15_000 }),
-      page.getByRole("link", { name: /^設定$/ }).click(),
-    ]);
-
-    // クエリで from=live & tid=xxx が伝搬されている
-    const url = new URL(page.url());
-    expect(url.searchParams.get("from")).toBe("live");
-    expect(url.searchParams.get("tid")).toBe(tid);
-
+    await page.goto(`/groups/${gid}/audio-settings?from=live&tid=${tid}`);
     const audioPage = groupAudioSettingsPage(gid);
     await audioPage.expectLoaded();
 
-    // 戻るリンクの文言が「← 全画面表示へ戻る」になっている
     await expect(
       page.getByRole("link", { name: /全画面表示へ戻る/ }),
     ).toBeVisible();
 
-    // 保存すると /live に戻る
     await Promise.all([
       page.waitForURL(`**/tournaments/${tid}/live`, { timeout: 15_000 }),
       audioPage.saveButton.click(),

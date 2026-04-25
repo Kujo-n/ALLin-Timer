@@ -44,12 +44,15 @@ test.describe("Phase 4.6: member role split UX", () => {
 
       // /tournaments に遷移
       await memberPage.goto("/tournaments");
-      // 新規作成ボタンは organizer のみに表示されるため、member には見えない
+      // page-level（#main 配下）には organizer 限定 CTA が出ない。
+      // Phase 4.13.1: ストラクチャはサイドバーから誰でも開けるようになったため、
+      // 「ストラクチャがページ内にない」を #main スコープでだけ検証する。
+      const memberMain = memberPage.locator("#main");
       await expect(
-        memberPage.getByRole("link", { name: /^新規作成$/ }),
+        memberMain.getByRole("link", { name: /^新規作成$/ }),
       ).toHaveCount(0);
       await expect(
-        memberPage.getByRole("link", { name: /^ストラクチャ$/ }),
+        memberMain.getByRole("link", { name: /^ストラクチャ$/ }),
       ).toHaveCount(0);
       // 代わりにトーナメントカードに「参加する」CTA が表示される
       await expect(memberPage.getByText("Role Split Tournament")).toBeVisible();
@@ -90,8 +93,12 @@ test.describe("Phase 4.6: member role split UX", () => {
       await memberPage.goto(`/tournaments/${tid}`);
       await memberPage.waitForURL(`**/tournaments/${tid}/live`, { timeout: 15_000 });
 
-      // live 画面の主要要素（タイマー / 自席セクション）が表示される
-      await expect(memberPage.locator("main")).toBeVisible();
+      // live 画面の主要要素（タイマー / 自席セクション）が表示される。
+      // Phase 4.13 で AppShell が `<main id="main">` を追加したため、live-client の
+      // page-level `<main>` と二重になり `locator("main")` は strict-mode violation を
+      // 起こす。AppShell 側の `#main` を直接参照して fullscreen pattern が機能している
+      // ことを確認する。
+      await expect(memberPage.locator("#main")).toBeVisible();
     } finally {
       await memberCtx.close();
     }
