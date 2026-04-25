@@ -221,7 +221,8 @@
 | 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | complete | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
 | 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 2 種類（blind-up / victory-chime、mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | complete | - | 4.8 | [completed/phase-4.9-audio-notifications.plan.md](../plans/completed/phase-4.9-audio-notifications.plan.md) — 実装レポート: [phase-4.9-audio-notifications-report.md](../reports/phase-4.9-audio-notifications-report.md) |
 | 4.10 | Audio Notifications (Custom Upload) **[Optional]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Storage 未設定環境でも Phase 4.9 のデフォルト音源で運用継続可能（オプション機能）** | pending | - | 4.9 | - |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9（4.10 はオプション扱いで blocker 外） | - |
+| 4.11 | Timer Layout & Control Polish | Phase 4.9 投入後のフォローアップ。Live / Dashboard を 3 カラムレイアウト化（左=QR / 中=タイマー / 右=NextBreak / Avg / Players）、StructureSnapshotCard を共通化し /live にも表示、TimerDisplay の SB/BB/Ante 視認性向上、TimerControls をアイコン化＋順序整理＋SoundToggle 統合、終了時タイマーを `finishedAt` 基準で停止、`useAudioPlayer.unlocked` を `useSyncExternalStore` で全コンポーネント同期、`revertLevel`/`advanceLevel` の paused 状態 invariant 修正（pausedAt 再アーム）、`tournament.lastLevelChangeKind` 追加で手動レベル遷移時のサウンド再生をスキップ。schema は additive（`lastLevelChangeKind: "auto"\|"manual"\|null\|undefined`） | complete | - | 4.9 | 実装レポート: [phase-4.11-timer-layout-control-polish-report.md](../reports/phase-4.11-timer-layout-control-polish-report.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11（4.10 はオプション扱いで blocker 外） | - |
 
 ### Phase Details
 
@@ -410,6 +411,36 @@
   - 使用中の音源を削除すると `audioSettings` が default にフォールバック
   - typecheck / lint / test / build が green
 
+**Phase 4.11: Timer Layout & Control Polish**
+- **Goal**: Phase 4.9 のフィールド投入準備中に上がった「タイマー画面の見やすさ」「終了時の挙動」「サウンド UX」「pause 中レベル遷移バグ」を一括解消し、運営者が会場ディスプレイ投影でも片手スマホ操作でも違和感なく扱える状態に仕上げる
+- **背景**: Phase 4.9 のサウンド通知投入後に運営者から `tmp/10_Phase4.9_memo.md` で 5 件 + 追加 4 件のフィードバック・自主検証で発覚した 2 件のバグが発生。schema additive な範囲で UX を整理しつつ、pause/finish/手動 advance 周りの状態機械バグも合わせて潰す
+- **Scope**:
+  - **Live / Dashboard レイアウト 3 カラム化**（lg+）
+    - 左: `QrPanel`（途中参加用 QR、`lg:sticky lg:top-4` で常時可視）
+    - 中: `TimerDisplay` + `WinnerBanner` + 自分の席 + Structure（live のみ）
+    - 右: `NextBreakCard` / `AverageStackCard` / `PlayersCard`（`lg:sticky`）
+    - モバイル（lg 未満）はタイマー → 情報 → QR → その他の順で 1 カラム積み上げ
+  - **新規共通カード**:
+    - `StructureSnapshotCard`: dashboard と /live 双方で利用、現在 level をハイライト
+    - `NextBreakCard`: 次 break までの ETA を `mm:ss` / `h:mm:ss` 形式で表示（タイマーと書式統一）
+    - `PlayersCard`: 残人数 / 母数を `M / N` で表示
+    - `SoundToggleButton`: 3 状態識別（OFF=`VolumeX` 赤系 / 要有効化=`BellRing` amber / ON=`Volume2` 緑系）
+  - **TimerDisplay の SB/BB/Ante**: `text-3xl/4xl` 太字 + sky 系カラー、ラベルを uppercase tracking で小さく
+  - **TimerControls 再構成**: running/paused のボタンを **サウンド → 前レベル → 再生/一時停止 → 次レベル → 終了** の順にアイコン化（`SkipBack`/`Pause`/`Play`/`SkipForward`/`Square`）。`gap-x-10`（アイコン 1 個分）で誤タップ防止。dashboard ではタイマー直下に中央揃えで配置
+  - **AverageStackCard 整理**: 人数表示は `PlayersCard` に移管し、平均値と初期値のみ表示
+  - **タイマー停止仕様**: `getRemainingMs` を `state === "finished"` のとき `finishedAt` 基準で残時間固定（pause と同様の挙動）。終了時に `00:00` ではなく終了時点の残時間で表示が止まる
+  - **AudioContext 共有 unlocked**: `useAudioPlayer` の `unlocked` を `useState` から `useSyncExternalStore` に移行。`audio-context.ts` に `subscribeAudioContextState` / `readAudioContextState` を追加し、AudioContext singleton の `statechange` を全 hook に通知。dashboard と /live の両方で unlock 状態が即時同期される（再読み込み不要）
+  - **pause 中レベル遷移 invariant 修正**: `revertLevel` / `advanceLevel`（手動 + auto）が pause 状態のときに `pausedAt: null` を書き込み、`state="paused" && pausedAt=null` の不変条件違反 → 再開時 `tournament/invalid-state` エラーを誘発していた。`levelTransitionUpdates(prevState, newCurrentLevel, kind)` ヘルパに集約し、pause 中なら `pausedAt: serverTimestamp()` で新 level の先頭で再アーム
+  - **手動 advance/revert はサウンド非再生**: `tournamentBodySchema` に `lastLevelChangeKind: "auto" | "manual" | null | undefined` を additive で追加（既存 doc は missing field を許容）。advance(auto)→`"auto"`、advance(manual)/revert→`"manual"` を記録。`useAudioPlayer` の levelUp 検知で `lastLevelChangeKind === "manual"` なら早期 return → 運営者の意図的なレベル送り戻しでブラインドアップ音が誤発火しない
+  - **テスト追加**: 新規 3 カードの単体テスト（21 件）+ getRemainingMs finished 系（2 件）+ NextBreakInfo（5 件）+ pause 中 advance/revert invariant + lastLevelChangeKind 検証（6 件）+ useAudioPlayer の auto/manual 分岐（2 件）。453 → 478 件に増加
+- **Success signal**:
+  - 運営者が pause 中に「前/次レベル」を押しても再開時にエラーが出ない
+  - dashboard で unlock したサウンドが /live 側でも再読み込みなしで反映される
+  - 手動レベル送り戻しで音が鳴らず、auto-advance のみブラインドアップ音が鳴る
+  - 終了時、タイマーが `00:00` ではなく終了時点の残時間で停止する
+  - PC / モバイル両幅でレイアウトが崩れず、`SoundToggleButton` の 3 状態が色 + アイコンの両方で識別可能
+  - typecheck / lint / test / build が green
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -432,7 +463,8 @@
 - Phase 4.8（Template Library）は Phase 4.7 完了後に単独実施。**新規 2 collection + Firestore Rules 追加デプロイ**と **Firestore Console での管理者 bootstrap**（`templateAdmins/{uid}` に空 doc 1 件）が必要。Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` に依存するため 4.7 → 4.8 の順で実施
 - Phase 4.9（音声通知 段階1）は Phase 4.8 完了後に単独実施。**schema は additive**（`groups/{gid}.audioSettings` フィールド追加 + zod default で既存 doc を補完）、Firestore Rules は groups update に audioSettings 書込条件を 1 つ追加。Storage 不使用で破壊的 migration なし
 - Phase 4.10（音声通知 段階2）は **オプション機能**。Phase 4.9 完了後、Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
+- Phase 4.11（タイマー UI/UX フォローアップ）は Phase 4.9 完了後に単独実施。**schema は additive**（`tournaments/{tid}.lastLevelChangeKind` を optional で追加、既存 doc の missing field を許容）。Firestore Rules 変更なし、破壊的 migration なし。Phase 4.10 とは独立で並行可能（互いに別 collection / 別関数を触る）
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
 
 ---
 
