@@ -112,8 +112,9 @@
 | Must | **サークル（Group）単位での共有**（複数運営者で structures / tournaments を共有） | 運営者 3 人前提。個人所有モデルでは実運用にならない（Phase 2.5 で追加） |
 | Must | 接続切断時の UI 表示（最終時刻＋「接続切れ」） | 混乱を防ぐ最低ライン |
 | Must | 初回席決めは運営者トリガー、進行中レイトエントリーは自動配席 | 参加登録順の偏り防止と、運営者負担最小化の両立 |
-| Must | **音声通知**（ブラインドレベル変更時／優勝者確定時、運営者ロール（owner/organizer）の端末でのみ再生、group 単位の on/off + 音源設定、デフォルト音源 + サークル単位カスタム音源アップロード） | 運営者がブラインドアップに気付かない／優勝確定が会場全体に伝わらないという既存ペインを音で解消。Phase 4.9 で要件漏れ確認後に Must 化 |
+| Must | **音声通知（デフォルト音源）**（ブラインドレベル変更時／優勝者確定時、運営者ロール（owner/organizer）の端末でのみ再生、group 単位の on/off + 音量設定） | 運営者がブラインドアップに気付かない／優勝確定が会場全体に伝わらないという既存ペインを音で解消。Phase 4.9 で要件漏れ確認後に Must 化 |
 | Should | 賞金計算（単純分配） | AI 支援で低コスト実装可能 |
+| Could | **音声通知（カスタム音源アップロード）**（Phase 4.10、Firebase Storage 必須） | デフォルト音源でコアペインは解消済み。MIT 公開時の Storage / Blaze プラン要件を避けるためオプション扱い |
 | Could | リバイ／アドオン管理 | 実地フィードバック後に判断 |
 | Won't (v1) | ハンド・フォー・ハンド | 50 人超 Non-User のため |
 | Won't (v1) | リーダーボード・シーズンランキング | データモデル影響大・別スコープ |
@@ -219,8 +220,8 @@
 | 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応、`groups/{gid}.memberDisplayNames` snapshot 追加（サークル一覧で UID ではなく displayName 表示）、`/tournaments` 一覧の状態別カード色分け。schema は additive、Firestore Rules は groups update に self-key 書込条件を 1 つ追加 | complete | - | 4.6 | [completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md) — 実装レポート: [phase-4.7-onboarding-polish-structure-enhancements-report.md](../reports/phase-4.7-onboarding-polish-structure-enhancements-report.md) |
 | 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | complete | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
 | 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 2 種類（blind-up / victory-chime、mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | complete | - | 4.8 | [completed/phase-4.9-audio-notifications.plan.md](../plans/completed/phase-4.9-audio-notifications.plan.md) — 実装レポート: [phase-4.9-audio-notifications-report.md](../reports/phase-4.9-audio-notifications-report.md) |
-| 4.10 | Audio Notifications (Custom Upload) | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張 | pending | - | 4.9 | - |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10 | - |
+| 4.10 | Audio Notifications (Custom Upload) **[Optional]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Storage 未設定環境でも Phase 4.9 のデフォルト音源で運用継続可能（オプション機能）** | pending | - | 4.9 | - |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9（4.10 はオプション扱いで blocker 外） | - |
 
 ### Phase Details
 
@@ -371,10 +372,20 @@
   - autoplay unlock ボタンを押さないと音が鳴らない（ブラウザ仕様準拠）
   - typecheck / lint / test / build が green
 
-**Phase 4.10: Audio Notifications (Custom Upload)**
+**Phase 4.10: Audio Notifications (Custom Upload) [Optional]**
+- **位置付け**: **オプション機能（Storage 未設定環境では実装スキップ可能）**。Phase 4.9 のデフォルト音源だけでも MVP 要件は満たせるため、Phase 4.10 を実装しない場合でもアプリは正常動作する
 - **Goal**: サークルが独自の音源（自作・選曲）をアップロードして level-up / winner 通知に使えるようにする。Phase 4.9 の MVP からの自然拡張
 - **背景**: Phase 4.9 は実装シンプル化のためデフォルト音源 1 種固定。フィールドテスト前に「サークルらしさを出したい」「優勝の歓声音を別のものにしたい」要望に応えるためカスタム音源を追加
-- **Scope**:
+- **オプション化の理由**:
+  - 2024-10 以降、Firebase の新規プロジェクトでは Cloud Storage 利用に Blaze プラン（従量課金 + クレジットカード登録）が必須化。MIT 公開リポジトリとしてフォークユーザーの導入ハードルを上げないため、Storage 必須化を避ける
+  - Phase 4.9 のデフォルト音源で「ブラインドアップ見落とし」「優勝確定の伝達」のコアペインは解消済み。カスタム音源は付加価値であり MVP の必須要件ではない
+  - 本家サークル（運営者の所属サークル）で Storage を有効化できる場合のみ実装する想定。Spark プランのまま Storage 有効化が可能か Console で要判定
+- **フォークユーザー向け運用**:
+  - Phase 4.10 を実装しない場合、`audioSettings.{levelUp,winner}SoundId` は `"default:bell"` 固定運用
+  - `/groups/[gid]/audio-settings` の音源プルダウンは Phase 4.9 と同じく `default:bell` 1 択のまま
+  - Storage SDK / Storage Rules / `audioAssets` サブコレクションは未追加
+  - README で「Phase 4.10 はオプション機能」「Storage 未設定でも Phase 4.9 まで運用可能」を明記
+- **Scope**（実装する場合）:
   - **Firebase Storage 初期導入**:
     - プロジェクトレベルで Storage を有効化（既存 env `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` を活用）
     - SDK インポート (`firebase/storage`) を `src/lib/firebase/client.ts` の singleton に追加
@@ -420,8 +431,8 @@
 - Phase 4.7（UX / schema additive）は Phase 4.6 完了後に単独実施。**schema は additive**（zod default / nullable / record default({})）で破壊的 migration 不要。Firestore Rules は groups update に self-key 書込条件を 1 つ追加するのみ（他 collection 変更なし）
 - Phase 4.8（Template Library）は Phase 4.7 完了後に単独実施。**新規 2 collection + Firestore Rules 追加デプロイ**と **Firestore Console での管理者 bootstrap**（`templateAdmins/{uid}` に空 doc 1 件）が必要。Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` に依存するため 4.7 → 4.8 の順で実施
 - Phase 4.9（音声通知 段階1）は Phase 4.8 完了後に単独実施。**schema は additive**（`groups/{gid}.audioSettings` フィールド追加 + zod default で既存 doc を補完）、Firestore Rules は groups update に audioSettings 書込条件を 1 つ追加。Storage 不使用で破壊的 migration なし
-- Phase 4.10（音声通知 段階2）は Phase 4.9 完了後に単独実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.10 の完了後
+- Phase 4.10（音声通知 段階2）は **オプション機能**。Phase 4.9 完了後、Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
 
 ---
 
@@ -452,6 +463,7 @@
 | autoplay unlock | **明示的「サウンドを有効化」ボタン** | 任意のクリックで暗黙的 unlock | 運営者の意図的な consent を取り、不意打ち再生を回避 |
 | デフォルト音源の調達 | ffmpeg 純音生成（`scripts/generate-default-sounds.sh` 同梱） | フリー素材サイト（Pixabay/Mixkit） | MIT 配布リポジトリのため帰属表記不要・再現可能・ライセンス問題ゼロを最優先 |
 | カスタム音源制約（Phase 4.10） | 1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg / organizer 全員が削除可能 | 容量無制限 / 本数無制限 / 作成者のみ削除 | 無料枠 Storage の保護 + サークル運営の柔軟性（脱会した運営者の音源を残された側が片付けられる） |
+| Phase 4.10 の必須／オプション扱い | **オプション機能**（Storage 未設定環境では実装スキップ可能、Phase 5 の blocker から除外） | Must として全環境で必須化 | (1) 2024-10 以降の Firebase 新規プロジェクトは Storage 利用に Blaze プラン必須化。MIT 公開リポジトリのフォークユーザーに CC 登録を強制したくない。(2) Phase 4.9 のデフォルト音源で「ブラインドアップ見落とし」「優勝確定の伝達」のコアペインは解消済み。カスタム音源は付加価値であり MVP の必須要件ではない |
 
 ---
 
