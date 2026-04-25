@@ -14,8 +14,11 @@ import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
+  audioSettingsSchema,
+  DEFAULT_AUDIO_SETTINGS,
   DISPLAY_NAME_MAX_LENGTH,
   groupBodySchema,
+  type AudioSettings,
   type CreateGroupInput,
   type GroupDoc,
 } from "@/lib/firebase/schemas/group";
@@ -45,6 +48,7 @@ export async function createGroup(
       organizerUids: [input.ownerUid],
       memberUids: [input.ownerUid],
       memberDisplayNames,
+      audioSettings: DEFAULT_AUDIO_SETTINGS,
       createdAt: serverTimestamp(),
       joinCodeId: null,
     });
@@ -190,6 +194,42 @@ export async function setMemberDisplayName(
       "メンバー表示名の更新に失敗しました",
     );
     logger.warn(wrapped.message, { code: wrapped.code, gid, uid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4.9: 音声通知設定を group 単位で更新する。
+ *   - object 一括上書き（dot-path にしない）— Phase 4.10 で SoundId 切替時に
+ *     未参照キーが残るのを避けるため
+ *   - rule 側は audioSettings の field-level validation を行わない（organizer 信頼）。
+ *     application 層の zod が最終ライン。
+ */
+export async function updateAudioSettings(
+  gid: string,
+  settings: AudioSettings,
+): Promise<void> {
+  const parsed = audioSettingsSchema.safeParse(settings);
+  if (!parsed.success) {
+    throw new AppError(
+      "サウンド設定の値が不正です",
+      "validation/audio-settings-invalid",
+    );
+  }
+  try {
+    await updateDoc(groupDocRef(gid), { audioSettings: parsed.data });
+    logger.info("group audio settings updated", {
+      gid,
+      enabled: parsed.data.enabled,
+      volume: parsed.data.volume,
+    });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "サウンド設定の更新に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, gid });
     throw wrapped;
   }
 }

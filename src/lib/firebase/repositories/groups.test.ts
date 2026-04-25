@@ -33,7 +33,14 @@ vi.mock("@/lib/firebase/converters", () => ({
 
 import { addDoc, arrayRemove, updateDoc } from "firebase/firestore";
 
-import { createGroup, removeMemberSelf, updateGroupRoles } from "./groups";
+import { AppError } from "@/lib/errors";
+
+import {
+  createGroup,
+  removeMemberSelf,
+  updateAudioSettings,
+  updateGroupRoles,
+} from "./groups";
 
 const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 void now;
@@ -78,6 +85,57 @@ describe("updateGroupRoles", () => {
       ownerUids: ["u1", "u2"],
       organizerUids: ["u1", "u2", "u3"],
     });
+  });
+});
+
+describe("updateAudioSettings", () => {
+  it("writes audioSettings as a single object field", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await updateAudioSettings("g1", {
+      enabled: true,
+      levelUpSoundId: "default:blind-up",
+      winnerSoundId: "default:victory-chime",
+      volume: 0.5,
+    });
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      audioSettings: {
+        enabled: true,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 0.5,
+      },
+    });
+  });
+
+  it("rejects volume out of range before any write", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await expect(
+      updateAudioSettings("g1", {
+        enabled: true,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 1.5,
+      }),
+    ).rejects.toBeInstanceOf(AppError);
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("wraps Firestore errors with firestore/write_failed code", async () => {
+    vi.mocked(updateDoc).mockRejectedValue(new Error("boom") as never);
+
+    await expect(
+      updateAudioSettings("g1", {
+        enabled: false,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 0.5,
+      }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
   });
 });
 
