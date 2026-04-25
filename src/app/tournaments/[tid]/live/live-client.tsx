@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { SoundUnlockBanner } from "@/components/audio/SoundUnlockBanner";
@@ -124,37 +125,50 @@ export function LiveClient({ tid }: { tid: string }) {
     tournament.currentLevel > tournament.lateEntryDeadlineLevel;
   const winner = resolveWinner(tournament, players);
 
+  // PC 投影時の見やすさのため、breakpoint で幅を段階的に広げる。
+  // 各カードで重複しがちなため定数化。
+  const cardWidth = "w-full max-w-md md:max-w-2xl lg:max-w-4xl";
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-start gap-4 p-4 pt-8">
-      <div className="flex w-full max-w-md items-center justify-between">
-        <h1 className="text-lg font-semibold">{tournament.name}</h1>
-        <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
+      <div className={`flex items-center justify-between gap-2 ${cardWidth}`}>
+        <h1 className="text-lg font-semibold md:text-xl">{tournament.name}</h1>
+        <div className="flex items-center gap-2">
+          {isAudioOperator ? (
+            <Link href={`/tournaments/${tid}`}>
+              <Button variant="outline" size="sm">
+                受付へ戻る
+              </Button>
+            </Link>
+          ) : null}
+          <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
+        </div>
       </div>
       <TimerDisplay
         tournament={tournament}
         remainingMs={remainingMs}
         levelInfo={levelInfo}
-        className="w-full max-w-md"
+        className={cardWidth}
       />
 
       {isAudioOperator && tournamentGroup ? (
-        <div className="w-full max-w-md">
+        <div className={cardWidth}>
           <SoundUnlockBanner
             unlocked={audioPlayer.unlocked}
             enabled={tournamentGroup.audioSettings.enabled}
             onUnlock={audioPlayer.unlock}
-            settingsHref={`/groups/${tournamentGroup.id}/audio-settings`}
+            settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=live&tid=${tid}`}
           />
         </div>
       ) : null}
 
-      <AverageStackCard tournament={tournament} players={players} className="w-full max-w-md" />
+      <AverageStackCard tournament={tournament} players={players} className={cardWidth} />
 
-      {winner ? <WinnerBanner winner={winner} /> : null}
+      {winner ? <WinnerBanner winner={winner} className="max-w-md md:max-w-2xl lg:max-w-4xl" /> : null}
 
       {user ? (
         <section
-          className="w-full max-w-md rounded-lg border p-4"
+          className={`rounded-lg border p-4 ${cardWidth}`}
           aria-label="self-seat"
         >
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">あなたの席</h2>
