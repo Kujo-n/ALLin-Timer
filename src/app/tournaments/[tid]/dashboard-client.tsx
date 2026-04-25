@@ -216,6 +216,11 @@ export function DashboardClient({ tid }: { tid: string }) {
     data.state === "paused";
   const showBalancing = isMember && (data.state === "running" || data.state === "paused");
   const levelInfo = getLevelInfo(data);
+  const showRightColumn =
+    data.state === "running" || data.state === "paused" || data.state === "finished";
+  const gridColsClass = showRightColumn
+    ? "lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]"
+    : "lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)]";
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-8 lg:max-w-7xl">
@@ -228,7 +233,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           </div>
           <p className="text-sm text-muted-foreground">
             現在 Lv{data.currentLevel} / 締切 Lv{data.lateEntryDeadlineLevel} /{" "}
-            {data.structureSnapshot.levels.length} レベル / 1 卓 {data.seatsPerTable} 席
+            {data.structureSnapshot.levels.length} レベル / 1 Table {data.seatsPerTable} 席
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -264,17 +269,24 @@ export function DashboardClient({ tid }: { tid: string }) {
       ) : null}
 
       {/*
-        タイマーエリア — PC（lg+）では 3 カラム grid（左=QR / 中=Timer / 右=情報カード）。
-        モバイルでは 1 カラムで縦に並ぶ（タイマー → 情報 → QR の順）。
-        trace: tmp/10_Phase4.9_memo.md 改善要望#4(右側) #5(左側)
+        上段 — 等高 3 列。lg+ で QR / タイマー+操作 / 統計 3 カードを同じ高さに揃える。
+        最も背の高い QrPanel を基準に他 2 列が伸びる。
+        sticky は等高化と両立しないため廃止（Phase 4.11 までは sticky だった）。
+        state=setup/seating では右列を非表示にし grid を 2 列に縮退する。
+        trace: phase-4.12-dashboard-polish-and-table-rename.plan.md
       */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]">
-        <aside className="order-3 space-y-3 lg:order-1 lg:sticky lg:top-4 lg:self-start">
-          <QrPanel tid={tid} />
+      <div className={`grid grid-cols-1 gap-4 ${gridColsClass} lg:items-stretch`}>
+        <aside className="order-3 lg:order-1">
+          <QrPanel tid={tid} className="h-full" />
         </aside>
 
         <div className="order-1 flex flex-col gap-4 lg:order-2">
-          <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+          <TimerDisplay
+            tournament={data}
+            remainingMs={remainingMs}
+            levelInfo={levelInfo}
+            className="flex-1 justify-center"
+          />
           {/* タイマー操作 — タイマー直下に中央揃えでアイコンボタン群を並べる。
               サウンド On/Off は audio props（運営者ロール時のみ）。 */}
           {isMember ? (
@@ -297,15 +309,18 @@ export function DashboardClient({ tid }: { tid: string }) {
               onError={setError}
             />
           ) : null}
-          {winner ? <WinnerBanner winner={winner} /> : null}
         </div>
 
-        <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:sticky lg:top-4 lg:self-start">
-          <NextBreakCard tournament={data} remainingMs={remainingMs} />
-          <AverageStackCard tournament={data} players={players} />
-          <PlayersCard tournament={data} players={players} />
-        </aside>
+        {showRightColumn ? (
+          <aside className="order-2 grid grid-rows-[repeat(3,minmax(0,1fr))] gap-3 lg:order-3">
+            <NextBreakCard tournament={data} remainingMs={remainingMs} className="h-full" />
+            <AverageStackCard tournament={data} players={players} className="h-full" />
+            <PlayersCard tournament={data} players={players} className="h-full" />
+          </aside>
+        ) : null}
       </div>
+
+      {winner ? <WinnerBanner winner={winner} /> : null}
 
       {showBalancing ? (
         <BalancingInstructionCard
