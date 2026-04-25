@@ -73,12 +73,6 @@ export function StructuresClient() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/groups">
-            <Button variant="outline">サークル</Button>
-          </Link>
-          <Link href="/tournaments">
-            <Button variant="outline">トーナメント一覧へ</Button>
-          </Link>
           {isOrganizer ? (
             <>
               <Link href="/templates">

@@ -106,18 +106,10 @@ export function TournamentsClient() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/groups">
-            <Button variant="outline">サークル</Button>
-          </Link>
           {isOrganizer ? (
-            <>
-              <Link href="/structures">
-                <Button variant="outline">ストラクチャ</Button>
-              </Link>
-              <Link href="/tournaments/new">
-                <Button>新規作成</Button>
-              </Link>
-            </>
+            <Link href="/tournaments/new">
+              <Button>新規作成</Button>
+            </Link>
           ) : null}
         </div>
       </header>
