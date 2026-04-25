@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resumeAudioContext } from "@/lib/audio/audio-context";
+import { getOrCreateAudioContext, resumeAudioContext } from "@/lib/audio/audio-context";
 import { resolveSound } from "@/lib/audio/sound-catalog";
 import { AppError } from "@/lib/errors";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
@@ -47,6 +47,14 @@ export function useAudioPlayer({
   role,
 }: UseAudioPlayerArgs): UseAudioPlayerState {
   const [unlocked, setUnlocked] = useState(false);
+
+  // SPA 内ページ遷移後の再 mount 時、AudioContext singleton が既に running なら
+  // 改めてユーザー操作 unlock を要求する必要はない（同 tab 内で AudioContext は使い回す）。
+  // 初回 mount 時に state を見て unlocked を復元する。
+  useEffect(() => {
+    const ctx = getOrCreateAudioContext();
+    if (ctx?.state === "running") setUnlocked(true);
+  }, []);
 
   // 前回値を保持して transition を検知する。
   const prevLevelRef = useRef<number | null>(null);

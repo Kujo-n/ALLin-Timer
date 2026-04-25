@@ -7,9 +7,18 @@ import { act, renderHook } from "@testing-library/react";
 import { Timestamp } from "firebase/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// mutable mock context: 各テストで state を切替えることで
+// 「初回 mount 時に既に running（SPA 遷移後の再 mount）」のシナリオも検証する。
+const { audioContextMock } = vi.hoisted(() => ({
+  audioContextMock: { state: "suspended" as AudioContextState },
+}));
+
 vi.mock("@/lib/audio/audio-context", () => ({
-  getOrCreateAudioContext: vi.fn(() => ({ state: "running" })),
-  resumeAudioContext: vi.fn(async () => "running"),
+  getOrCreateAudioContext: vi.fn(() => audioContextMock),
+  resumeAudioContext: vi.fn(async () => {
+    audioContextMock.state = "running";
+    return "running";
+  }),
 }));
 
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
@@ -26,6 +35,8 @@ const pauseSpy = vi.fn();
 beforeEach(() => {
   playSpy.mockClear();
   pauseSpy.mockClear();
+  // 既定は suspended。SPA 遷移耐性テストのみ "running" にして mount する。
+  audioContextMock.state = "suspended";
   Object.defineProperty(HTMLMediaElement.prototype, "play", {
     configurable: true,
     value: playSpy,
@@ -384,6 +395,30 @@ describe("useAudioPlayer — unlock state", () => {
       await result.current.unlock();
     });
     expect(result.current.unlocked).toBe(true);
+  });
+
+  // Phase 4.9 追加修正: SPA 内ページ遷移後の再 mount 時、AudioContext singleton が
+  // 既に running 状態ならユーザー操作を改めて要求しない。
+  it("initializes unlocked=true on mount if AudioContext is already running", () => {
+    audioContextMock.state = "running";
+    const { result } = renderAudioPlayer({
+      tournament: null,
+      group: makeGroup(),
+      players: [],
+      role: "owner",
+    });
+    expect(result.current.unlocked).toBe(true);
+  });
+
+  it("initializes unlocked=false on mount if AudioContext is suspended", () => {
+    audioContextMock.state = "suspended";
+    const { result } = renderAudioPlayer({
+      tournament: null,
+      group: makeGroup(),
+      players: [],
+      role: "owner",
+    });
+    expect(result.current.unlocked).toBe(false);
   });
 });
 
