@@ -147,3 +147,18 @@ const unlock = useCallback(async () => {
 
 - Phase 4.10（custom 音源 upload）で `sound-catalog.ts` の `resolveSound` フォールバックが「削除済み custom ID → default」のパスを担う設計が見える。catalog のテスト「unknown id でフォールバック」（[src/lib/audio/sound-catalog.test.ts:52](src/lib/audio/sound-catalog.test.ts#L52)）はその予兆として有用。
 - `firestore.rules` の audioSettings ブランチに将来 `customSoundAssets` フィールドが乗る場合、M3 の `affectedKeys().hasOnly([...])` を入れておけば自然に拡張可能。
+
+## ユーザー反応待ちの未対応改善候補
+
+実装後ユーザーレビュー（2026-04-25）で挙がった項目。**機能不具合ではなく好みの範疇**としてユーザーが判断保留したもの。本番運用での反応を見て改修要否を決定する。
+
+### 1. トーナメント開始直後に levelUp 音が鳴る挙動
+
+`useTournamentTimer` で state が `setup` / `seating` から `running` に遷移した瞬間、`tournament.currentLevel` の value 自体は変わっていなくても [useAudioPlayer.ts:121-133](src/lib/hooks/useAudioPlayer.ts#L121-L133) の `prevLevelRef === null → 値あり` の遷移条件は `if (prev === null) return;` で空振りするはずだが、別経路（例: dashboard で audioPlayer hook が hot-reload や fast refresh で再 mount し、tournament.state は既に running の状態で初回 effect が走る）で「Lv1 のまま音が鳴る」ケースが発生する可能性がある。
+
+ユーザー報告: 「トーナメント開始直後にブラインドアップの音が鳴ることが気になる。これは好みの範疇なのでユーザーの反応を見てから改修有無を決定する。」
+
+**改修候補**:
+- `prevLevelRef` を `useRef<number | null>(null)` から `useRef<number | null>(tournament?.currentLevel ?? null)` に変えて初回 mount 時点の level を「既知」扱いにする（fast refresh 含む再 mount で誤発火しない）
+- もしくは `tournament.state` 遷移と組み合わせて「`running` 突入後の最初の level 変化のみ」を sound trigger とする
+- **判定基準**: 本番（Vercel）で実際の運用ユーザーから「開始直後に鳴って驚いた」フィードバックが 1 件でも来たら対応着手
