@@ -212,6 +212,15 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 - `createdByDisplayName` は作成時の snapshot。作成者が `/settings` で rename しても既存テンプレの表示名は追従しない
 - テンプレ削除は本人または管理者のみ。**最後の管理者が 0 人になると Console で再 seed するまで復旧できない**
 
+### 5.6. Phase 4.9: サウンド通知
+
+ブラインドレベル変更／優勝者確定の 2 イベントで音声通知を再生する。デフォルト音源（`public/sounds/blind-up.{mp3,ogg}` / `victory-chime.{mp3,ogg}`）が同梱されているため追加セットアップは不要。
+
+- **再生対象**: `/tournaments/[tid]` ダッシュボード（運営者）／ `/tournaments/[tid]/live` ライブビュー（運営者投影）。**owner / organizer ロールのみ再生**（一般メンバーには無音）
+- **設定画面**: `/groups/[gid]/audio-settings` で on/off・音量・試聴を切替（owner / organizer のみアクセス可）。group 詳細画面のボタンから遷移
+- **autoplay unlock**: ブラウザ仕様により最初のユーザー操作が必要。画面上部の `SoundUnlockBanner` で「サウンドを有効化」を 1 回タップすれば以降同一タブで自動再生される
+- **データ**: `groups/{gid}.audioSettings`（zod additive 拡張）に保持。Firestore Rules で organizer 以上のみ書換可
+
 ### 6. Vercel にデプロイ
 
 1. GitHub に本リポジトリを push
@@ -263,6 +272,7 @@ src/
 ├─ app/                           # Next.js App Router
 │  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
+│  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
 │  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
@@ -274,6 +284,7 @@ src/
 │  ├─ layout.tsx                  # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
 │  └─ page.tsx                    # 未ログイン時はログインボタンのみ、ログイン後はサークル/トーナメント導線（Phase 4.5）
 ├─ components/
+│  ├─ audio/                      # SoundUnlockBanner（AudioContext unlock 導線、Phase 4.9）
 │  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon
 │  │                              # / LinkAccountDialog / DisplayNameDialog
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
@@ -287,6 +298,7 @@ src/
 │  ├─ errors.ts                   # AppError 基底
 │  ├─ logger.ts                   # レベル制御付きロガー
 │  ├─ utils.ts                    # cn()
+│  ├─ audio/                      # audio-context（Web Audio API ラッパ）/ sound-catalog（既定音源、Phase 4.9）
 │  ├─ firebase/
 │  │  ├─ AuthProvider.tsx
 │  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定、E2E 時は Emulator 接続）
@@ -297,7 +309,8 @@ src/
 │  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
 │  │                              # groups / groupJoinCodes / structures / structureTemplates
 │  │                              # / templateAdmins / tournaments / players / tables / users
-│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator / useIsTemplateAdmin
+│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator
+│  │                              # / useIsTemplateAdmin / useAudioPlayer（Phase 4.9）
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
 │     └─ seating/                 # engine（純粋関数の TDA バランシング）/ orchestrator（Firestore 副作用）/ prng
 scripts/
