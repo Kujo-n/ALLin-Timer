@@ -169,6 +169,15 @@ service cloud.firestore {
         && request.resource.data.memberDisplayNames[request.auth.uid] is string
         && request.resource.data.memberDisplayNames[request.auth.uid].size() >= 1
         && request.resource.data.memberDisplayNames[request.auth.uid].size() <= 15
+      ) || (
+        // Phase 4.9: organizer による audioSettings 単独書換。
+        //   audioSettings 以外のフィールド差分を一切許可しない（affectedKeys で atomic 強制）。
+        //   audioSettings は map であることのみ rule で要求し、値の field-level validation
+        //   （enabled bool / volume range / soundId string）は application 層 (zod) に委譲する。
+        //   isOrganizer は既存 helper を再利用（owner も organizer に含まれる）。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['audioSettings'])
+        && request.resource.data.audioSettings is map
       );
 
       allow delete: if isSignedIn()
