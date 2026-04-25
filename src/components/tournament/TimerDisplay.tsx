@@ -69,7 +69,10 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
         </span>
       </div>
 
-      <div aria-label="残り時間" className="font-mono text-7xl font-bold tabular-nums md:text-8xl">
+      <div
+        aria-label="残り時間"
+        className="font-mono text-7xl font-bold tabular-nums md:text-8xl lg:text-9xl"
+      >
         {formatRemaining(displayRemainingMs)}
       </div>
       {remainingMs === null && !isBeforeStart ? (

@@ -1,13 +1,23 @@
 "use client";
 
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import { cn } from "@/lib/utils";
 
-export function WinnerBanner({ winner }: { winner: PlayerDoc }) {
+interface Props {
+  winner: PlayerDoc;
+  /** 呼出側でタイマー領域と幅を揃えるため上書き可能。未指定時は w-full のみ。 */
+  className?: string;
+}
+
+export function WinnerBanner({ winner, className }: Props) {
   return (
     <section
       role="status"
       aria-live="polite"
-      className="w-full max-w-md rounded-lg border-2 border-amber-400 bg-gradient-to-br from-amber-100 to-yellow-200 p-6 text-center shadow-lg dark:from-amber-900/40 dark:to-yellow-900/40"
+      className={cn(
+        "w-full rounded-lg border-2 border-amber-400 bg-gradient-to-br from-amber-100 to-yellow-200 p-6 text-center shadow-lg dark:from-amber-900/40 dark:to-yellow-900/40",
+        className,
+      )}
     >
       <div className="mb-2 text-5xl" aria-hidden>
         🏆
