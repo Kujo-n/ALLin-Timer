@@ -1,7 +1,6 @@
 "use client";
 
 import { Bell, Check } from "lucide-react";
-import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 
@@ -9,8 +8,6 @@ interface SoundUnlockBannerProps {
   unlocked: boolean;
   enabled: boolean;
   onUnlock: () => Promise<void>;
-  /** "/groups/{gid}/audio-settings" — 設定ページへのリンク */
-  settingsHref: string;
 }
 
 /**
@@ -18,13 +15,12 @@ interface SoundUnlockBannerProps {
  *   - enabled=false なら何も描画しない（混乱回避）
  *   - unlocked=true 後は確認バーのみ表示
  *   - 親は role 判定済みで mount を制御する想定（このコンポーネント自身は role を見ない）
+ *
+ * Phase 4.13: 設定ページへの導線をサイドバー（「サウンド設定」）に集約したため、
+ *   本バナーから settings リンクを廃止。enabled の ON/OFF 切替はダッシュボードの
+ *   SoundToggleButton（運営者のみ）で行う。
  */
-export function SoundUnlockBanner({
-  unlocked,
-  enabled,
-  onUnlock,
-  settingsHref,
-}: SoundUnlockBannerProps) {
+export function SoundUnlockBanner({ unlocked, enabled, onUnlock }: SoundUnlockBannerProps) {
   if (!enabled) return null;
 
   if (!unlocked) {
@@ -42,31 +38,17 @@ export function SoundUnlockBanner({
             ブラインド変更／優勝確定で音を鳴らせます。最初に有効化してください。
           </span>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => void onUnlock()}>
-            サウンドを有効化
-          </Button>
-          <Link href={settingsHref}>
-            <Button size="sm" variant="outline">
-              設定
-            </Button>
-          </Link>
-        </div>
+        <Button size="sm" onClick={() => void onUnlock()}>
+          サウンドを有効化
+        </Button>
       </section>
     );
   }
 
   return (
-    <section className="flex w-full items-center justify-between rounded-lg border bg-muted/40 p-2 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1">
-        <Check aria-hidden className="h-3.5 w-3.5" />
-        サウンド有効
-      </span>
-      <Link href={settingsHref}>
-        <Button size="sm" variant="ghost">
-          設定
-        </Button>
-      </Link>
+    <section className="flex w-full items-center gap-2 rounded-lg border bg-muted/40 p-2 text-xs text-muted-foreground">
+      <Check aria-hidden className="h-3.5 w-3.5" />
+      <span>サウンド有効</span>
     </section>
   );
 }

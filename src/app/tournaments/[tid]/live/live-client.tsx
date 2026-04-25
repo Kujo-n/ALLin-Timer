@@ -167,7 +167,6 @@ export function LiveClient({ tid }: { tid: string }) {
               unlocked={audioPlayer.unlocked}
               enabled={tournamentGroup.audioSettings.enabled}
               onUnlock={audioPlayer.unlock}
-              settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=live&tid=${tid}`}
             />
           ) : null}
 

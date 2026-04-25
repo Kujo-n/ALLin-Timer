@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import {
@@ -302,7 +303,22 @@ export function DashboardClient({ tid }: { tid: string }) {
                       enabled: tournamentGroup.audioSettings.enabled,
                       unlocked: audioPlayer.unlocked,
                       onUnlock: audioPlayer.unlock,
-                      settingsHref: `/groups/${tournamentGroup.id}/audio-settings?from=tournament&tid=${tid}`,
+                      onToggleEnabled: async (next: boolean) => {
+                        try {
+                          await updateAudioSettings(tournamentGroup.id, {
+                            ...tournamentGroup.audioSettings,
+                            enabled: next,
+                          });
+                        } catch (e) {
+                          // updateAudioSettings 内で既に AppError wrap + logger.warn 済み。
+                          // 二重ログを避けるため、ここでは UI 表示のみ。
+                          const err =
+                            e instanceof AppError
+                              ? e
+                              : AppError.from(e, "firestore/write_failed", "サウンド設定の更新に失敗しました");
+                          setError(`${err.code}: ${err.message}`);
+                        }
+                      },
                     }
                   : undefined
               }
@@ -338,7 +354,6 @@ export function DashboardClient({ tid }: { tid: string }) {
         <Card>
           <CardHeader>
             <CardTitle>Table List</CardTitle>
-            <CardDescription>★：運営兼任プレイヤー</CardDescription>
           </CardHeader>
           <CardContent>
             <SeatingBoard

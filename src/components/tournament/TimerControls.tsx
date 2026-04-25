@@ -38,12 +38,14 @@ interface Props {
   /**
    * サウンドトグルを表示するための props。tournamentGroup が確定している運営者ロールでのみ
    * 渡す。undefined のとき running/paused 用ボタン群にサウンドアイコンは出さない。
+   * Phase 4.13: settingsHref を廃止し、enabled 反転を直接 group に書込む onToggleEnabled に変更。
+   * 詳細設定はサイドバーの「サウンド設定」から行う。
    */
   audio?: {
     enabled: boolean;
     unlocked: boolean;
     onUnlock: () => Promise<void>;
-    settingsHref: string;
+    onToggleEnabled: (next: boolean) => Promise<void>;
   };
   onError?: (message: string) => void;
 }
@@ -195,7 +197,7 @@ export function TimerControls({
           enabled={audio.enabled}
           unlocked={audio.unlocked}
           onUnlock={audio.onUnlock}
-          settingsHref={audio.settingsHref}
+          onToggleEnabled={audio.onToggleEnabled}
         />
       ) : null}
 
