@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { SoundUnlockBanner } from "@/components/audio/SoundUnlockBanner";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
@@ -33,6 +34,7 @@ import {
 } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
+import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { deriveRole } from "@/lib/firebase/schemas/group";
@@ -155,6 +157,21 @@ export function DashboardClient({ tid }: { tid: string }) {
     }
   }, [user, groupsLoading, groups, tournamentGroupId, router, tid]);
 
+  // tournament の groupId に紐づく group ドキュメント。
+  //   - 早期 return 前に確定する（後段の useAudioPlayer / role gate で使う）。
+  //   - 命名は `tournamentGroup` で統一する（`useCurrentGroup().currentGroup` とは別物）。
+  const tournamentGroup = data ? groups.find((x) => x.id === data.groupId) ?? null : null;
+
+  // Phase 4.9: 音声通知。早期 return 前に呼ぶことで hooks の呼び出し順を一定に保つ。
+  // 引数は null 許容で、role が owner/organizer 以外なら hook 内部で no-op になる。
+  const audioRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
+  const audioPlayer = useAudioPlayer({
+    tournament: data,
+    group: tournamentGroup,
+    players,
+    role: audioRole,
+  });
+
   async function onDelete() {
     if (!user) return;
     try {
@@ -183,8 +200,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   // role 判定前 or 非 organizer の場合はローディング表示（useEffect で /live へ redirect 中）。
-  const currentGroup = groups.find((x) => x.id === data.groupId);
-  const myRole = currentGroup ? deriveRole(currentGroup, user.uid) : null;
+  const myRole = tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
   const isOrganizer = myRole === "owner" || myRole === "organizer";
   if (groupsLoading || !isOrganizer) {
     return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
@@ -243,6 +259,15 @@ export function DashboardClient({ tid }: { tid: string }) {
         <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {tournamentGroup ? (
+        <SoundUnlockBanner
+          unlocked={audioPlayer.unlocked}
+          enabled={tournamentGroup.audioSettings.enabled}
+          onUnlock={audioPlayer.unlock}
+          settingsHref={`/groups/${tournamentGroup.id}/audio-settings`}
+        />
       ) : null}
 
       <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />

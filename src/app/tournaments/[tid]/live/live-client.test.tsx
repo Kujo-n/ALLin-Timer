@@ -22,6 +22,21 @@ vi.mock("@/lib/firebase/repositories/users", () => ({
 vi.mock("@/lib/services/receipt", () => ({
   joinAsCurrentUser: vi.fn().mockResolvedValue("created"),
 }));
+// current-group は firebase client を import するため軽量 mock する（Phase 4.9）。
+vi.mock("@/lib/services/current-group", () => ({
+  useCurrentGroup: vi.fn(() => ({
+    groups: [],
+    groupIds: [],
+    loading: false,
+    currentGroupId: null,
+    currentGroup: null,
+    currentGroupRole: null,
+    isOrganizer: false,
+    isOwner: false,
+    setCurrentGroupId: vi.fn(),
+    refreshGroups: vi.fn(),
+  })),
+}));
 
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
