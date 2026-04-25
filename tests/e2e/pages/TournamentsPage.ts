@@ -52,13 +52,22 @@ export class TournamentDashboardPage extends BasePage {
   readonly commitSeatingButton: Locator = this.page.getByRole("button", { name: /席を決定/ });
   readonly selfJoinButton: Locator = this.page.getByRole("button", { name: /自分も参加する/ });
   readonly startButton: Locator = this.page.getByRole("button", { name: /トーナメント開始/ });
+  // Phase 4.11: TimerControls がアイコン化された後の running/paused 操作ボタン。
+  // accessible name は aria-label と一致するため `^...$` で完全一致させる。
+  readonly pauseButton: Locator = this.page.getByRole("button", { name: /^一時停止$/ });
+  readonly resumeButton: Locator = this.page.getByRole("button", { name: /^再開$/ });
+  readonly advanceButton: Locator = this.page.getByRole("button", { name: /^次レベル$/ });
+  readonly revertButton: Locator = this.page.getByRole("button", { name: /^前レベル$/ });
   readonly finishButton: Locator = this.page.getByRole("button", { name: /^終了$/ });
+  readonly confirmFinishButton: Locator = this.page.getByRole("button", { name: /^終了する$/ });
   readonly winnerBanner: Locator = this.page
     .getByRole("status")
     .filter({ hasText: "優勝" });
   readonly stateBadge: Locator = this.page
     .locator("header")
     .getByText(/^(setup|seating|running|paused|finished)$/);
+  readonly errorAlert: Locator = this.page.getByRole("alert");
+  readonly remainingTime: Locator = this.page.getByLabel("残り時間");
 
   async goto() {
     await this.page.goto(`/tournaments/${this.tid}`);
@@ -87,6 +96,15 @@ export class TournamentDashboardPage extends BasePage {
 
   async getStateBadgeText(): Promise<string> {
     return (await this.stateBadge.textContent())?.trim() ?? "";
+  }
+
+  /**
+   * Phase 4.11: 終了ボタン（Square アイコン）→ 確認ダイアログ → 「終了する」までのフロー。
+   * state badge が "finished" になるまで待機する。
+   */
+  async clickFinishAndConfirm() {
+    await this.finishButton.click();
+    await this.confirmFinishButton.click();
   }
 }
 

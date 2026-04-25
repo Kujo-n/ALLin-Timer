@@ -175,19 +175,29 @@ test.describe("Phase 4.9: audio settings", () => {
     }
   });
 
-  test("dashboard の SoundUnlockBanner は organizer に表示され、enabled=false で消える", async ({
+  test("dashboard の SoundToggleButton は organizer に表示され、enabled=false で OFF アイコンに切り替わる", async ({
     page,
     request,
     groupAudioSettingsPage,
+    tournamentDashboardPage,
   }) => {
+    // Phase 4.11: dashboard の SoundUnlockBanner は撤去され、TimerControls 内の
+    // `SoundToggleButton` に集約された。SoundToggleButton は running/paused 状態でのみ
+    // 描画されるため、tournament を running まで進めてから検証する。
     const organizer = randomOrganizer("audio-dash");
     await registerOrganizer(page, organizer);
     const gid = await createGroup(page, "Audio Dash Group");
     await createDefaultStructure(page, "Audio Dash Default");
     const tid = await createTournament(page, "Audio Dash Tournament");
 
-    // dashboard を開いて初期状態（enabled=true）でバナー（"サウンドを有効化" ボタン）を確認。
-    await page.goto(`/tournaments/${tid}`);
+    const dash = tournamentDashboardPage(tid);
+    await dash.goto();
+    await dash.selfJoinButton.click();
+    await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
+    await dash.startTournament();
+    await expect(dash.stateBadge).toHaveText("running");
+
+    // 初期状態（enabled=true && !unlocked）では「サウンドを有効化」ボタンが見える。
     await expect(
       page.getByRole("button", { name: /^サウンドを有効化$/ }),
     ).toBeVisible({ timeout: 15_000 });
@@ -210,52 +220,16 @@ test.describe("Phase 4.9: audio settings", () => {
       })
       .toBe(false);
 
-    await page.goto(`/tournaments/${tid}`);
-    // SoundUnlockBanner は enabled=false で early return null するため、
-    // 「サウンドを有効化」も「サウンド有効」も DOM に存在しない。
+    await dash.goto();
+    // running 状態は維持されている（state 遷移していない）。
+    await expect(dash.stateBadge).toHaveText("running");
+    // 「サウンドを有効化」ボタンは消え、OFF アイコンの設定リンクに切り替わる。
     await expect(
       page.getByRole("button", { name: /^サウンドを有効化$/ }),
     ).toHaveCount(0);
-    await expect(page.getByText("サウンド有効")).toHaveCount(0);
-  });
-
-  test("dashboard の SoundUnlockBanner『設定』から開いた audio-settings は『← トーナメント受付へ戻る』に文言が変わり、保存後 dashboard に戻る", async ({
-    page,
-    groupAudioSettingsPage,
-  }) => {
-    const organizer = randomOrganizer("audio-back");
-    await registerOrganizer(page, organizer);
-    const gid = await createGroup(page, "Audio Back Group");
-    await createDefaultStructure(page, "Audio Back Default");
-    const tid = await createTournament(page, "Audio Back Tournament");
-
-    await page.goto(`/tournaments/${tid}`);
-    // SoundUnlockBanner（unlocked=false 表示）の "設定" ボタンから遷移する。
-    // group 詳細にも "サウンド設定" リンクがあるが、ここは tournament 受付ページなので
-    // 衝突しない（"設定" 完全一致）。
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}/audio-settings**`, { timeout: 15_000 }),
-      page.getByRole("link", { name: /^設定$/ }).click(),
-    ]);
-
-    // クエリで from=tournament & tid=xxx が伝搬されている
-    const url = new URL(page.url());
-    expect(url.searchParams.get("from")).toBe("tournament");
-    expect(url.searchParams.get("tid")).toBe(tid);
-
-    const audioPage = groupAudioSettingsPage(gid);
-    await audioPage.expectLoaded();
-
-    // 戻るリンクの文言が「← トーナメント受付へ戻る」になっている
     await expect(
-      page.getByRole("link", { name: /トーナメント受付へ戻る/ }),
+      page.getByRole("link", { name: /^サウンドOFF/ }),
     ).toBeVisible();
-
-    // 保存すると dashboard（/tournaments/[tid]）に戻る
-    await Promise.all([
-      page.waitForURL(`**/tournaments/${tid}`, { timeout: 15_000 }),
-      audioPage.saveButton.click(),
-    ]);
   });
 
   test("/live の SoundUnlockBanner『設定』から開いた audio-settings は『← 全画面表示へ戻る』に文言が変わり、保存後 /live に戻る", async ({
