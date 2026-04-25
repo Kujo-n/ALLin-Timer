@@ -13,6 +13,36 @@ import { z } from "zod";
 export const DISPLAY_NAME_MAX_LENGTH = 15;
 
 /**
+ * Phase 4.9: サークル単位の音声通知設定。
+ *   - on/off / 音源ID / 音量 を group 単位で永続化
+ *   - 旧 doc は default() で受容（破壊的 migration なし）
+ *   - levelUpSoundId / winnerSoundId は string で受容
+ *     （Phase 4.9 は "default:blind-up" / "default:victory-chime"、
+ *      Phase 4.10 で "custom:<assetId>" 形式に拡張される）
+ */
+export const audioSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    levelUpSoundId: z.string().min(1),
+    winnerSoundId: z.string().min(1),
+    volume: z.number().min(0).max(1),
+  })
+  .default({
+    enabled: true,
+    levelUpSoundId: "default:blind-up",
+    winnerSoundId: "default:victory-chime",
+    volume: 0.7,
+  });
+export type AudioSettings = z.infer<typeof audioSettingsSchema>;
+
+export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
+  enabled: true,
+  levelUpSoundId: "default:blind-up",
+  winnerSoundId: "default:victory-chime",
+  volume: 0.7,
+};
+
+/**
  * `groups/{gid}` の本体スキーマ。サークル単位の所有権モデル。
  *
  * Phase 4.6 以降は 3 階層ロール:
@@ -38,6 +68,9 @@ export const groupBodySchema = z
     memberDisplayNames: z
       .record(z.string().min(1), z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH))
       .default({}),
+    // Phase 4.9: 音声通知設定（owner / organizer 経由で更新）。
+    //   旧 doc（Phase 4.8 以前）は default() で DEFAULT_AUDIO_SETTINGS が補完される。
+    audioSettings: audioSettingsSchema,
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

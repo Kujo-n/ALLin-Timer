@@ -101,6 +101,12 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     organizerUids,
     memberUids,
     memberDisplayNames: {},
+    audioSettings: {
+      enabled: true,
+      levelUpSoundId: "default:blind-up",
+      winnerSoundId: "default:victory-chime",
+      volume: 0.7,
+    },
     createdAt: now,
     ...overrides,
   };

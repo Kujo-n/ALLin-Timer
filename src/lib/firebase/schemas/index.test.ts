@@ -1,7 +1,12 @@
 import { Timestamp } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 
-import { deriveRole, groupBodySchema, type GroupBody } from "./group";
+import {
+  DEFAULT_AUDIO_SETTINGS,
+  deriveRole,
+  groupBodySchema,
+  type GroupBody,
+} from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
 import { playerBodySchema } from "./player";
 import { levelSchema, structureBodySchema } from "./structure";
@@ -424,6 +429,70 @@ describe("groupBodySchema", () => {
     });
     expect(parsed.memberDisplayNames).toEqual({});
   });
+
+  // Phase 4.9: audioSettings の additive 追加 — 旧 doc 互換 / range 検証
+  it("supplies default audioSettings for legacy docs without the field", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.audioSettings).toEqual(DEFAULT_AUDIO_SETTINGS);
+  });
+
+  it("preserves explicit audioSettings", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      audioSettings: {
+        enabled: false,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 0.3,
+      },
+    });
+    expect(parsed.audioSettings.enabled).toBe(false);
+    expect(parsed.audioSettings.volume).toBe(0.3);
+  });
+
+  it("rejects audioSettings with volume out of range", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      audioSettings: {
+        enabled: true,
+        levelUpSoundId: "x",
+        winnerSoundId: "y",
+        volume: 1.5,
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects audioSettings with empty soundId", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      audioSettings: {
+        enabled: true,
+        levelUpSoundId: "",
+        winnerSoundId: "y",
+        volume: 0.5,
+      },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("deriveRole", () => {
@@ -433,6 +502,12 @@ describe("deriveRole", () => {
     organizerUids: ["u-owner", "u-org"],
     memberUids: ["u-owner", "u-org", "u-mem"],
     memberDisplayNames: {},
+    audioSettings: {
+      enabled: true,
+      levelUpSoundId: "default:blind-up",
+      winnerSoundId: "default:victory-chime",
+      volume: 0.7,
+    },
     createdAt: now,
   };
 
