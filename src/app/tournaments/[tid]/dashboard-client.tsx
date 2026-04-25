@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { SoundUnlockBanner } from "@/components/audio/SoundUnlockBanner";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
+import { NextBreakCard } from "@/components/tournament/NextBreakCard";
 import { PlayerList } from "@/components/tournament/PlayerList";
+import { PlayersCard } from "@/components/tournament/PlayersCard";
 import { SeatingBoard } from "@/components/tournament/SeatingBoard";
+import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
@@ -216,7 +218,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   const levelInfo = getLevelInfo(data);
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 p-8">
+    <main className="mx-auto w-full max-w-4xl space-y-6 p-8 lg:max-w-7xl">
       <header className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -261,31 +263,49 @@ export function DashboardClient({ tid }: { tid: string }) {
         </p>
       ) : null}
 
-      {tournamentGroup ? (
-        <SoundUnlockBanner
-          unlocked={audioPlayer.unlocked}
-          enabled={tournamentGroup.audioSettings.enabled}
-          onUnlock={audioPlayer.unlock}
-          settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=tournament&tid=${tid}`}
-        />
-      ) : null}
+      {/*
+        タイマーエリア — PC（lg+）では 3 カラム grid（左=QR / 中=Timer / 右=情報カード）。
+        モバイルでは 1 カラムで縦に並ぶ（タイマー → 情報 → QR の順）。
+        trace: tmp/10_Phase4.9_memo.md 改善要望#4(右側) #5(左側)
+      */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]">
+        <aside className="order-3 space-y-3 lg:order-1 lg:sticky lg:top-4 lg:self-start">
+          <QrPanel tid={tid} />
+        </aside>
 
-      <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+        <div className="order-1 flex flex-col gap-4 lg:order-2">
+          <TimerDisplay tournament={data} remainingMs={remainingMs} levelInfo={levelInfo} />
+          {/* タイマー操作 — タイマー直下に中央揃えでアイコンボタン群を並べる。
+              サウンド On/Off は audio props（運営者ロール時のみ）。 */}
+          {isMember ? (
+            <TimerControls
+              tid={tid}
+              uid={user.uid}
+              userGroupIds={groupIds}
+              tournament={data}
+              players={players}
+              audio={
+                tournamentGroup
+                  ? {
+                      enabled: tournamentGroup.audioSettings.enabled,
+                      unlocked: audioPlayer.unlocked,
+                      onUnlock: audioPlayer.unlock,
+                      settingsHref: `/groups/${tournamentGroup.id}/audio-settings?from=tournament&tid=${tid}`,
+                    }
+                  : undefined
+              }
+              onError={setError}
+            />
+          ) : null}
+          {winner ? <WinnerBanner winner={winner} /> : null}
+        </div>
 
-      <AverageStackCard tournament={data} players={players} />
-
-      {winner ? <WinnerBanner winner={winner} /> : null}
-
-      {isMember ? (
-        <TimerControls
-          tid={tid}
-          uid={user.uid}
-          userGroupIds={groupIds}
-          tournament={data}
-          players={players}
-          onError={setError}
-        />
-      ) : null}
+        <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:sticky lg:top-4 lg:self-start">
+          <NextBreakCard tournament={data} remainingMs={remainingMs} />
+          <AverageStackCard tournament={data} players={players} />
+          <PlayersCard tournament={data} players={players} />
+        </aside>
+      </div>
 
       {showBalancing ? (
         <BalancingInstructionCard
@@ -316,65 +336,20 @@ export function DashboardClient({ tid }: { tid: string }) {
         </Card>
       ) : null}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <QrPanel tid={tid} />
-        <PlayerList
-          tid={tid}
-          players={players}
-          subscribeError={playersError}
-          canManage={isMember}
-          tournamentState={data.state}
-        />
-      </div>
+      <PlayerList
+        tid={tid}
+        players={players}
+        subscribeError={playersError}
+        canManage={isMember}
+        tournamentState={data.state}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>ストラクチャ snapshot</CardTitle>
-          <CardDescription>
-            トーナメント作成時にコピー。以降の structures
-            側の編集はこのトーナメントには影響しません。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-2 py-1">Lv</th>
-                  <th className="px-2 py-1">SB</th>
-                  <th className="px-2 py-1">BB</th>
-                  <th className="px-2 py-1">Ante</th>
-                  <th className="px-2 py-1">分</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.structureSnapshot.levels.map((l) =>
-                  l.isBreak ? (
-                    <tr
-                      key={l.level}
-                      className="border-b bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                    >
-                      <td className="px-2 py-1 font-mono">{l.level}</td>
-                      <td className="px-2 py-1 font-semibold" colSpan={3}>
-                        <span aria-hidden>☕ </span>BREAK
-                      </td>
-                      <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
-                    </tr>
-                  ) : (
-                    <tr key={l.level} className="border-b">
-                      <td className="px-2 py-1 font-mono">{l.level}</td>
-                      <td className="px-2 py-1">{l.sb}</td>
-                      <td className="px-2 py-1">{l.bb}</td>
-                      <td className="px-2 py-1">{l.ante}</td>
-                      <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <StructureSnapshotCard
+        snapshot={data.structureSnapshot}
+        currentLevel={data.currentLevel}
+        showDescription
+      />
+
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

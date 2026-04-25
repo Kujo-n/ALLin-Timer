@@ -153,8 +153,9 @@ describe("LiveClient — playersLoaded gating", () => {
 
     expect(screen.getByText("Table")).toBeInTheDocument();
     expect(screen.getByText("No.")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
+    // StructureSnapshot や PlayersCard など他箇所にも数字が出るので testid で固有化。
+    expect(screen.getByTestId("my-table")).toHaveTextContent("2");
+    expect(screen.getByTestId("my-seat")).toHaveTextContent("5");
     expect(screen.queryByText("受付情報を取得中…")).not.toBeInTheDocument();
   });
 

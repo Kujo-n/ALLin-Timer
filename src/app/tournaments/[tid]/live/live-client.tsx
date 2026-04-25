@@ -4,8 +4,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { SoundUnlockBanner } from "@/components/audio/SoundUnlockBanner";
+import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
+import { NextBreakCard } from "@/components/tournament/NextBreakCard";
+import { PlayersCard } from "@/components/tournament/PlayersCard";
+import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { Button } from "@/components/ui/button";
@@ -125,13 +129,9 @@ export function LiveClient({ tid }: { tid: string }) {
     tournament.currentLevel > tournament.lateEntryDeadlineLevel;
   const winner = resolveWinner(tournament, players);
 
-  // PC 投影時の見やすさのため、breakpoint で幅を段階的に広げる。
-  // 各カードで重複しがちなため定数化。
-  const cardWidth = "w-full max-w-md md:max-w-2xl lg:max-w-4xl";
-
   return (
-    <main className="flex min-h-screen flex-col items-center justify-start gap-4 p-4 pt-8">
-      <div className={`flex items-center justify-between gap-2 ${cardWidth}`}>
+    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 p-4 pt-6">
+      <header className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold md:text-xl">{tournament.name}</h1>
         <div className="flex items-center gap-2">
           {isAudioOperator ? (
@@ -143,98 +143,128 @@ export function LiveClient({ tid }: { tid: string }) {
           ) : null}
           <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
         </div>
-      </div>
-      <TimerDisplay
-        tournament={tournament}
-        remainingMs={remainingMs}
-        levelInfo={levelInfo}
-        className={cardWidth}
-      />
+      </header>
 
-      {isAudioOperator && tournamentGroup ? (
-        <div className={cardWidth}>
-          <SoundUnlockBanner
-            unlocked={audioPlayer.unlocked}
-            enabled={tournamentGroup.audioSettings.enabled}
-            onUnlock={audioPlayer.unlock}
-            settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=live&tid=${tid}`}
+      {/*
+        PC（lg+）では 3 カラムレイアウト: 左=QR / 中=タイマー / 右=情報カード。
+        モバイルでは 1 カラムで縦に並ぶ（order で配置調整）。
+        trace: tmp/10_Phase4.9_memo.md 改善要望#4(右側) #5(左側)
+      */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]">
+        <aside className="order-3 space-y-3 lg:order-1 lg:sticky lg:top-4 lg:self-start">
+          <QrPanel tid={tid} />
+        </aside>
+
+        <div className="order-1 flex flex-col gap-4 lg:order-2">
+          <TimerDisplay
+            tournament={tournament}
+            remainingMs={remainingMs}
+            levelInfo={levelInfo}
+          />
+
+          {isAudioOperator && tournamentGroup ? (
+            <SoundUnlockBanner
+              unlocked={audioPlayer.unlocked}
+              enabled={tournamentGroup.audioSettings.enabled}
+              onUnlock={audioPlayer.unlock}
+              settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=live&tid=${tid}`}
+            />
+          ) : null}
+
+          {winner ? <WinnerBanner winner={winner} className="w-full" /> : null}
+
+          {user ? (
+            <section
+              className="rounded-lg border p-4"
+              aria-label="self-seat"
+            >
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">あなたの席</h2>
+              {!playersLoaded ? (
+                <p className="text-sm text-muted-foreground">受付情報を取得中…</p>
+              ) : me === null ? (
+                <JoinSelfPanel
+                  tid={tid}
+                  canJoin={
+                    (tournament.state === "setup" ||
+                      tournament.state === "seating" ||
+                      tournament.state === "running") &&
+                    !lateEntryClosed
+                  }
+                  joining={joining}
+                  error={joinError}
+                  onJoin={async () => {
+                    setJoining(true);
+                    setJoinError(null);
+                    try {
+                      await joinAsCurrentUser({ tid });
+                    } catch (e) {
+                      const wrapped = AppError.from(
+                        e,
+                        "tournament/join-failed",
+                        "参加登録に失敗しました",
+                      );
+                      logger.warn(wrapped.message, { code: wrapped.code, tid });
+                      setJoinError(`${wrapped.code}: ${wrapped.message}`);
+                    } finally {
+                      setJoining(false);
+                    }
+                  }}
+                />
+              ) : me.isBusted ? (
+                <p className="text-sm text-muted-foreground">脱落済み</p>
+              ) : me.tableNum !== null && me.seatNum !== null ? (
+                <div className="space-y-2">
+                  <dl className="flex gap-3">
+                    <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
+                      <dt className="text-xs font-medium text-muted-foreground">Table</dt>
+                      <dd
+                        className="text-3xl font-bold tabular-nums"
+                        data-testid="my-table"
+                      >
+                        {me.tableNum}
+                      </dd>
+                    </div>
+                    <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
+                      <dt className="text-xs font-medium text-muted-foreground">No.</dt>
+                      <dd
+                        className="text-3xl font-bold tabular-nums"
+                        data-testid="my-seat"
+                      >
+                        {me.seatNum}
+                      </dd>
+                    </div>
+                  </dl>
+                  {recentlyMoved ? (
+                    <p
+                      className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+                      role="status"
+                    >
+                      📣 席が移動しました
+                    </p>
+                  ) : null}
+                </div>
+              ) : tournament.state === "setup" || tournament.state === "seating" ? (
+                <p className="text-sm text-muted-foreground">席決め待ち中…</p>
+              ) : lateEntryClosed ? (
+                <p className="text-sm text-destructive">レイトエントリー締切超過です</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">席決め待ち中…</p>
+              )}
+            </section>
+          ) : null}
+
+          <StructureSnapshotCard
+            snapshot={tournament.structureSnapshot}
+            currentLevel={tournament.currentLevel}
           />
         </div>
-      ) : null}
 
-      <AverageStackCard tournament={tournament} players={players} className={cardWidth} />
-
-      {winner ? <WinnerBanner winner={winner} className="max-w-md md:max-w-2xl lg:max-w-4xl" /> : null}
-
-      {user ? (
-        <section
-          className={`rounded-lg border p-4 ${cardWidth}`}
-          aria-label="self-seat"
-        >
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">あなたの席</h2>
-          {!playersLoaded ? (
-            <p className="text-sm text-muted-foreground">受付情報を取得中…</p>
-          ) : me === null ? (
-            <JoinSelfPanel
-              tid={tid}
-              canJoin={
-                (tournament.state === "setup" ||
-                  tournament.state === "seating" ||
-                  tournament.state === "running") &&
-                !lateEntryClosed
-              }
-              joining={joining}
-              error={joinError}
-              onJoin={async () => {
-                setJoining(true);
-                setJoinError(null);
-                try {
-                  await joinAsCurrentUser({ tid });
-                } catch (e) {
-                  const wrapped = AppError.from(
-                    e,
-                    "tournament/join-failed",
-                    "参加登録に失敗しました",
-                  );
-                  logger.warn(wrapped.message, { code: wrapped.code, tid });
-                  setJoinError(`${wrapped.code}: ${wrapped.message}`);
-                } finally {
-                  setJoining(false);
-                }
-              }}
-            />
-          ) : me.isBusted ? (
-            <p className="text-sm text-muted-foreground">脱落済み</p>
-          ) : me.tableNum !== null && me.seatNum !== null ? (
-            <div className="space-y-2">
-              <dl className="flex gap-3">
-                <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
-                  <dt className="text-xs font-medium text-muted-foreground">Table</dt>
-                  <dd className="text-3xl font-bold tabular-nums">{me.tableNum}</dd>
-                </div>
-                <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">
-                  <dt className="text-xs font-medium text-muted-foreground">No.</dt>
-                  <dd className="text-3xl font-bold tabular-nums">{me.seatNum}</dd>
-                </div>
-              </dl>
-              {recentlyMoved ? (
-                <p
-                  className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
-                  role="status"
-                >
-                  📣 席が移動しました
-                </p>
-              ) : null}
-            </div>
-          ) : tournament.state === "setup" || tournament.state === "seating" ? (
-            <p className="text-sm text-muted-foreground">席決め待ち中…</p>
-          ) : lateEntryClosed ? (
-            <p className="text-sm text-destructive">レイトエントリー締切超過です</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">席決め待ち中…</p>
-          )}
-        </section>
-      ) : null}
+        <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:sticky lg:top-4 lg:self-start">
+          <NextBreakCard tournament={tournament} remainingMs={remainingMs} />
+          <AverageStackCard tournament={tournament} players={players} />
+          <PlayersCard tournament={tournament} players={players} />
+        </aside>
+      </div>
     </main>
   );
 }
