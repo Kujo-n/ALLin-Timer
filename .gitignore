@@ -53,3 +53,6 @@ tmp/
 # Claude Code user-local settings（個人用の上書き設定）
 .claude/settings.local.json
 
+# Claude Code runtime artifacts（scheduled / loop タスクの lock 等）
+.claude/scheduled_tasks.lock
+
