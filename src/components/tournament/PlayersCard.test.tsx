@@ -98,14 +98,15 @@ describe("PlayersCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("does not render when state is finished", () => {
-    const { container } = render(
+  it("renders in finished state so the right column stays visible after winner", () => {
+    // Phase 4.12: 優勝者決定（state=finished）後も Players は消さない
+    render(
       <PlayersCard
         tournament={makeTournament({ state: "finished" })}
         players={[makePlayer("p1")]}
       />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Players")).toBeInTheDocument();
   });
 
   it("does not render when players list is empty", () => {

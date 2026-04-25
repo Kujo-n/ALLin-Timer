@@ -87,12 +87,11 @@ describe("AverageStackCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("does not render when state is finished", () => {
+  it("renders in finished state so the right column stays visible after winner", () => {
+    // Phase 4.12: 優勝者決定（state=finished）後も Average Stack は消さない
     const tournament = makeTournament({ state: "finished" });
-    const { container } = render(
-      <AverageStackCard tournament={tournament} players={[makePlayer("p1")]} />,
-    );
-    expect(container).toBeEmptyDOMElement();
+    render(<AverageStackCard tournament={tournament} players={[makePlayer("p1")]} />);
+    expect(screen.getByText("Average Stack")).toBeInTheDocument();
   });
 
   it("does not render when no players", () => {

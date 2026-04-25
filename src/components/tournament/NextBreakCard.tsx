@@ -30,7 +30,8 @@ function formatEta(ms: number): string {
 export function NextBreakCard({ tournament, remainingMs, className }: Props) {
   if (
     tournament.state !== "running" &&
-    tournament.state !== "paused"
+    tournament.state !== "paused" &&
+    tournament.state !== "finished"
   ) {
     return null;
   }
@@ -38,14 +39,14 @@ export function NextBreakCard({ tournament, remainingMs, className }: Props) {
   return (
     <Card className={className}>
       <CardContent className="p-4">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+        <div className="text-base font-semibold text-foreground md:text-lg">
           Next Break In
         </div>
         {info === null ? (
           <div className="mt-1 text-sm text-muted-foreground">予定なし</div>
         ) : info.levelsAhead === 0 ? (
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-mono text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+            <span className="font-mono text-3xl font-bold tabular-nums text-amber-600 dark:text-amber-400 md:text-4xl">
               ☕ Break中
             </span>
           </div>
@@ -53,7 +54,7 @@ export function NextBreakCard({ tournament, remainingMs, className }: Props) {
           <div className="mt-1 space-y-0.5">
             <div
               className={cn(
-                "font-mono text-2xl font-bold tabular-nums text-foreground",
+                "font-mono text-3xl font-bold tabular-nums text-foreground md:text-4xl",
               )}
             >
               {formatEta(info.etaMs)}

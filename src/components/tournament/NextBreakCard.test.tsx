@@ -57,11 +57,12 @@ describe("NextBreakCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("does not render when state is finished", () => {
-    const { container } = render(
+  it("renders in finished state so the right column stays visible after winner", () => {
+    // Phase 4.12: 優勝者決定（state=finished）後も Next Break In などは消さない
+    render(
       <NextBreakCard tournament={makeTournament({ state: "finished" })} remainingMs={0} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Next Break In")).toBeInTheDocument();
   });
 
   it("shows 予定なし when no break level remains in the structure", () => {

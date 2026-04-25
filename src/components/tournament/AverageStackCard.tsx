@@ -20,7 +20,12 @@ interface Props {
  *    rebuyStack / addOnStack は参考値扱い（計算式には入れない）。
  */
 export function AverageStackCard({ tournament, players, className }: Props) {
-  if (tournament.state !== "running" && tournament.state !== "paused") return null;
+  if (
+    tournament.state !== "running" &&
+    tournament.state !== "paused" &&
+    tournament.state !== "finished"
+  )
+    return null;
   if (players.length === 0) return null;
   const active = players.filter((p) => !p.isBusted);
   if (active.length === 0) return null;
@@ -32,10 +37,10 @@ export function AverageStackCard({ tournament, players, className }: Props) {
   return (
     <Card className={className}>
       <CardContent className="p-4">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+        <div className="text-base font-semibold text-foreground md:text-lg">
           Average Stack
         </div>
-        <div className="mt-1 font-mono text-3xl font-bold tabular-nums text-foreground">
+        <div className="mt-1 font-mono text-4xl font-bold tabular-nums text-foreground md:text-5xl">
           {average.toLocaleString()}
         </div>
         <div className="text-xs text-muted-foreground">
