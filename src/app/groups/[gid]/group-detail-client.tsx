@@ -287,6 +287,13 @@ export function GroupDetailClient({ gid }: { gid: string }) {
               ストラクチャ
             </Button>
           ) : null}
+          {isOrganizer ? (
+            <Link href={`/groups/${gid}/audio-settings`}>
+              <Button variant="outline" size="sm">
+                サウンド設定
+              </Button>
+            </Link>
+          ) : null}
           {isOwner ? (
             <Button variant="outline" size="sm" onClick={() => setRenameOpen(true)}>
               名前変更
