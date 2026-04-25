@@ -404,6 +404,31 @@ describe("advanceLevel (manual)", () => {
     const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
     expect(payload.currentLevel).toBe(2);
     expect(payload.pausedAccumMs).toBe(0);
+    // running 状態で advance → pausedAt は null（非 pause）
+    expect(payload.pausedAt).toBeNull();
+    // 手動経路は "manual" を記録（useAudioPlayer が音を鳴らさない判定に使う）
+    expect(payload.lastLevelChangeKind).toBe("manual");
+  });
+
+  it("preserves paused state by re-arming pausedAt at the new level (no invariant violation)", async () => {
+    // 旧 level で pause 中に「次レベル」を押すと、
+    // state === "paused" && pausedAt === null になり invariant 違反が起きていた回帰テスト。
+    mockGetTournament(
+      makeTournament({
+        state: "paused",
+        currentLevel: 1,
+        pausedAt: Timestamp.fromMillis(Date.now() - 1_000),
+        pausedAccumMs: 5_000,
+      }),
+    );
+    await advanceLevel("t1", "u1", ["g1"]);
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.currentLevel).toBe(2);
+    // pause 状態を維持するため新 level の先頭で pausedAt を新規 serverTimestamp に
+    expect(payload.pausedAt).toEqual({ __op: "serverTimestamp" });
+    expect(payload.pausedAccumMs).toBe(0);
+    // state は明示的に書き換えない（"paused" のまま）
+    expect(payload.state).toBeUndefined();
   });
 
   it("wraps updateDoc errors", async () => {
@@ -469,6 +494,8 @@ describe("advanceLevel (auto with expectedLevel)", () => {
     await advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 });
     expect(captured).not.toBeNull();
     expect(captured!.currentLevel).toBe(2);
+    // auto-advance 経路は "auto" を記録（useAudioPlayer がブラインドアップ音を鳴らす判定に使う）
+    expect(captured!.lastLevelChangeKind).toBe("auto");
   });
 });
 
@@ -485,6 +512,29 @@ describe("revertLevel", () => {
     await revertLevel("t1", "u1", ["g1"]);
     const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
     expect(payload.currentLevel).toBe(1);
+    // running 状態で revert → pausedAt は null
+    expect(payload.pausedAt).toBeNull();
+    expect(payload.pausedAccumMs).toBe(0);
+    expect(payload.lastLevelChangeKind).toBe("manual");
+  });
+
+  it("preserves paused state by re-arming pausedAt at the new level (no invariant violation)", async () => {
+    // 旧 level で pause 中に「前レベル」を押すと、
+    // state === "paused" && pausedAt === null になり「再開」時に invariant 違反が起きていた回帰テスト。
+    mockGetTournament(
+      makeTournament({
+        state: "paused",
+        currentLevel: 2,
+        pausedAt: Timestamp.fromMillis(Date.now() - 1_000),
+        pausedAccumMs: 5_000,
+      }),
+    );
+    await revertLevel("t1", "u1", ["g1"]);
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.currentLevel).toBe(1);
+    expect(payload.pausedAt).toEqual({ __op: "serverTimestamp" });
+    expect(payload.pausedAccumMs).toBe(0);
+    expect(payload.state).toBeUndefined();
   });
 
   it("wraps updateDoc errors", async () => {

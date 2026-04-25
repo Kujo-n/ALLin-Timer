@@ -241,6 +241,33 @@ export async function resumeTournament(
 }
 
 /**
+ * level 遷移時の共通フィールド更新。
+ *  - running から呼ばれた場合: state はそのまま、pausedAt=null
+ *  - paused から呼ばれた場合: state="paused" を維持し、新 level の先頭で再 pause
+ *    （pausedAt を新 serverTimestamp に。pausedAccumMs はリセット）
+ *  - kind="auto" / "manual" を `lastLevelChangeKind` に記録し、useAudioPlayer が
+ *    「手動遷移時は音を鳴らさない」分岐に使う。
+ *
+ * これがないと paused 中の手動 advance/revert で `state=paused && pausedAt=null` の
+ * invariant 違反が発生し、再開時に `tournament/invalid-state` が出る。
+ */
+function levelTransitionUpdates(
+  prevState: TournamentDoc["state"],
+  newCurrentLevel: number,
+  kind: "auto" | "manual",
+): Record<string, unknown> {
+  const isPaused = prevState === "paused";
+  return {
+    currentLevel: newCurrentLevel,
+    levelStartedAt: serverTimestamp(),
+    pausedAt: isPaused ? serverTimestamp() : null,
+    pausedAccumMs: 0,
+    lastLevelChangeKind: kind,
+    updatedAt: serverTimestamp(),
+  };
+}
+
+/**
  * level を 1 進める。
  *  - opts.expectedLevel が指定された場合は transaction で `currentLevel == expectedLevel`
  *    を guard。auto-advance 専用（複数クライアントが同時に呼んだ際の race 解決）。
@@ -275,13 +302,7 @@ export async function advanceLevel(
           return;
         }
         if (t.currentLevel >= t.structureSnapshot.levels.length) return;
-        tx.update(ref, {
-          currentLevel: t.currentLevel + 1,
-          levelStartedAt: serverTimestamp(),
-          pausedAt: null,
-          pausedAccumMs: 0,
-          updatedAt: serverTimestamp(),
-        });
+        tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
       });
       logger.info("advance level ok (auto)", { tid, uid, expected });
     } catch (e) {
@@ -297,13 +318,10 @@ export async function advanceLevel(
     throw new AppError("最終レベルです", "tournament/invalid-state");
   }
   try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      currentLevel: t.currentLevel + 1,
-      levelStartedAt: serverTimestamp(),
-      pausedAt: null,
-      pausedAccumMs: 0,
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(
+      doc(tournamentsRef, tid),
+      levelTransitionUpdates(t.state, t.currentLevel + 1, "manual"),
+    );
     logger.info("advance level ok (manual)", { tid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "レベル進行に失敗しました");
@@ -318,13 +336,10 @@ export async function revertLevel(tid: string, uid: string, userGroupIds: string
     throw new AppError("最初のレベルです", "tournament/invalid-state");
   }
   try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      currentLevel: t.currentLevel - 1,
-      levelStartedAt: serverTimestamp(),
-      pausedAt: null,
-      pausedAccumMs: 0,
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(
+      doc(tournamentsRef, tid),
+      levelTransitionUpdates(t.state, t.currentLevel - 1, "manual"),
+    );
     logger.info("revert level ok", { tid, uid });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "レベル巻き戻しに失敗しました");

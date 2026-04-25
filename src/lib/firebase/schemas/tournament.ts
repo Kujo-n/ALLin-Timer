@@ -42,6 +42,12 @@ export const tournamentBodySchema = z.object({
   // M2 fix: input schema と body schema の制約を一致させる（DB 直書きでも 2 未満を弾く）。
   // ⚠ DRIFT WARNING (L3): 上限 10 は firestore.rules の `seatNum <= 10` と同期。変更時は同時更新すること。
   seatsPerTable: z.number().int().min(2).max(10),
+  // Phase 4.9 follow-up: 直近の level 遷移が auto-advance（タイマー満了）か manual（運営者ボタン）かの記録。
+  //   - useAudioPlayer がこれを見て「manual のとき音を鳴らさない」分岐に使う
+  //   - schema は additive。既存 doc は missing field（undefined）を許容（破壊的 migration 不要）
+  //   - 初回 level 設定（confirmSeating で 0→1）は変更しない（"manual" 等は記録せず undefined のまま）
+  //   - UI 層は `=== "manual"` 判定で undefined / null / "auto" すべて「鳴らす側」に倒す
+  lastLevelChangeKind: z.enum(["auto", "manual"]).nullable().optional(),
   createdAt: z.instanceof(Timestamp),
   updatedAt: z.instanceof(Timestamp),
 });
