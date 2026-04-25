@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { buildJoinUrl } from "@/lib/services/qr";
 
-export function QrPanel({ tid }: { tid: string }) {
+export function QrPanel({ tid, className }: { tid: string; className?: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -31,7 +31,7 @@ export function QrPanel({ tid }: { tid: string }) {
   }
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>参加者向け受付 URL</CardTitle>
       </CardHeader>

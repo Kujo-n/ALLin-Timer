@@ -71,7 +71,7 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
 
       <div
         aria-label="残り時間"
-        className="font-mono text-7xl font-bold tabular-nums md:text-8xl lg:text-9xl"
+        className="font-mono text-7xl font-bold tabular-nums md:text-8xl lg:text-[10rem] lg:leading-none"
       >
         {formatRemaining(displayRemainingMs)}
       </div>
@@ -81,13 +81,13 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
 
       {current ? (
         current.isBreak ? (
-          <div className="flex items-center gap-2 text-2xl font-bold text-amber-700 dark:text-amber-400 md:text-3xl">
+          <div className="flex items-center gap-2 text-2xl font-bold text-amber-700 dark:text-amber-400 md:text-3xl lg:text-4xl">
             <span aria-hidden>☕</span>
             <span>BREAK</span>
           </div>
         ) : (
           <div
-            className="flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1 text-3xl font-bold tabular-nums text-sky-700 dark:text-sky-300 md:text-4xl"
+            className="flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1 text-3xl font-bold tabular-nums text-sky-700 dark:text-sky-300 md:text-4xl lg:text-5xl"
             data-testid="blinds-display"
           >
             <span>

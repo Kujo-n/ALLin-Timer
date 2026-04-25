@@ -19,13 +19,14 @@ export function WinnerBanner({ winner, className }: Props) {
         className,
       )}
     >
-      <div className="mb-2 text-5xl" aria-hidden>
-        🏆
+      <div className="flex items-center justify-center gap-4">
+        <span className="text-5xl md:text-6xl" aria-hidden>
+          🏆
+        </span>
+        <p className="text-4xl font-bold text-amber-950 dark:text-amber-50 md:text-5xl lg:text-6xl">
+          {winner.displayName}
+        </p>
       </div>
-      <p className="text-sm font-medium text-amber-900 dark:text-amber-100">優勝</p>
-      <p className="mt-1 text-2xl font-bold text-amber-950 dark:text-amber-50">
-        {winner.displayName}
-      </p>
     </section>
   );
 }

@@ -209,7 +209,7 @@ describe("LiveClient — Winner banner", () => {
       ]);
     });
 
-    expect(screen.getByText("優勝")).toBeInTheDocument();
+    expect(screen.getByText("🏆")).toBeInTheDocument();
     expect(screen.getByText("Alice")).toBeInTheDocument();
   });
 
@@ -221,7 +221,7 @@ describe("LiveClient — Winner banner", () => {
       lastOnNext?.([player({ id: "u1", displayName: "Alice" })]);
     });
 
-    expect(screen.queryByText("優勝")).not.toBeInTheDocument();
+    expect(screen.queryByText("🏆")).not.toBeInTheDocument();
   });
 
   it("does not show winner banner during setup / seating", () => {
@@ -235,7 +235,7 @@ describe("LiveClient — Winner banner", () => {
       ]);
     });
 
-    expect(screen.queryByText("優勝")).not.toBeInTheDocument();
+    expect(screen.queryByText("🏆")).not.toBeInTheDocument();
   });
 });
 
