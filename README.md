@@ -281,18 +281,21 @@ src/
 │  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
 │  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知 / Winner バナー）
 │  ├─ globals.css
-│  ├─ layout.tsx                  # AuthProvider + GroupProvider でラップし AuthBadge を全画面上部に常設
+│  ├─ layout.tsx                  # AuthProvider + GroupProvider + NavStateProvider でラップし
+│  │                              # HeaderMenuButton + AuthBadge + AppShell を常設（Phase 4.13）
 │  └─ page.tsx                    # 未ログイン時はログインボタンのみ、ログイン後はサークル/トーナメント導線（Phase 4.5）
 ├─ components/
 │  ├─ audio/                      # SoundUnlockBanner（AudioContext unlock 導線、Phase 4.9）
 │  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon
 │  │                              # / LinkAccountDialog / DisplayNameDialog
+│  ├─ nav/                        # AppShell / HeaderMenuButton / PrimaryNav / nav-state（Phase 4.13 ナビ刷新）
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
 │  ├─ structure/                  # StructureForm / LevelTable
 │  │                              # / StructureTemplateCard / StructureTemplatePicker（Phase 4.8）
 │  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls / WinnerBanner
 │  │                              # / BustButton / SeatingBoard / BalancingInstructionCard
-│  │                              # / AverageStackCard / ConnectionBadge
+│  │                              # / AverageStackCard / ConnectionBadge / NextBreakCard
+│  │                              # / PlayersCard / StructureSnapshotCard / SoundToggleButton（Phase 4.13）
 │  └─ ui/                         # shadcn/ui
 ├─ lib/
 │  ├─ errors.ts                   # AppError 基底
