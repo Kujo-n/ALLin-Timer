@@ -9,16 +9,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // mutable mock context: 各テストで state を切替えることで
 // 「初回 mount 時に既に running（SPA 遷移後の再 mount）」のシナリオも検証する。
-const { audioContextMock } = vi.hoisted(() => ({
+const { audioContextMock, audioListeners } = vi.hoisted(() => ({
   audioContextMock: { state: "suspended" as AudioContextState },
+  audioListeners: new Set<(state: AudioContextState | null) => void>(),
 }));
 
 vi.mock("@/lib/audio/audio-context", () => ({
   getOrCreateAudioContext: vi.fn(() => audioContextMock),
   resumeAudioContext: vi.fn(async () => {
     audioContextMock.state = "running";
+    audioListeners.forEach((cb) => cb("running"));
     return "running";
   }),
+  // useSyncExternalStore 用の購読 / スナップショット API を mock する。
+  subscribeAudioContextState: vi.fn((cb: (s: AudioContextState | null) => void) => {
+    audioListeners.add(cb);
+    return () => {
+      audioListeners.delete(cb);
+    };
+  }),
+  readAudioContextState: vi.fn(() => audioContextMock.state),
 }));
 
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
@@ -37,6 +47,7 @@ beforeEach(() => {
   pauseSpy.mockClear();
   // 既定は suspended。SPA 遷移耐性テストのみ "running" にして mount する。
   audioContextMock.state = "suspended";
+  audioListeners.clear();
   Object.defineProperty(HTMLMediaElement.prototype, "play", {
     configurable: true,
     value: playSpy,
@@ -254,6 +265,46 @@ describe("useAudioPlayer — role filter", () => {
     expect(playSpy).not.toHaveBeenCalled();
   });
 
+  it("does not play on level change when lastLevelChangeKind is 'manual'", async () => {
+    // 「前レベル / 次レベル」ボタン経由（手動）のときは音を鳴らさない仕様。
+    // auto-advance（タイマー満了）のみ鳴らす。
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ currentLevel: 1 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    rerender({
+      tournament: makeTournament({ currentLevel: 2, lastLevelChangeKind: "manual" }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("plays on level change when lastLevelChangeKind is 'auto'", async () => {
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ currentLevel: 1 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    rerender({
+      tournament: makeTournament({ currentLevel: 2, lastLevelChangeKind: "auto" }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    expect(playSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("does not play on initial mount with currentLevel === 1", async () => {
     const { result } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
@@ -305,6 +356,28 @@ describe("useAudioPlayer — role filter", () => {
     });
     rerender({
       tournament: makeTournament({ state: "setup", currentLevel: 1 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not play on seating → running transition (currentLevel 0 → 1 is tournament start)", async () => {
+    // confirmSeating は schema コメントどおり lastLevelChangeKind を undefined のまま残すため、
+    // hook 側で prev === 0 をトーナメント開始として無視しないと
+    // 運営者にブラインドアップ音が誤発火する（M2 回帰テスト）。
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ state: "seating", currentLevel: 0 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    rerender({
+      tournament: makeTournament({ state: "running", currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",

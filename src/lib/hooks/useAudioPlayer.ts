@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
-import { getOrCreateAudioContext, resumeAudioContext } from "@/lib/audio/audio-context";
+import {
+  readAudioContextState,
+  resumeAudioContext,
+  subscribeAudioContextState,
+} from "@/lib/audio/audio-context";
 import { resolveSound } from "@/lib/audio/sound-catalog";
 import { AppError } from "@/lib/errors";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
@@ -46,15 +50,23 @@ export function useAudioPlayer({
   players,
   role,
 }: UseAudioPlayerArgs): UseAudioPlayerState {
-  const [unlocked, setUnlocked] = useState(false);
-
-  // SPA 内ページ遷移後の再 mount 時、AudioContext singleton が既に running なら
-  // 改めてユーザー操作 unlock を要求する必要はない（同 tab 内で AudioContext は使い回す）。
-  // 初回 mount 時に state を見て unlocked を復元する。
-  useEffect(() => {
-    const ctx = getOrCreateAudioContext();
-    if (ctx?.state === "running") setUnlocked(true);
-  }, []);
+  // AudioContext は 1 タブ singleton なので、複数の useAudioPlayer 呼び出し
+  // （dashboard / live / audio-settings）で unlock 状態を共有する必要がある。
+  // useSyncExternalStore で global な statechange イベントを購読し、どこで unlock しても
+  // すべての mount 中 hook が即時に再レンダリングされる。
+  // server snapshot は null（SSR では AudioContext を触らない）。
+  const ctxState = useSyncExternalStore(
+    subscribeAudioContextState,
+    readAudioContextState,
+    () => null,
+  );
+  // unlocked の判定:
+  //   - ctxState === "running": ユーザー操作で unlock 済み
+  //   - ctxState === null: AudioContext 未生成 = unlock してない（false）
+  //                         ※ AudioContext 未対応環境でも unlock() 内で
+  //                         resumeAudioContext() の戻り値 null を見て play 経路を許可するため、
+  //                         hook 自体は unlocked=false のままで問題なし。
+  const unlocked = ctxState === "running";
 
   // 前回値を保持して transition を検知する。
   const prevLevelRef = useRef<number | null>(null);
@@ -107,10 +119,9 @@ export function useAudioPlayer({
   );
 
   const unlock = useCallback(async () => {
-    const state = await resumeAudioContext();
-    // AudioContext 未対応ブラウザ（state === null）でも、HTMLAudioElement の play は
-    // user gesture 内なら通る。unlocked=true にして以降の play 呼び出しを許可する。
-    if (state === null || state === "running") setUnlocked(true);
+    // resumeAudioContext は内部で statechange を notify する（audio-context.ts 参照）。
+    // useSyncExternalStore 経由で全 useAudioPlayer 呼び出し先が即座に再レンダリングされる。
+    await resumeAudioContext();
   }, []);
 
   const preview = useCallback(
@@ -127,6 +138,14 @@ export function useAudioPlayer({
   );
 
   // levelUp 検知: currentLevel の変化。初回 mount は ref のみセットして音は出さない。
+  // 手動 advance/revert（前レベル/次レベルボタン）では音を鳴らさない。
+  // auto-advance（タイマー満了による自動進行）のみ鳴らすことで、運営者の意図的な
+  // ナビゲーション操作を「ブラインドアップ」と誤認させない。
+  //
+  // `prev === 0` は seating → running 遷移（confirmSeating で currentLevel 0→1）に対応する。
+  // これは「トーナメント開始」であって level up ではないため鳴らさない。
+  // `confirmSeating` は schema コメントどおり `lastLevelChangeKind` を書かず undefined のまま
+  // 残すので、ここでガードしないと運営者にブラインドアップ音が誤発火する。
   useEffect(() => {
     const lv = tournament?.currentLevel ?? null;
     if (lv === null) return;
@@ -134,11 +153,19 @@ export function useAudioPlayer({
     prevLevelRef.current = lv;
     if (prev === null) return;
     if (prev === lv) return;
+    if (prev === 0) return;
     // 状態が "running" / "paused" のみ。setup / seating / finished は除外。
     const st = tournament?.state;
     if (st !== "running" && st !== "paused") return;
+    if (tournament?.lastLevelChangeKind === "manual") return;
     void play(group?.audioSettings.levelUpSoundId ?? "default:blind-up");
-  }, [tournament?.currentLevel, tournament?.state, group?.audioSettings.levelUpSoundId, play]);
+  }, [
+    tournament?.currentLevel,
+    tournament?.state,
+    tournament?.lastLevelChangeKind,
+    group?.audioSettings.levelUpSoundId,
+    play,
+  ]);
 
   // winner 検知: null → PlayerDoc 遷移。同 winner の再 emit / 取消し→再確定の両方に対応。
   useEffect(() => {
