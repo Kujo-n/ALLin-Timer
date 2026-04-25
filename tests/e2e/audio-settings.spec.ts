@@ -219,6 +219,122 @@ test.describe("Phase 4.9: audio settings", () => {
     await expect(page.getByText("サウンド有効")).toHaveCount(0);
   });
 
+  test("dashboard の SoundUnlockBanner『設定』から開いた audio-settings は『← トーナメント受付へ戻る』に文言が変わり、保存後 dashboard に戻る", async ({
+    page,
+    groupAudioSettingsPage,
+  }) => {
+    const organizer = randomOrganizer("audio-back");
+    await registerOrganizer(page, organizer);
+    const gid = await createGroup(page, "Audio Back Group");
+    await createDefaultStructure(page, "Audio Back Default");
+    const tid = await createTournament(page, "Audio Back Tournament");
+
+    await page.goto(`/tournaments/${tid}`);
+    // SoundUnlockBanner（unlocked=false 表示）の "設定" ボタンから遷移する。
+    // group 詳細にも "サウンド設定" リンクがあるが、ここは tournament 受付ページなので
+    // 衝突しない（"設定" 完全一致）。
+    await Promise.all([
+      page.waitForURL(`**/groups/${gid}/audio-settings**`, { timeout: 15_000 }),
+      page.getByRole("link", { name: /^設定$/ }).click(),
+    ]);
+
+    // クエリで from=tournament & tid=xxx が伝搬されている
+    const url = new URL(page.url());
+    expect(url.searchParams.get("from")).toBe("tournament");
+    expect(url.searchParams.get("tid")).toBe(tid);
+
+    const audioPage = groupAudioSettingsPage(gid);
+    await audioPage.expectLoaded();
+
+    // 戻るリンクの文言が「← トーナメント受付へ戻る」になっている
+    await expect(
+      page.getByRole("link", { name: /トーナメント受付へ戻る/ }),
+    ).toBeVisible();
+
+    // 保存すると dashboard（/tournaments/[tid]）に戻る
+    await Promise.all([
+      page.waitForURL(`**/tournaments/${tid}`, { timeout: 15_000 }),
+      audioPage.saveButton.click(),
+    ]);
+  });
+
+  test("/live の SoundUnlockBanner『設定』から開いた audio-settings は『← 全画面表示へ戻る』に文言が変わり、保存後 /live に戻る", async ({
+    page,
+    groupAudioSettingsPage,
+  }) => {
+    const organizer = randomOrganizer("audio-lback");
+    await registerOrganizer(page, organizer);
+    const gid = await createGroup(page, "Audio Live Back");
+    await createDefaultStructure(page, "Audio Live Back Default");
+    const tid = await createTournament(page, "Audio Live Back Tournament");
+
+    await page.goto(`/tournaments/${tid}/live`);
+    // /live の SoundUnlockBanner（unlocked=false 表示）の "設定" ボタンから遷移する。
+    await Promise.all([
+      page.waitForURL(`**/groups/${gid}/audio-settings**`, { timeout: 15_000 }),
+      page.getByRole("link", { name: /^設定$/ }).click(),
+    ]);
+
+    // クエリで from=live & tid=xxx が伝搬されている
+    const url = new URL(page.url());
+    expect(url.searchParams.get("from")).toBe("live");
+    expect(url.searchParams.get("tid")).toBe(tid);
+
+    const audioPage = groupAudioSettingsPage(gid);
+    await audioPage.expectLoaded();
+
+    // 戻るリンクの文言が「← 全画面表示へ戻る」になっている
+    await expect(
+      page.getByRole("link", { name: /全画面表示へ戻る/ }),
+    ).toBeVisible();
+
+    // 保存すると /live に戻る
+    await Promise.all([
+      page.waitForURL(`**/tournaments/${tid}/live`, { timeout: 15_000 }),
+      audioPage.saveButton.click(),
+    ]);
+  });
+
+  test("/live で organizer には『受付へ戻る』ボタンが表示され、member には表示されない", async ({
+    page,
+  }) => {
+    const owner = randomOrganizer("audio-bk-lo");
+    await registerOrganizer(page, owner);
+    const gid = await createGroup(page, "Live Back Gate");
+    await createDefaultStructure(page, "Live Back Default");
+    const tid = await createTournament(page, "Live Back Tournament");
+    const inviteUrl = await issueInviteUrl(page, gid);
+
+    // owner 側: /live で『受付へ戻る』が見え、押すと dashboard に戻る
+    await page.goto(`/tournaments/${tid}/live`);
+    const backLink = page.getByRole("link", { name: /^受付へ戻る$/ });
+    await expect(backLink).toBeVisible({ timeout: 15_000 });
+    await Promise.all([
+      page.waitForURL(`**/tournaments/${tid}`, { timeout: 15_000 }),
+      backLink.click(),
+    ]);
+
+    // member 側: 同じ /live で『受付へ戻る』が見えない
+    const browser = page.context().browser();
+    if (!browser) throw new Error("browser unavailable");
+    const memberCtx = await browser.newContext();
+    try {
+      const memberPage = await memberCtx.newPage();
+      const member = randomOrganizer("audio-bk-mb");
+      await registerOrganizer(memberPage, member);
+      const joinedGid = await consumeInviteUrl(memberPage, inviteUrl);
+      expect(joinedGid).toBe(gid);
+
+      await memberPage.goto(`/tournaments/${tid}/live`);
+      await expect(memberPage.locator("main")).toBeVisible();
+      await expect(
+        memberPage.getByRole("link", { name: /^受付へ戻る$/ }),
+      ).toHaveCount(0);
+    } finally {
+      await memberCtx.close();
+    }
+  });
+
   test("/live で member には SoundUnlockBanner が表示されない", async ({ page }) => {
     const owner = randomOrganizer("audio-lo");
     await registerOrganizer(page, owner);
