@@ -58,8 +58,10 @@ describe("AverageStackCard", () => {
     const players = Array.from({ length: 20 }, (_, i) => makePlayer(`p${i}`, i < 15));
     render(<AverageStackCard tournament={tournament} players={players} />);
     // active = 5, totalChips = 20 * 10000 = 200_000, average = 40_000
+    expect(screen.getByText("Average Stack")).toBeInTheDocument();
     expect(screen.getByText("40,000")).toBeInTheDocument();
-    expect(screen.getByText(/参加 20 \/ 残 5/)).toBeInTheDocument();
+    // 人数表示は PlayersCard に移管したため、ここでは出さない。
+    expect(screen.queryByText(/参加|残/)).not.toBeInTheDocument();
   });
 
   it("renders when paused", () => {

@@ -81,13 +81,39 @@ export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: 
 
       {current ? (
         current.isBreak ? (
-          <div className="flex items-center gap-2 text-xl font-semibold text-amber-700 dark:text-amber-400">
+          <div className="flex items-center gap-2 text-2xl font-bold text-amber-700 dark:text-amber-400 md:text-3xl">
             <span aria-hidden>☕</span>
             <span>BREAK</span>
           </div>
         ) : (
-          <div className="text-base text-muted-foreground">
-            SB {current.sb} / BB {current.bb} / Ante {current.ante}
+          <div
+            className="flex flex-wrap items-baseline justify-center gap-x-4 gap-y-1 text-3xl font-bold tabular-nums text-sky-700 dark:text-sky-300 md:text-4xl"
+            data-testid="blinds-display"
+          >
+            <span>
+              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                SB
+              </span>
+              {current.sb}
+            </span>
+            <span aria-hidden className="text-muted-foreground/60">
+              /
+            </span>
+            <span>
+              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                BB
+              </span>
+              {current.bb}
+            </span>
+            <span aria-hidden className="text-muted-foreground/60">
+              /
+            </span>
+            <span>
+              <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Ante
+              </span>
+              {current.ante}
+            </span>
           </div>
         )
       ) : null}

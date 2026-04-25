@@ -1,7 +1,9 @@
 "use client";
 
+import { Pause, Play, SkipBack, SkipForward, Square } from "lucide-react";
 import { useState } from "react";
 
+import { SoundToggleButton } from "@/components/tournament/SoundToggleButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +35,16 @@ interface Props {
   tournament: TournamentDoc;
   /** 受付済み参加者一覧（subscribePlayers の結果）。setup→seating の commitInitialSeating に渡す。 */
   players: PlayerDoc[];
+  /**
+   * サウンドトグルを表示するための props。tournamentGroup が確定している運営者ロールでのみ
+   * 渡す。undefined のとき running/paused 用ボタン群にサウンドアイコンは出さない。
+   */
+  audio?: {
+    enabled: boolean;
+    unlocked: boolean;
+    onUnlock: () => Promise<void>;
+    settingsHref: string;
+  };
   onError?: (message: string) => void;
 }
 
@@ -46,7 +58,15 @@ type Op =
   | "revert"
   | "finish";
 
-export function TimerControls({ tid, uid, userGroupIds, tournament, players, onError }: Props) {
+export function TimerControls({
+  tid,
+  uid,
+  userGroupIds,
+  tournament,
+  players,
+  audio,
+  onError,
+}: Props) {
   const [busy, setBusy] = useState<Op | null>(null);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
 
@@ -71,7 +91,7 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
     const activeCount = players.filter((p) => !p.isBusted).length;
     const alreadyJoined = players.some((p) => p.uid === uid);
     return (
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <Button
           size="sm"
           disabled={busy !== null || activeCount === 0}
@@ -116,7 +136,7 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
   if (tournament.state === "seating") {
     const activeCount = players.filter((p) => !p.isBusted).length;
     return (
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <Button
           size="sm"
           disabled={busy !== null || activeCount === 0}
@@ -153,7 +173,7 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
 
   if (tournament.state === "finished") {
     return (
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         <Button size="sm" disabled>
           終了済み
         </Button>
@@ -162,58 +182,78 @@ export function TimerControls({ tid, uid, userGroupIds, tournament, players, onE
   }
 
   // running / paused
+  // 順序: サウンド On/Off → 前レベル → 再生/一時停止 → 次レベル → 終了
+  // ボタンはアイコン表示（aria-label でラベルを補完）。
+  // 横方向はアイコン 1 個分（40px = gap-10）の間隔をあけて誤タップを防ぐ。
+  // 縦方向（折り返し時）は gap-y-3 で詰めて占有面積を抑える。
+  const iconBtnCls = "h-10 w-10 p-0";
+  const isRunning = tournament.state === "running";
   return (
-    <div className="flex flex-wrap gap-2">
-      {tournament.state === "running" ? (
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={busy !== null}
-          onClick={() =>
-            void run("pause", () => pauseTournament(tid, uid, userGroupIds), "一時停止失敗")
-          }
-        >
-          {busy === "pause" ? "処理中…" : "一時停止"}
-        </Button>
-      ) : tournament.state === "paused" ? (
-        <Button
-          size="sm"
-          disabled={busy !== null}
-          onClick={() =>
-            void run("resume", () => resumeTournament(tid, uid, userGroupIds), "再開失敗")
-          }
-        >
-          {busy === "resume" ? "処理中…" : "再開"}
-        </Button>
+    <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+      {audio ? (
+        <SoundToggleButton
+          enabled={audio.enabled}
+          unlocked={audio.unlocked}
+          onUnlock={audio.onUnlock}
+          settingsHref={audio.settingsHref}
+        />
       ) : null}
 
       <Button
-        size="sm"
         variant="outline"
+        className={iconBtnCls}
+        aria-label="前レベル"
         disabled={busy !== null || isFirst}
         onClick={() =>
           void run("revert", () => revertLevel(tid, uid, userGroupIds), "巻き戻し失敗")
         }
       >
-        {busy === "revert" ? "処理中…" : "◀ 前レベル"}
+        <SkipBack aria-hidden className="h-5 w-5" />
       </Button>
 
+      {isRunning ? (
+        <Button
+          variant="secondary"
+          className={iconBtnCls}
+          aria-label="一時停止"
+          disabled={busy !== null}
+          onClick={() =>
+            void run("pause", () => pauseTournament(tid, uid, userGroupIds), "一時停止失敗")
+          }
+        >
+          <Pause aria-hidden className="h-5 w-5" />
+        </Button>
+      ) : (
+        <Button
+          className={iconBtnCls}
+          aria-label="再開"
+          disabled={busy !== null}
+          onClick={() =>
+            void run("resume", () => resumeTournament(tid, uid, userGroupIds), "再開失敗")
+          }
+        >
+          <Play aria-hidden className="h-5 w-5" />
+        </Button>
+      )}
+
       <Button
-        size="sm"
         variant="outline"
+        className={iconBtnCls}
+        aria-label="次レベル"
         disabled={busy !== null || isLast}
         onClick={() => void run("advance", () => advanceLevel(tid, uid, userGroupIds), "進行失敗")}
       >
-        {busy === "advance" ? "処理中…" : "次レベル ▶"}
+        <SkipForward aria-hidden className="h-5 w-5" />
       </Button>
 
       <Button
-        size="sm"
         variant="destructive"
+        className={iconBtnCls}
+        aria-label="終了"
         disabled={busy !== null}
         onClick={() => setFinishConfirmOpen(true)}
       >
-        {busy === "finish" ? "処理中…" : "終了"}
+        <Square aria-hidden className="h-5 w-5" />
       </Button>
 
       <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>

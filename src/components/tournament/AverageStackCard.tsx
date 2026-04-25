@@ -31,18 +31,15 @@ export function AverageStackCard({ tournament, players, className }: Props) {
 
   return (
     <Card className={className}>
-      <CardContent className="flex items-center justify-between gap-4 p-4">
-        <div>
-          <div className="text-xs text-muted-foreground">平均スタック</div>
-          <div className="font-mono text-2xl font-bold tabular-nums">
-            {average.toLocaleString()}
-          </div>
+      <CardContent className="p-4">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+          Average Stack
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <div>
-            参加 {players.length} / 残 {active.length}
-          </div>
-          <div>初期 {initialStack.toLocaleString()}</div>
+        <div className="mt-1 font-mono text-3xl font-bold tabular-nums text-foreground">
+          {average.toLocaleString()}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          初期 {initialStack.toLocaleString()}
         </div>
       </CardContent>
     </Card>

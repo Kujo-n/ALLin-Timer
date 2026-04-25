@@ -53,9 +53,10 @@ describe("TimerDisplay — setup / seating preview", () => {
     expect(screen.getByText("開始前")).toBeInTheDocument();
     // 残り時間は levels[0].durationSec * 1000 = 600s = 10:00
     expect(screen.getByLabelText("残り時間").textContent).toBe("10:00");
-    expect(
-      screen.getByText((text) => text.startsWith("SB 25")),
-    ).toBeInTheDocument();
+    const blinds = screen.getByTestId("blinds-display");
+    expect(blinds).toHaveTextContent(/SB.*25/);
+    expect(blinds).toHaveTextContent(/BB.*50/);
+    expect(blinds).toHaveTextContent(/Ante.*0/);
     // 次のレベルもプレビューされる
     expect(
       screen.getByText((text) => text.includes("Next: Lv 2")),
@@ -157,7 +158,7 @@ describe("TimerDisplay — break level (Phase 4.7)", () => {
     );
     expect(screen.getByText("BREAK")).toBeInTheDocument();
     // SB / BB 表示は出ない
-    expect(screen.queryByText((t) => t.startsWith("SB 0"))).not.toBeInTheDocument();
+    expect(screen.queryByTestId("blinds-display")).not.toBeInTheDocument();
   });
 
   it("shows Next: Lv X (☕ BREAK) when next level is a break", () => {
