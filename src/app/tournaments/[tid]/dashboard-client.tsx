@@ -266,7 +266,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           unlocked={audioPlayer.unlocked}
           enabled={tournamentGroup.audioSettings.enabled}
           onUnlock={audioPlayer.unlock}
-          settingsHref={`/groups/${tournamentGroup.id}/audio-settings`}
+          settingsHref={`/groups/${tournamentGroup.id}/audio-settings?from=tournament&tid=${tid}`}
         />
       ) : null}
 

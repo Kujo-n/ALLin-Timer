@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,10 +29,34 @@ import { logger } from "@/lib/logger";
 export function AudioSettingsClient({ gid }: { gid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [group, setGroup] = useState<GroupDoc | null>(null);
   const [settings, setSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 戻り先: from=tournament なら受付（dashboard）、from=live なら全画面表示に戻す。
+  // それ以外（直接アクセス・グループ詳細から）は従来どおりサークル詳細に戻す。
+  const { backHref, backLabel } = useMemo(() => {
+    const from = searchParams.get("from");
+    const tid = searchParams.get("tid");
+    const tidValid = !!tid && /^[A-Za-z0-9_-]+$/.test(tid);
+    if (tidValid) {
+      if (from === "tournament") {
+        return {
+          backHref: `/tournaments/${tid}`,
+          backLabel: "← トーナメント受付へ戻る",
+        };
+      }
+      if (from === "live") {
+        return {
+          backHref: `/tournaments/${tid}/live`,
+          backLabel: "← 全画面表示へ戻る",
+        };
+      }
+    }
+    return { backHref: `/groups/${gid}`, backLabel: "← サークルへ戻る" };
+  }, [searchParams, gid]);
 
   // role 判定 → member は redirect
   useEffect(() => {
@@ -69,7 +93,7 @@ export function AudioSettingsClient({ gid }: { gid: string }) {
     setError(null);
     try {
       await updateAudioSettings(gid, settings);
-      router.push(`/groups/${gid}`);
+      router.push(backHref);
     } catch (e) {
       const wrapped = AppError.from(
         e,
@@ -80,7 +104,7 @@ export function AudioSettingsClient({ gid }: { gid: string }) {
     } finally {
       setWorking(false);
     }
-  }, [gid, settings, router]);
+  }, [gid, settings, router, backHref]);
 
   if (!user) return null;
   if (!group) {
@@ -96,8 +120,8 @@ export function AudioSettingsClient({ gid }: { gid: string }) {
   return (
     <main className="mx-auto max-w-md space-y-6 p-8">
       <header>
-        <Link href={`/groups/${gid}`} className="text-sm text-muted-foreground">
-          ← サークルへ戻る
+        <Link href={backHref} className="text-sm text-muted-foreground">
+          {backLabel}
         </Link>
         <h1 className="mt-2 text-2xl font-bold">サウンド設定</h1>
       </header>
@@ -202,7 +226,7 @@ export function AudioSettingsClient({ gid }: { gid: string }) {
           ) : null}
 
           <div className="flex justify-end gap-2">
-            <Link href={`/groups/${gid}`}>
+            <Link href={backHref}>
               <Button variant="outline">キャンセル</Button>
             </Link>
             <Button onClick={() => void onSave()} disabled={working}>
