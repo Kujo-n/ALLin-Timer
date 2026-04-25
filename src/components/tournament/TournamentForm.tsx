@@ -108,7 +108,7 @@ export function TournamentForm({
       return;
     }
     if (!Number.isInteger(seatsPerTable) || seatsPerTable < 2 || seatsPerTable > 10) {
-      setError("validation/seats: 1 卓あたりの席数は 2〜10 で入力してください");
+      setError("validation/seats: 1 Table あたりの席数は 2〜10 で入力してください");
       return;
     }
     setSubmitting(true);
@@ -159,7 +159,7 @@ export function TournamentForm({
         ) : null}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="t-seats">1 卓あたりの席数</Label>
+        <Label htmlFor="t-seats">1 Table あたりの席数</Label>
         <Input
           id="t-seats"
           type="number"
@@ -170,7 +170,7 @@ export function TournamentForm({
           required
         />
         <p className="text-xs text-muted-foreground">
-          NLH 標準は 9 席。最大 6 卓 × {seatsPerTable} 席 = {6 * seatsPerTable} 人まで対応します。
+          NLH 標準は 9 席。最大 6 Tables × {seatsPerTable} 席 = {6 * seatsPerTable} 人まで対応します。
         </p>
       </div>
       {error ? (

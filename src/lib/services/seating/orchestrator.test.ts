@@ -429,7 +429,7 @@ describe("applyBalancingOnce → applySingleMove (TG1)", () => {
     const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
 
     expect(result.applied).toBe(true);
-    expect(result.description).toBe("1卓1席 → 2卓6席");
+    expect(result.description).toBe("Table 1 / 席 1 → Table 2 / 席 6");
     expect(captured).toHaveLength(1);
     expect(captured[0].tableNum).toBe(2);
     expect(captured[0].seatNum).toBe(6);
@@ -556,7 +556,7 @@ describe("applyBalancingOnce → applyTableBreak (TG2)", () => {
 
     expect(result.applied).toBe(true);
     expect(result.break).toBe(true);
-    expect(result.description).toContain("卓 2 を閉鎖");
+    expect(result.description).toContain("Table 2 を閉鎖");
     // 1 player update + 1 markTableBroken (isBroken: true) = 2 updates
     expect(captured).toHaveLength(2);
     const playerPatch = captured[0];

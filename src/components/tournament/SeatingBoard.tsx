@@ -65,7 +65,7 @@ export function SeatingBoard({ players, tables, seatsPerTable, currentUid }: Pro
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-sm">
                 <span>
-                  卓 {table.tableNum}（{tableSeated.length} 人）
+                  Table {table.tableNum}（{tableSeated.length} 人）
                 </span>
                 {table.isBroken ? (
                   <span className="rounded bg-muted px-2 py-0.5 text-xs">閉鎖</span>

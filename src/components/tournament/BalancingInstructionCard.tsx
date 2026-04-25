@@ -53,7 +53,7 @@ export function BalancingInstructionCard({
     if (breakPlan) {
       return {
         kind: "break" as const,
-        description: `卓 ${breakPlan.brokenTableNum} を閉鎖（${breakPlan.moves.length} 名移動）`,
+        description: `Table ${breakPlan.brokenTableNum} を閉鎖（${breakPlan.moves.length} 名移動）`,
       };
     }
     const move = planBalancingMove(players, brokenTableNums, seatsPerTable);

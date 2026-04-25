@@ -145,7 +145,7 @@ export async function commitInitialSeating(
   } catch (e) {
     if (e instanceof TooManyTablesError) {
       const wrapped = new AppError(
-        `テーブル数の上限（${e.max} 卓）を超えました。seatsPerTable を増やして再度お試しください。`,
+        `テーブル数の上限（${e.max} Tables）を超えました。seatsPerTable を増やして再度お試しください。`,
         "seating/too-many-tables",
         e,
       );
@@ -154,7 +154,7 @@ export async function commitInitialSeating(
     }
     if (e instanceof InvalidSeatsPerTableError) {
       const wrapped = new AppError(
-        `1 卓あたり席数の値が不正です: ${e.seatsPerTable}`,
+        `1 Table あたり席数の値が不正です: ${e.seatsPerTable}`,
         "seating/invalid-seats-per-table",
         e,
       );
@@ -394,7 +394,7 @@ async function applySingleMove(
       logger.info("balancing move skipped", { tid, playerId: move.playerId, reason: skipReason });
       return { applied: false, description: null };
     }
-    const desc = `${move.from.tableNum}卓${move.from.seatNum}席 → ${move.to.tableNum}卓${move.to.seatNum}席`;
+    const desc = `Table ${move.from.tableNum} / 席 ${move.from.seatNum} → Table ${move.to.tableNum} / 席 ${move.to.seatNum}`;
     logger.info("balancing move ok", { tid, uid, playerId: move.playerId, desc });
     return { applied: true, description: desc };
   } catch (e) {
@@ -514,7 +514,7 @@ async function applyTableBreak(
       logger.info("table break skipped", { tid, brokenTableNum: plan.brokenTableNum, reason: skipReason });
       return { applied: false, description: null };
     }
-    const desc = `卓 ${plan.brokenTableNum} を閉鎖（${plan.moves.length} 名移動）`;
+    const desc = `Table ${plan.brokenTableNum} を閉鎖（${plan.moves.length} 名移動）`;
     logger.info("table break ok", { tid, uid, brokenTableNum: plan.brokenTableNum });
     return { applied: true, description: desc, break: true };
   } catch (e) {
