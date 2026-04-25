@@ -1,8 +1,9 @@
 "use client";
 
+import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,8 +73,9 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [members, setMembers] = useState<MemberLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
-  const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [working, setWorking] = useState(false);
@@ -182,10 +184,16 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   async function onRename(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
+    const next = renameValue.trim();
+    if (!group || next === "" || next === group.name) {
+      setEditingName(false);
+      setRenameValue(group?.name ?? "");
+      return;
+    }
     setWorking(true);
     try {
-      await renameGroup({ gid, uid: user.uid, name: renameValue });
-      setRenameOpen(false);
+      await renameGroup({ gid, uid: user.uid, name: next });
+      setEditingName(false);
       await reload();
       await refreshGroups();
     } catch (e) {
@@ -194,6 +202,21 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     } finally {
       setWorking(false);
     }
+  }
+
+  function startEditingName() {
+    if (!group) return;
+    setRenameValue(group.name);
+    setEditingName(true);
+    requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    });
+  }
+
+  function cancelEditingName() {
+    setEditingName(false);
+    setRenameValue(group?.name ?? "");
   }
 
   async function onLeave() {
@@ -252,9 +275,55 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-8">
       <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{group.name}</h1>
-          <p className="text-sm text-muted-foreground">
+        <div className="min-w-0 flex-1">
+          {isOwner && editingName ? (
+            <form onSubmit={onRename} className="flex items-center gap-2">
+              <Input
+                ref={nameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelEditingName();
+                  }
+                }}
+                aria-label="サークル名"
+                maxLength={60}
+                required
+                disabled={working}
+                className="h-10 text-2xl font-bold"
+              />
+              <Button type="submit" size="sm" disabled={working}>
+                {working ? "保存中…" : "保存"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={cancelEditingName}
+                disabled={working}
+              >
+                キャンセル
+              </Button>
+            </form>
+          ) : isOwner ? (
+            <button
+              type="button"
+              onClick={startEditingName}
+              aria-label={`サークル名「${group.name}」を編集`}
+              className="group inline-flex items-center gap-2 rounded-md text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <h1 className="text-2xl font-bold">{group.name}</h1>
+              <Pencil
+                className="h-4 w-4 text-muted-foreground transition group-hover:text-foreground"
+                aria-hidden
+              />
+            </button>
+          ) : (
+            <h1 className="text-2xl font-bold">{group.name}</h1>
+          )}
+          <p className="mt-1 text-sm text-muted-foreground">
             メンバー {group.memberUids.length} 人 / オーナー {group.ownerUids.length} 人
             {myRole ? ` / あなたは${roleLabel(myRole)}` : ""}
           </p>
@@ -265,39 +334,12 @@ export function GroupDetailClient({ gid }: { gid: string }) {
               一覧へ
             </Button>
           </Link>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setCurrentGroupId(gid);
-              router.push("/tournaments");
-            }}
-          >
-            トーナメント
-          </Button>
-          {isOrganizer ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setCurrentGroupId(gid);
-                router.push("/structures");
-              }}
-            >
-              ストラクチャ
-            </Button>
-          ) : null}
           {isOrganizer ? (
             <Link href={`/groups/${gid}/audio-settings`}>
               <Button variant="outline" size="sm">
                 サウンド設定
               </Button>
             </Link>
-          ) : null}
-          {isOwner ? (
-            <Button variant="outline" size="sm" onClick={() => setRenameOpen(true)}>
-              名前変更
-            </Button>
           ) : null}
           {isOwner ? (
             <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)}>
@@ -463,36 +505,6 @@ export function GroupDetailClient({ gid }: { gid: string }) {
           </CardContent>
         </Card>
       ) : null}
-
-      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>サークル名を変更</DialogTitle>
-            <DialogDescription>新しい名前を入力してください（最大 60 文字）。</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={onRename} className="space-y-4">
-            <Input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              maxLength={60}
-              required
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRenameOpen(false)}
-                disabled={working}
-              >
-                キャンセル
-              </Button>
-              <Button type="submit" disabled={working}>
-                {working ? "更新中…" : "更新"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
         <DialogContent>
