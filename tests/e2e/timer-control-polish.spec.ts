@@ -98,11 +98,11 @@ test.describe("Phase 4.11: timer control polish", () => {
     await expect(page.getByText(/参加者 \(2\)/)).toBeVisible({ timeout: 15_000 });
 
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // pause → 次レベル → 再開 の順に操作。各操作で state の遷移を待つ。
     await dash.pauseButton.click();
-    await expect(dash.stateBadge).toHaveText("paused", { timeout: 10_000 });
+    await expect(dash.stateBadge).toHaveText("一時停止中", { timeout: 10_000 });
 
     // pause 状態のまま「次レベル」を押す。修正前は pausedAt: null が書かれて
     // resumeTournament が `tournament/invalid-state` で失敗していた。
@@ -127,7 +127,7 @@ test.describe("Phase 4.11: timer control polish", () => {
 
     // 再開 → エラーが出ず state=running になることを確認。
     await dash.resumeButton.click();
-    await expect(dash.stateBadge).toHaveText("running", { timeout: 10_000 });
+    await expect(dash.stateBadge).toHaveText("進行中", { timeout: 10_000 });
     // alert role は他のフローでも使われるが、resume 失敗時のみ表示される
     // `tournament/invalid-state: pausedAt が設定されていません` を含むかで判定する。
     await expect(dash.errorAlert.filter({ hasText: /invalid-state/ })).toHaveCount(0);
@@ -159,7 +159,7 @@ test.describe("Phase 4.11: timer control polish", () => {
     await expect(page.getByText(/参加者 \(2\)/)).toBeVisible({ timeout: 15_000 });
 
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // confirmSeating 直後は lastLevelChangeKind は書かれない（schema コメントどおり）。
     // この場合 stringValue は undefined になり、最終的に "manual" に上書きされるかどうかを後段で見る。
@@ -213,7 +213,7 @@ test.describe("Phase 4.11: timer control polish", () => {
     await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
 
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // 開始から数秒待ってからタイマー表示を読み取り、これが finish 後に保持されるか確認する。
     // - default 構造の Lv1 は durationSec=600（10:00）
@@ -226,7 +226,7 @@ test.describe("Phase 4.11: timer control polish", () => {
     expect(beforeMs).toBeLessThan(600_000); // < 10:00 (must have ticked)
 
     await dash.clickFinishAndConfirm();
-    await expect(dash.stateBadge).toHaveText("finished", { timeout: 10_000 });
+    await expect(dash.stateBadge).toHaveText("終了", { timeout: 10_000 });
 
     // finish 後にしばらく待っても 00:00 に落ちず、終了時点の残時間で止まること。
     // クライアント時計と finishedAt の serverTimestamp に若干のずれがあるため

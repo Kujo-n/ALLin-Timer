@@ -197,7 +197,7 @@ test.describe("Phase 4.9: audio settings", () => {
     await dash.selfJoinButton.click();
     await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // 初期状態（enabled=true && !unlocked）では「サウンドを有効化」ボタンが見える。
     await expect(
@@ -224,7 +224,7 @@ test.describe("Phase 4.9: audio settings", () => {
 
     await dash.goto();
     // running 状態は維持されている（state 遷移していない）。
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
     // 「サウンドを有効化」ボタンは消え、OFF アイコンに切り替わる。
     // Phase 4.13: settingsHref を廃止して `<Link>` → `<Button>` に変更し、
     // クリックで group の audioSettings.enabled を反転書込みする方式に変わった。

@@ -28,8 +28,8 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "ホーム", icon: Home },
-  { href: "/groups", label: "サークル", icon: Users, authOnly: true },
-  { href: "/tournaments", label: "トーナメント", icon: CalendarClock, authOnly: true },
+  { href: "/groups", label: "サークル一覧", icon: Users, authOnly: true },
+  { href: "/tournaments", label: "トーナメント一覧", icon: CalendarClock, authOnly: true },
   { href: "/structures", label: "ストラクチャ", icon: LayoutGrid, authOnly: true },
   { href: "/templates", label: "テンプレート", icon: FileStack, authOnly: true },
   {

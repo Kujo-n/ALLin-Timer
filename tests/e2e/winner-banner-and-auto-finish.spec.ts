@@ -47,7 +47,7 @@ test.describe("Winner 演出 + Auto-finish", () => {
 
       // ---------- 席決め → 開始 ----------
       await dash.startTournament();
-      await expect(dash.stateBadge).toHaveText("running");
+      await expect(dash.stateBadge).toHaveText("進行中");
 
       // ---------- 2 名バスト ----------
       await dash.bustPlayer("Alice");
@@ -71,7 +71,7 @@ test.describe("Winner 演出 + Auto-finish", () => {
       await liveTab.close();
 
       // ---------- 2 秒 delay 後に state=finished ----------
-      await expect(dash.stateBadge).toHaveText("finished", { timeout: 10_000 });
+      await expect(dash.stateBadge).toHaveText("終了", { timeout: 10_000 });
       // Winner バナーは finished 後も残り続ける
       await expect(dash.winnerBanner).toBeVisible();
 
@@ -95,7 +95,7 @@ test.describe("Winner 演出 + Auto-finish", () => {
     await expect(page.getByText(/参加者 \(1\)/)).toBeVisible();
 
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // 1 人 / 0 人 のいずれも players.length < 2 で resolveWinner は null
     await expect(dash.winnerBanner).toHaveCount(0);

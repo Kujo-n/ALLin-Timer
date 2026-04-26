@@ -637,3 +637,69 @@ describe("useAudioPlayer — play() error path", () => {
     expect(playSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("useAudioPlayer — pause on enabled flip", () => {
+  // Phase 4.14: ユーザー報告。「OFF をクリック → アイコンは ☓ に変わるが、直前の
+  // レベルアップ音が最後まで鳴り続ける」という UI / 音の不整合を防ぐ。
+  // gate（play() 内の early return）は新規再生をブロックするだけで、既に走っている
+  // <audio> 要素を停止しないため、enabled が false に変わったタイミングで明示的に
+  // pause を呼ぶ effect が必要。
+  it("pauses the in-flight audio when enabled flips from true to false", async () => {
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ currentLevel: 1 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    // レベルアップで再生開始（<audio> 要素生成 + play()）
+    rerender({
+      tournament: makeTournament({ currentLevel: 2 }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+    });
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    pauseSpy.mockClear();
+
+    // group.audioSettings.enabled が false に切替わる
+    const disabled = makeGroup({
+      audioSettings: {
+        enabled: false,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 0.5,
+      },
+    });
+    rerender({
+      tournament: makeTournament({ currentLevel: 2 }),
+      group: disabled,
+      players: [],
+      role: "organizer",
+    });
+    // 既に再生中の <audio> は明示的に pause されること
+    expect(pauseSpy).toHaveBeenCalled();
+  });
+
+  it("does not pause when enabled is already false on initial mount", () => {
+    const disabled = makeGroup({
+      audioSettings: {
+        enabled: false,
+        levelUpSoundId: "default:blind-up",
+        winnerSoundId: "default:victory-chime",
+        volume: 0.5,
+      },
+    });
+    pauseSpy.mockClear();
+    renderAudioPlayer({
+      tournament: makeTournament({ currentLevel: 1 }),
+      group: disabled,
+      players: [],
+      role: "organizer",
+    });
+    // <audio> 要素自体生成されていないため pause は呼ばれない（audioElRef.current === null）
+    expect(pauseSpy).not.toHaveBeenCalled();
+  });
+});

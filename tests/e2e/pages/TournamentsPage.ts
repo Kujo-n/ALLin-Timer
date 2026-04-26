@@ -66,11 +66,29 @@ export class TournamentDashboardPage extends BasePage {
   readonly winnerBanner: Locator = this.page
     .getByRole("status")
     .filter({ hasText: "🏆" });
+  // Phase 4.14: dashboard ヘッダの raw state バッジは廃止。TimerDisplay 内の
+  // 日本語ラベル（開始前 / 進行中 / 一時停止中 / 終了）をテスト用 selector とする。
+  // `aria-label="タイマー"` が付与された section にスコープを絞る。
   readonly stateBadge: Locator = this.page
-    .locator("header")
-    .getByText(/^(setup|seating|running|paused|finished)$/);
+    .getByRole("region", { name: "タイマー" })
+    .getByText(/^(開始前|進行中|一時停止中|終了)$/);
   readonly errorAlert: Locator = this.page.getByRole("alert");
   readonly remainingTime: Locator = this.page.getByLabel("残り時間");
+  // Phase 4.14: ヘッダの「全画面表示」トグルボタン。aria-label は
+  // 「全画面表示」/「全画面表示を解除」で切り替わる（fullscreenchange 連動）。
+  readonly fullscreenToggle: Locator = this.page.getByRole("button", {
+    name: /^全画面表示(を解除)?$/,
+  });
+  // Phase 4.14: dashboard ヘッダの「削除」ボタン（destructive）。setup または finished の
+  // ときのみ表示される。同名ボタンが Dialog 内にあるため `<header>` scope で絞る必要は無く、
+  // 完全一致 `^削除$` で text を限定すれば Dialog の「削除する」とは衝突しない。
+  readonly deleteButton: Locator = this.page.getByRole("button", { name: /^削除$/ });
+  readonly deleteConfirmDialog: Locator = this.page.getByRole("dialog", {
+    name: "トーナメントを削除",
+  });
+  readonly confirmDeleteButton: Locator = this.page.getByRole("button", {
+    name: /^削除する$/,
+  });
 
   async goto() {
     await this.page.goto(`/tournaments/${this.tid}`);
@@ -82,7 +100,7 @@ export class TournamentDashboardPage extends BasePage {
     await this.commitSeatingButton.click();
     await expect(this.startButton).toBeVisible({ timeout: 15_000 });
     await this.startButton.click();
-    await expect(this.stateBadge).toHaveText("running", { timeout: 15_000 });
+    await expect(this.stateBadge).toHaveText("進行中", { timeout: 15_000 });
   }
 
   async bustPlayer(displayName: string) {

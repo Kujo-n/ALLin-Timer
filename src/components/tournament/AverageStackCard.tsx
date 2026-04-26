@@ -13,23 +13,20 @@ interface Props {
 /**
  * 平均スタック表示カード。TimerDisplay の枠外に独立して配置する（兄弟要素）。
  *
- *  - state が running / paused のとき、かつ未バストが 1 人以上のときのみ表示
  *  - 計算: totalChips = totalEntries * initialStack
  *          average = Math.floor(totalChips / activePlayers)
  *  - Phase 4.7 時点ではリバイ／アドオン実操作は未実装のため、structureSnapshot の
  *    rebuyStack / addOnStack は参考値扱い（計算式には入れない）。
+ *  - Phase 4.14: setup/seating（開始前）でも受付済みが 1 人以上いれば描画し、
+ *    平均 = 初期スタック（全員未バスト前提）として「受付中」表示する。
+ *    受付者ゼロのときは render skip → grid セルが空のまま列幅は維持される。
  */
 export function AverageStackCard({ tournament, players, className }: Props) {
-  if (
-    tournament.state !== "running" &&
-    tournament.state !== "paused" &&
-    tournament.state !== "finished"
-  )
-    return null;
   if (players.length === 0) return null;
   const active = players.filter((p) => !p.isBusted);
   if (active.length === 0) return null;
 
+  const isBeforeStart = tournament.state === "setup" || tournament.state === "seating";
   const initialStack = tournament.structureSnapshot.initialStack;
   const totalChips = players.length * initialStack;
   const average = Math.floor(totalChips / active.length);
@@ -44,7 +41,7 @@ export function AverageStackCard({ tournament, players, className }: Props) {
           {average.toLocaleString()}
         </div>
         <div className="text-xs text-muted-foreground">
-          初期 {initialStack.toLocaleString()}
+          {isBeforeStart ? "受付中" : `初期 ${initialStack.toLocaleString()}`}
         </div>
       </CardContent>
     </Card>

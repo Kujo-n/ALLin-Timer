@@ -59,9 +59,9 @@ test.describe("Phase 4.13: nav shell", () => {
 
     // ホームは authOnly: false なので signed-out でも見える
     await expect(sidebar.getByRole("link", { name: "ホーム" })).toBeVisible();
-    // authOnly: true の項目はすべて隠れる
-    await expect(sidebar.getByRole("link", { name: "サークル" })).toHaveCount(0);
-    await expect(sidebar.getByRole("link", { name: "トーナメント" })).toHaveCount(0);
+    // authOnly: true の項目はすべて隠れる（Phase 4.14 で label rename）
+    await expect(sidebar.getByRole("link", { name: "サークル一覧" })).toHaveCount(0);
+    await expect(sidebar.getByRole("link", { name: "トーナメント一覧" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "ストラクチャ" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "テンプレート" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "サウンド設定" })).toHaveCount(0);
@@ -80,21 +80,28 @@ test.describe("Phase 4.13: nav shell", () => {
     await expect(sidebar).toBeVisible();
 
     // authOnly 項目すべて + サウンド設定（organizer && currentGroupId）が表示
+    // Phase 4.14: 「サークル」/「トーナメント」を「サークル一覧」/「トーナメント一覧」に rename
+    //
+    // `exact: true`: サイドバー footer の user プロファイル link は accessible name に
+    // `${userLabel}（アカウント設定を開く）` が入り「アカウント設定」を含むため、partial
+    // match だとナビ項目「アカウント設定」と二重マッチして strict-mode 違反になる。
     for (const label of [
       "ホーム",
-      "サークル",
-      "トーナメント",
+      "サークル一覧",
+      "トーナメント一覧",
       "ストラクチャ",
       "テンプレート",
       "サウンド設定",
       "アカウント設定",
     ]) {
-      await expect(sidebar.getByRole("link", { name: label })).toBeVisible();
+      await expect(
+        sidebar.getByRole("link", { name: label, exact: true }),
+      ).toBeVisible();
     }
 
     // 現在 path /groups/{gid} ではサブ link（group 名）のみが active になり、
-    // 親「サークル」link は aria-current を持たない（ARIA 12 重複回避）。
-    const groupsLink = sidebar.getByRole("link", { name: "サークル" });
+    // 親「サークル一覧」link は aria-current を持たない（ARIA 12 重複回避）。
+    const groupsLink = sidebar.getByRole("link", { name: "サークル一覧" });
     await expect(groupsLink).not.toHaveAttribute("aria-current", "page");
     const groupSubLink = sidebar.getByRole("link", { name: "Nav Org Group" });
     await expect(groupSubLink).toHaveAttribute("aria-current", "page");
@@ -123,8 +130,8 @@ test.describe("Phase 4.13: nav shell", () => {
       const sidebar = memberPage.getByRole("complementary", { name: SIDEBAR_LABEL });
       await expect(sidebar).toBeVisible();
       // メンバー視点でも他の authOnly 項目は出る
-      await expect(sidebar.getByRole("link", { name: "サークル" })).toBeVisible();
-      await expect(sidebar.getByRole("link", { name: "トーナメント" })).toBeVisible();
+      await expect(sidebar.getByRole("link", { name: "サークル一覧" })).toBeVisible();
+      await expect(sidebar.getByRole("link", { name: "トーナメント一覧" })).toBeVisible();
       // サウンド設定だけは hidden
       await expect(sidebar.getByRole("link", { name: "サウンド設定" })).toHaveCount(0);
     } finally {
@@ -186,7 +193,7 @@ test.describe("Phase 4.13: nav shell", () => {
     // Sheet 内のナビ項目をクリック → 別ページ遷移 + Sheet 自動クローズ
     await Promise.all([
       page.waitForURL("**/tournaments", { timeout: 15_000 }),
-      sheet.getByRole("link", { name: "トーナメント" }).click(),
+      sheet.getByRole("link", { name: "トーナメント一覧" }).click(),
     ]);
     await expect(page.getByRole("dialog", { name: "メニュー" })).toHaveCount(0);
   });
@@ -229,7 +236,7 @@ test.describe("Phase 4.13: SoundToggleButton in-place toggle", () => {
     await dash.selfJoinButton.click();
     await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
     await dash.startTournament();
-    await expect(dash.stateBadge).toHaveText("running");
+    await expect(dash.stateBadge).toHaveText("進行中");
 
     // OFF アイコンが見えることを確認してクリック
     const offBtn = page.getByRole("button", { name: /^サウンドOFF/ });
@@ -247,15 +254,47 @@ test.describe("Phase 4.13: SoundToggleButton in-place toggle", () => {
       )
       .toBe(true);
 
-    // 既知ギャップ: dashboard の `tournamentGroup` は GroupProvider の one-shot 読込で
-    // onSnapshot 購読していないため、in-place 書込み直後は UI が古い値のまま。
-    // realistic な refresh 経路（リロード or 再ナビゲート）後に UI が
-    // "サウンドを有効化" CTA に切替わることを確認する。
-    await page.reload();
-    await expect(dash.stateBadge).toHaveText("running", { timeout: 15_000 });
+    // Phase 4.14: refreshGroups() を toggle 成功後に呼ぶようになったため、
+    // reload なしで UI が「サウンドを有効化」CTA に切替わる。
+    await expect(dash.stateBadge).toHaveText("進行中", { timeout: 15_000 });
     await expect(
       page.getByRole("button", { name: /^サウンドを有効化$/ }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /^サウンドOFF/ })).toHaveCount(0);
+  });
+});
+
+test.describe("Phase 4.14: 開催中トーナメントのサイドバーサブナビ", () => {
+  test("running 状態のトーナメントがサイドバーにサブリンクとして表示され、クリックで遷移する", async ({
+    page,
+    tournamentDashboardPage,
+  }) => {
+    const organizer = randomOrganizer("nav-sub");
+    await registerOrganizer(page, organizer);
+    await createGroup(page, "Nav Subnav Group");
+    await createDefaultStructure(page, "Nav Subnav Default");
+    const tid = await createTournament(page, "Nav Subnav Tournament");
+
+    // running まで進める。startTournament が "進行中" バッジを待機する。
+    const dash = tournamentDashboardPage(tid);
+    await dash.goto();
+    await dash.selfJoinButton.click();
+    await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
+    await dash.startTournament();
+
+    // サイドバー内に当該 tournament 名のサブリンクが realtime で現れる
+    const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
+    const subLink = sidebar.getByRole("link", { name: /Nav Subnav Tournament/ });
+    await expect(subLink).toBeVisible({ timeout: 15_000 });
+    await expect(subLink).toHaveAttribute("href", `/tournaments/${tid}`);
+
+    // 別ページから戻ってきても active 判定は機能（サブリンクが aria-current=page）
+    await page.goto("/tournaments");
+    await expect(subLink).toBeVisible();
+    await Promise.all([
+      page.waitForURL(`**/tournaments/${tid}`, { timeout: 15_000 }),
+      subLink.click(),
+    ]);
+    await expect(subLink).toHaveAttribute("aria-current", "page");
   });
 });

@@ -43,18 +43,52 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
 }
 
 describe("NextBreakCard", () => {
-  it("does not render when state is setup", () => {
-    const { container } = render(
-      <NextBreakCard tournament={makeTournament({ state: "setup" })} remainingMs={0} />,
+  it("renders setup preview with Lv N break label and em-dash ETA", () => {
+    // Phase 4.14: setup/seating でも Lv 1 起点で最初の break をプレビュー表示する。
+    // ETA は未開始のため "—" を出し、grid 列幅を維持する。
+    render(
+      <NextBreakCard
+        tournament={makeTournament({ state: "setup", currentLevel: 0 })}
+        remainingMs={null}
+      />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Next Break In")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(
+      screen.getByText((t) => t.includes("Lv 3 で break") && t.includes("あと 2 レベル")),
+    ).toBeInTheDocument();
   });
 
-  it("does not render when state is seating", () => {
-    const { container } = render(
-      <NextBreakCard tournament={makeTournament({ state: "seating" })} remainingMs={0} />,
+  it("renders seating preview the same as setup", () => {
+    render(
+      <NextBreakCard
+        tournament={makeTournament({ state: "seating", currentLevel: 0 })}
+        remainingMs={null}
+      />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Next Break In")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows 予定なし in setup when structure has no break level", () => {
+    const t = makeTournament({
+      state: "setup",
+      currentLevel: 0,
+      structureSnapshot: {
+        name: "no break",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+    });
+    render(<NextBreakCard tournament={t} remainingMs={null} />);
+    expect(screen.getByText("Next Break In")).toBeInTheDocument();
+    expect(screen.getByText("予定なし")).toBeInTheDocument();
   });
 
   it("renders in finished state so the right column stays visible after winner", () => {

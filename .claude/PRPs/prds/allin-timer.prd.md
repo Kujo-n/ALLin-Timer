@@ -222,8 +222,10 @@
 | 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 2 種類（blind-up / victory-chime、mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | complete | - | 4.8 | [completed/phase-4.9-audio-notifications.plan.md](../plans/completed/phase-4.9-audio-notifications.plan.md) — 実装レポート: [phase-4.9-audio-notifications-report.md](../reports/phase-4.9-audio-notifications-report.md) |
 | 4.10 | Audio Notifications (Custom Upload) **[Optional]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Storage 未設定環境でも Phase 4.9 のデフォルト音源で運用継続可能（オプション機能）** | pending | - | 4.9 | - |
 | 4.11 | Timer Layout & Control Polish | Phase 4.9 投入後のフォローアップ。Live / Dashboard を 3 カラムレイアウト化（左=QR / 中=タイマー / 右=NextBreak / Avg / Players）、StructureSnapshotCard を共通化し /live にも表示、TimerDisplay の SB/BB/Ante 視認性向上、TimerControls をアイコン化＋順序整理＋SoundToggle 統合、終了時タイマーを `finishedAt` 基準で停止、`useAudioPlayer.unlocked` を `useSyncExternalStore` で全コンポーネント同期、`revertLevel`/`advanceLevel` の paused 状態 invariant 修正（pausedAt 再アーム）、`tournament.lastLevelChangeKind` 追加で手動レベル遷移時のサウンド再生をスキップ。schema は additive（`lastLevelChangeKind: "auto"\|"manual"\|null\|undefined`） | complete | - | 4.9 | 実装レポート: [phase-4.11-timer-layout-control-polish-report.md](../reports/phase-4.11-timer-layout-control-polish-report.md) |
-| 4.12 | Dashboard Top-Row Equal-Height & "卓 → Table" Rename | Phase 4.11 後の追加フォローアップ。Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を `lg:items-stretch` で QR 高さに揃え、左右 aside の sticky を廃止、TimerDisplay フォント拡大（残時間 `lg:text-[10rem]` / SB/BB/Ante `lg:text-5xl`）、統計 3 カードのタイトルを `text-base/lg font-semibold text-foreground` 化、user-facing 文言「卓 → Table」を一括リネーム（schema フィールド名・AppError ドメインコードは不変）。Winner / SeatingBoard 等を上段 grid から下段に分離。`/live` は無変更 | in-progress | with 4.10 | 4.11 | [phase-4.12-dashboard-polish-and-table-rename.plan.md](../plans/phase-4.12-dashboard-polish-and-table-rename.plan.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12（4.10 はオプション扱いで blocker 外） | - |
+| 4.12 | Dashboard Top-Row Equal-Height & "卓 → Table" Rename | Phase 4.11 後の追加フォローアップ。Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を `lg:items-stretch` で QR 高さに揃え、左右 aside の sticky を廃止、TimerDisplay フォント拡大（残時間 `lg:text-[10rem]` / SB/BB/Ante `lg:text-5xl`）、統計 3 カードのタイトルを `text-base/lg font-semibold text-foreground` 化、user-facing 文言「卓 → Table」を一括リネーム（schema フィールド名・AppError ドメインコードは不変）。Winner / SeatingBoard 等を上段 grid から下段に分離。`/live` は無変更 | complete | with 4.10 | 4.11 | [completed/phase-4.12-dashboard-polish-and-table-rename.plan.md](../plans/completed/phase-4.12-dashboard-polish-and-table-rename.plan.md) — 実装レポート: [phase-4.12-dashboard-polish-and-table-rename-report.md](../reports/phase-4.12-dashboard-polish-and-table-rename-report.md) |
+| 4.13 | Nav Shell 刷新 + サウンド設定導線整理 | グローバルレイアウトに `AppShell` + サイドバー（desktop md+）+ モバイル用 `Sheet` ナビを導入し、各画面のページ内 nav ボタン（「サークル」「トーナメント」「ストラクチャ」）を撤去。`SoundUnlockBanner` / `SoundToggleButton` から `settingsHref` を廃止し詳細設定はサイドバー「サウンド設定」に集約。`/groups/[gid]` のサークル名変更を Dialog からインライン編集（`requestAnimationFrame` focus + select / Esc / 同名 / 空でキャンセル）に置換、`AuthBadge` をゲストのみ表示に整理しサークル切替を撤去。`/live` は fullscreen pattern でサイドバー非表示。schema / Firestore Rules 変更なし、純 UI / a11y 改善 | complete | - | 4.12 | local review: [local-phase-4.13-nav-sound-review.md](../reviews/local-phase-4.13-nav-sound-review.md)（plan は ad-hoc 改善のため未作成） |
+| 4.14 | Dashboard 受付画面 + サイドバー UX Polish | Phase 4.13 ナビ刷新後のフォローアップ。Dashboard 受付画面の (1) 右列 3 カード（NextBreak / AverageStack / Players）を `setup` でも描画して state 遷移時の grid 跳ねを排除、(2) サウンドトグルクリック後 `refreshGroups()` で UI 即時反映、(3) `deleteTournamentIfSetup` を `deleteTournament` にリネームし `setup` または `finished` で削除可能化（players / tables sub-collection を `writeBatch` で cascade 削除）、(4) ヘッダの「一覧へ戻る」ボタンと raw state バッジを廃止、(5) 「全画面表示」を `/live` 遷移から **Fullscreen API トグル** に置換。サイドバーは「サークル一覧」「トーナメント一覧」に rename し、「トーナメント一覧」配下に開催中（`seating`/`running`/`paused`）トーナメントを `subscribeTournamentsByGroup` で realtime 表示。Firestore schema / rules 変更なし | complete | - | 4.13 | [completed/phase-4.14-dashboard-and-nav-polish.plan.md](../plans/completed/phase-4.14-dashboard-and-nav-polish.plan.md) — 実装レポート: [phase-4.14-dashboard-and-nav-polish-report.md](../reports/phase-4.14-dashboard-and-nav-polish-report.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12, 4.13, 4.14（4.10 はオプション扱いで blocker 外） | - |
 
 ### Phase Details
 
@@ -469,6 +471,55 @@
   - user-facing 文字列の "卓" が完全に "Table" になり、orchestrator description テストが新フォーマットで pass
   - typecheck / lint / test / build が green、`/live` 差分ゼロ
 
+**Phase 4.13: Nav Shell 刷新 + サウンド設定導線整理**
+- **Goal**: Phase 4.12 まで各画面ヘッダに散在していたナビゲーションボタンとサウンド設定リンクを、グローバルなサイドバー / モバイル Sheet に集約する。**schema / Firestore Rules / repository 完全不変**で純 UI / a11y / 導線整理に閉じる
+- **背景**: Phase 4.12 までは画面ごとに「サークル」「トーナメント」「ストラクチャ」ボタンや `audio-settings` への戻り link を散在配置していたため、(a) ページ間のナビが一貫せず迷子になりやすい、(b) 同じリンクが複数箇所に重複、(c) `/groups/[gid]` の名前変更が Dialog 起動で操作 1 段重い、などのペインが運営者から挙がっていた。Phase 4.14 のサブナビ追加に先立ち、まずナビ shell を整える
+- **Scope**:
+  - **AppShell + PrimaryNav 新設**（[src/components/nav/](../../../src/components/nav/)）:
+    - `AppShell.tsx`: layout root から呼ばれる shell。`md+` で固定幅 `<aside id="primary-nav-sidebar">` を表示、`md` 未満は hamburger（`HeaderMenuButton`）+ Radix `Sheet` で expand
+    - `PrimaryNav.tsx`: nav 項目を role / signedIn ベースで gate（`resolveNavItems`）。aria-current=`page` で active 状態を表現
+    - `nav-items.ts`: ホーム / サークル / トーナメント / ストラクチャ / テンプレート / サウンド設定 / アカウント設定 を集中管理（`authOnly` / `requireOrganizer` / `requireGroup` の 3 種フラグで gate）
+    - `nav-state.tsx`: モバイル Sheet open/close を React context で共有
+    - shadcn `Sheet` primitive（[src/components/ui/sheet.tsx](../../../src/components/ui/sheet.tsx)）追加
+  - **fullscreen pattern**: `/^\/tournaments\/[^/]+\/live\/?$/` のときのみ `<aside>` 自体を描画しない（参加者用 `/live` を会場プロジェクター投影中に sidebar が映らないように）
+  - **ページ内 nav ボタン撤去**: `tournaments-client.tsx` / `structures-client.tsx` / `groups-detail-client.tsx` / `dashboard-client.tsx` などのヘッダから「サークル」「トーナメント」「ストラクチャ」リンクを削除しサイドバーに集約
+  - **`SoundUnlockBanner` / `SoundToggleButton` から `settingsHref` 廃止**: 詳細設定はサイドバー「サウンド設定」へ。`audio-settings` ページ自体は維持しつつ、戻り link は `?from=live&tid=` クエリで条件付き表示（`/live` から開いたときのみ「全画面表示へ戻る」を出す URL 契約）
+  - **`/groups/[gid]` のサークル名変更を Dialog → インライン編集**: ペン icon クリックで text input に切替、`requestAnimationFrame` 後に focus + select、Esc / 同名 / 空文字で自動キャンセル、Enter / blur で確定。optimistic UI 風挙動だが Firestore 書込み完了まで edit 状態を維持して整合
+  - **`AuthBadge` をゲスト表示に縮退**: 通常ユーザーの認証状態 / displayName / サークル切替はサイドバーフッター（user プロファイル link）が担うため `AuthBadge` は匿名ゲスト時のみ表示するよう簡素化。サークル切替（旧ヘッダ右上）は撤去（複数 group 所属時のフローはサイドバー「サークル一覧」配下のサブリンクで代替）
+  - **a11y**: skip link `<a href="#main">`、`<main id="main" tabIndex={-1}>` でフォーカス到達確保、Sheet には `SheetTitle "メニュー"` で accessible name を付与（Radix Dialog の aria-labelledby 経路）
+- **既知の所見**（local review より）:
+  - M1: `aria-controls` が desktop / mobile で参照先 ID が異なる（`primary-nav-sidebar` vs `primary-nav`）。SR 利用者向けの細かい改善余地あり、Phase 4.14 以降で fix 候補
+  - M2: `aria-current="page"` が親「サークル」と「サブリンク（group 名）」で重複付与される — Phase 4.14 で `isGroups && groupSubActive` 分岐により解消済み（PrimaryNav の active 解除ロジック追加）
+- **Success signal**:
+  - desktop（md+）でサイドバー、`md` 未満で hamburger + Sheet が描画され、ナビ選択で Sheet が自動クローズ
+  - `/live` でサイドバーが非表示になり会場投影が崩れない
+  - `aria-current=page` / focus 移動 / skip link が WCAG 2.2 AA 相当で機能
+  - `/groups/[gid]` のサークル名変更がインライン編集で 1 操作完結
+  - typecheck / lint / 479 unit tests / E2E（`nav-and-sound-toggle.spec.ts` 追加）すべて green
+
+**Phase 4.14: Dashboard 受付画面 + サイドバー UX Polish**
+- **Goal**: Phase 4.13 ナビ刷新後に運営者から挙がった 8 件の UX 摩擦（受付画面の grid 跳ね・サウンドトグルのリアクティブ反映漏れ・終了済みトーナメント削除導線・全画面遷移の重複・サイドバー文言と開催中トーナメントへの直接導線）を一括解消する。**schema / Firestore Rules / hook / repository の破壊的変更なし**で純 UI / 既存 service 層の組合せ調整に閉じる
+- **背景**: Phase 4.13 のナビ刷新と同時に運営者から `tmp/` 経由で改善要望が出揃った。Phase 4.13 でサイドバー骨格は完成したが (a) サイドバー文言が「サークル」「トーナメント」のみで「一覧」が欠ける、(b) 開催中トーナメントへの直接導線が無い、(c) 受付画面の grid が状態遷移で跳ねる、(d) 削除可能 state が setup のみで履歴整理ができない、(e) 「全画面表示」が `/live` への画面遷移であり同 dashboard を投影中の運営者には不便、などのペインが残存していた
+- **Scope**:
+  - **受付画面の右列恒常化（dashboard）**: `showRightColumn` フラグを撤去し `lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]` で 3 列固定。`NextBreakCard` / `AverageStackCard` / `PlayersCard` の `state in {setup, seating}` ガードを緩め、各カード内部で「開始前プレビュー」（NextBreak は Lv 1 起点で最初の break level までのレベル数 / Average は受付済み × 初期スタック / Players は受付済み件数）を表示
+  - **サウンドトグルのリアクティブ反映**: `dashboard-client.tsx` の `onToggleEnabled` で `updateAudioSettings()` 成功後に `useCurrentGroup().refreshGroups()` を await。GroupProvider の `groups` を再フェッチし、リロードなしで `tournamentGroup.audioSettings.enabled` を即時反映。GroupProvider の onSnapshot 化は **NOT building**（最少差分維持）
+  - **終了済みトーナメント削除（破壊的 API rename）**: `deleteTournamentIfSetup` を `deleteTournament` に rename（互換 alias は作らない、Phase 2.5 先例）。`setup` または `finished` を許容、players / tables sub-collection を `writeBatch` で cascade 削除（参加者 ≤20 + tables ≤6 = 1 batch 内に収まる）。dashboard ヘッダの「削除」ボタンは `canDelete = state==="setup" || state==="finished"`、confirm dialog の文言は state で分岐（「開始前なので安全に削除」/ 「終了済みのため履歴ごと削除」）
+  - **ヘッダ整理**: 「一覧へ戻る」ボタン削除（サイドバー「トーナメント一覧」で代替）。トーナメント名横の raw state バッジ（`<span>{data.state}</span>`）を削除（TimerDisplay 内の日本語ラベル「開始前 / 進行中 / 一時停止中 / 終了」が真実源）。`ConnectionBadge` は維持
+  - **Fullscreen API トグル**: 「全画面表示」ボタンを `/tournaments/[tid]/live` への `<Link>` から `document.documentElement.requestFullscreen()` / `document.exitFullscreen()` のページ内トグルに置換。`fullscreenchange` を購読してアイコンを `Maximize` ↔ `Minimize` に同期（`webkit*` プレフィックスも保険で OR 登録）。失敗時は新ドメインコード `ui/fullscreen-failed` で `logger.warn` 握り。`/live` ページは無変更（参加者用フローと既存 E2E 依存のため）
+  - **サイドバー label rename**: `nav-items.ts` の「サークル」→「サークル一覧」、「トーナメント」→「トーナメント一覧」
+  - **サイドバー「トーナメント一覧」配下に開催中サブナビ追加**: `tournaments.ts` に `subscribeTournamentsByGroup` を新設（`tables.ts` の subscribe パターン mirror、複合 index 不要のため client 側ソート）。`PrimaryNav.tsx` で `currentGroupId` 配下の `seating` / `running` / `paused` トーナメントを realtime にサブリンクとして並べる。state 別のドット色分け（running=emerald / paused=amber / seating=slate）。`/tournaments/{tid}/edit` 等の派生ルートでも `pathname.startsWith` で active 判定
+  - **テスト**: 新規 unit（`deleteTournament` 5 ケース cascade + `subscribeTournamentsByGroup` smoke + 各カード setup 描画）+ E2E（サブナビ realtime 表示 + クリック遷移 + aria-current、受付画面の右列 / 全画面トグル / 終了済み削除フロー）
+- **破壊的変更ではないが要注意**:
+  - `deleteTournamentIfSetup` の rename は API 名のみ破壊的。callsite は `dashboard-client.tsx` 1 箇所のみで完結
+  - `state バッジ` 削除に伴い E2E 5 spec の `dash.stateBadge` selector を `region[name=タイマー]` 内の日本語ラベルに repoint（page object と spec の連鎖修正が必要）
+- **Success signal**:
+  - 受付画面の grid が `setup → seating → running → paused → finished` の状態遷移で列数を変えず、TimerDisplay フォントサイズが揺らがない
+  - サウンドトグルクリックでボタン色が即時切り替わる（リロード不要）
+  - 終了済みトーナメントを dashboard から削除でき、Firestore 上で sub-collection（players / tables）も同時に消える
+  - 「全画面表示」ボタンで同 dashboard が画面全体に拡張、再押下 / `Esc` で復帰してアイコンが Maximize に戻る
+  - サイドバーの文言が「サークル一覧」「トーナメント一覧」となり、開催中トーナメント作成 → 約 1 秒以内にサブリンクが realtime 表示・ステート遷移で消失
+  - typecheck / lint / test / build が green、E2E 全 spec pass
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -493,7 +544,9 @@
 - Phase 4.10（音声通知 段階2）は **オプション機能**。Phase 4.9 完了後、Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
 - Phase 4.11（タイマー UI/UX フォローアップ）は Phase 4.9 完了後に単独実施。**schema は additive**（`tournaments/{tid}.lastLevelChangeKind` を optional で追加、既存 doc の missing field を許容）。Firestore Rules 変更なし、破壊的 migration なし。Phase 4.10 とは独立で並行可能（互いに別 collection / 別関数を触る）
 - Phase 4.12（Dashboard 等高化 & "卓 → Table" rename）は Phase 4.11 完了後に単独実施。**schema / Firestore Rules / hook / repository は完全不変**で純 UI とラベル文字列のみ。Phase 4.10 とは独立で並行可能。AppError ドメインコードと collection / フィールド名は全て維持
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
+- Phase 4.13（Nav Shell 刷新）は Phase 4.12 完了後に単独実施。**schema / Firestore Rules / repository は完全不変**で AppShell + サイドバー / Sheet 導入と各ページ内 nav ボタン撤去のみ。plan は ad-hoc 改善のため未作成、local review で品質ゲート。Phase 4.10 とは独立で並行可能
+- Phase 4.14（Dashboard 受付画面 + サイドバー UX Polish）は Phase 4.13 のナビ刷新後に単独実施。**schema / Firestore Rules は完全不変**。`deleteTournamentIfSetup` → `deleteTournament` の API 名 rename のみ破壊的（callsite 1 箇所、互換 alias 作らず）。`tournaments.ts` に `subscribeTournamentsByGroup` を additive で新設。`/live` ページは無変更で参加者用フロー / 既存 E2E に影響なし。Phase 4.10 とは独立で並行可能
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
 
 ---
 

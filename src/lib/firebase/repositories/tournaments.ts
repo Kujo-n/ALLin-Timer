@@ -1,7 +1,6 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -11,6 +10,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
@@ -412,7 +412,55 @@ export function subscribeTournament(
   );
 }
 
-export async function deleteTournamentIfSetup(
+/**
+ * tournaments/{tid} の onSnapshot 購読（group スコープ）。
+ *  - 開始中（seating / running / paused）の tournament をサイドバーへ realtime 表示する用途。
+ *  - listTournamentsByGroup と同じく orderBy は付けず、複合 index を避けるため client 側で sort。
+ *  - 個別 doc が schema validate に失敗しても全体を落とさず該当 doc のみスキップ。
+ */
+export function subscribeTournamentsByGroup(
+  groupId: string,
+  onNext: (items: TournamentDoc[]) => void,
+  onError: (err: AppError) => void,
+): () => void {
+  return onSnapshot(
+    query(tournamentsRef, where("groupId", "==", groupId)),
+    (snap) => {
+      try {
+        const items: TournamentDoc[] = [];
+        for (const d of snap.docs) {
+          try {
+            items.push({ id: d.id, ...d.data() });
+          } catch (e) {
+            // 旧スキーマで作成された孤立 doc を一覧から除外し、
+            // 元エラーは AppError でラップして code 付きで残す（listTournamentsByGroup と同方針）。
+            const wrapped = AppError.from(e, "firestore/invalid-data", "不正なドキュメント");
+            logger.warn("subscribe skipped invalid tournament", {
+              tid: d.id,
+              code: wrapped.code,
+            });
+          }
+        }
+        items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        onNext(items);
+      } catch (e) {
+        onError(AppError.from(e, "firestore/invalid-data", "トーナメント一覧データが不正です"));
+      }
+    },
+    (err) => onError(AppError.from(err, "firestore/subscribe_failed", "一覧購読エラー")),
+  );
+}
+
+/**
+ * トーナメントを削除する。
+ *  - state === "setup" または "finished" のときのみ許可（進行中は先に終了が必要）。
+ *  - sub-collection（players / tables）も同じ writeBatch で cascade 削除する。
+ *    20 人 × 6 卓規模では 1 batch（500 ops 上限）に収まる。
+ *  - rule 側の `match /{sub=**}` の write は親 doc が exists かつ isOrganizer を要求するが、
+ *    `exists()` は当該 request 開始時点の DB を見るため、同 batch 内で親 doc を最後に
+ *    delete しても sub-collection delete は許容される。
+ */
+export async function deleteTournament(
   tid: string,
   uid: string,
   userGroupIds: string[],
@@ -421,12 +469,27 @@ export async function deleteTournamentIfSetup(
   if (!t.groupId || !userGroupIds.includes(t.groupId)) {
     throw new AppError("not allowed", "firestore/permission-denied");
   }
-  if (t.state !== "setup") {
-    throw new AppError("既に開始済みのトーナメントは削除できません", "tournament/already-started");
+  if (t.state !== "setup" && t.state !== "finished") {
+    throw new AppError(
+      "進行中のトーナメントは削除できません（先に終了してください）",
+      "tournament/in-progress",
+    );
   }
   try {
-    await deleteDoc(doc(tournamentsRef, tid));
-    logger.info("tournament delete ok", { tid, uid });
+    const batch = writeBatch(firestore);
+    const playersSnap = await getDocs(collection(firestore, "tournaments", tid, "players"));
+    playersSnap.forEach((d) => batch.delete(d.ref));
+    const tablesSnap = await getDocs(collection(firestore, "tournaments", tid, "tables"));
+    tablesSnap.forEach((d) => batch.delete(d.ref));
+    batch.delete(doc(tournamentsRef, tid));
+    await batch.commit();
+    logger.info("tournament delete ok", {
+      tid,
+      uid,
+      state: t.state,
+      players: playersSnap.size,
+      tables: tablesSnap.size,
+    });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント削除に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code });

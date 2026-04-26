@@ -26,10 +26,10 @@ vi.mock("firebase/firestore", async () => {
     getDoc: vi.fn(),
     getDocs: vi.fn(),
     updateDoc: vi.fn(),
-    deleteDoc: vi.fn(),
     onSnapshot: vi.fn(),
     runTransaction: vi.fn(),
     serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
+    writeBatch: vi.fn(),
   };
 });
 
@@ -40,13 +40,13 @@ vi.mock("@/lib/firebase/converters", () => ({
 
 import {
   addDoc,
-  deleteDoc,
   getDoc,
   getDocs,
   onSnapshot,
   runTransaction,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 import {
@@ -54,7 +54,7 @@ import {
   beginSeating,
   confirmSeating,
   createTournament,
-  deleteTournamentIfSetup,
+  deleteTournament,
   finishTournament,
   getTournament,
   listTournamentsByGroup,
@@ -62,6 +62,7 @@ import {
   resumeTournament,
   revertLevel,
   subscribeTournament,
+  subscribeTournamentsByGroup,
   updateTournament,
 } from "./tournaments";
 
@@ -119,10 +120,10 @@ beforeEach(() => {
   vi.mocked(getDoc).mockReset();
   vi.mocked(getDocs).mockReset();
   vi.mocked(updateDoc).mockReset().mockResolvedValue(undefined);
-  vi.mocked(deleteDoc).mockReset().mockResolvedValue(undefined);
   vi.mocked(onSnapshot).mockReset();
   vi.mocked(runTransaction).mockReset();
   vi.mocked(serverTimestamp).mockReturnValue({ __op: "serverTimestamp" } as never);
+  vi.mocked(writeBatch).mockReset();
 });
 
 describe("createTournament", () => {
@@ -644,32 +645,152 @@ describe("subscribeTournament", () => {
   });
 });
 
-describe("deleteTournamentIfSetup", () => {
+describe("deleteTournament", () => {
+  type FakeBatch = {
+    delete: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    commit: ReturnType<typeof vi.fn>;
+  };
+
+  function mockBatch(commitImpl?: () => Promise<void>): FakeBatch {
+    const batch: FakeBatch = {
+      delete: vi.fn(),
+      set: vi.fn(),
+      update: vi.fn(),
+      commit: vi.fn(commitImpl ?? (async () => undefined)),
+    };
+    vi.mocked(writeBatch).mockReturnValueOnce(batch as never);
+    return batch;
+  }
+
+  function mockSubcollections(playersIds: string[], tablesIds: string[]) {
+    // deleteTournament は players → tables の順で getDocs する。
+    const playersSnap = {
+      size: playersIds.length,
+      forEach: (fn: (d: { ref: { id: string } }) => void) =>
+        playersIds.forEach((id) => fn({ ref: { id } })),
+      docs: playersIds.map((id) => ({ ref: { id } })),
+    };
+    const tablesSnap = {
+      size: tablesIds.length,
+      forEach: (fn: (d: { ref: { id: string } }) => void) =>
+        tablesIds.forEach((id) => fn({ ref: { id } })),
+      docs: tablesIds.map((id) => ({ ref: { id } })),
+    };
+    vi.mocked(getDocs)
+      .mockResolvedValueOnce(playersSnap as never)
+      .mockResolvedValueOnce(tablesSnap as never);
+    return { playersSnap, tablesSnap };
+  }
+
   it("rejects non-member", async () => {
     mockGetTournament(makeTournament());
-    await expect(deleteTournamentIfSetup("t1", "u1", ["g-other"])).rejects.toMatchObject({
+    await expect(deleteTournament("t1", "u1", ["g-other"])).rejects.toMatchObject({
       code: "firestore/permission-denied",
     });
   });
 
-  it("rejects when state is not setup", async () => {
+  it("rejects when state is in-progress (running)", async () => {
     mockGetTournament(makeTournament({ state: "running" }));
-    await expect(deleteTournamentIfSetup("t1", "u1", ["g1"])).rejects.toMatchObject({
-      code: "tournament/already-started",
+    await expect(deleteTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "tournament/in-progress",
     });
   });
 
-  it("calls deleteDoc on happy path", async () => {
-    mockGetTournament(makeTournament({ state: "setup" }));
-    await deleteTournamentIfSetup("t1", "u1", ["g1"]);
-    expect(deleteDoc).toHaveBeenCalled();
+  it("rejects when state is in-progress (paused)", async () => {
+    mockGetTournament(makeTournament({ state: "paused" }));
+    await expect(deleteTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "tournament/in-progress",
+    });
   });
 
-  it("wraps deleteDoc errors", async () => {
+  it("happy path: setup with empty subcollections — deletes parent only via batch.commit", async () => {
     mockGetTournament(makeTournament({ state: "setup" }));
-    vi.mocked(deleteDoc).mockRejectedValueOnce(new Error("perm"));
-    await expect(deleteTournamentIfSetup("t1", "u1", ["g1"])).rejects.toMatchObject({
+    mockSubcollections([], []);
+    const batch = mockBatch();
+
+    await deleteTournament("t1", "u1", ["g1"]);
+
+    expect(batch.delete).toHaveBeenCalledTimes(1); // parent doc only
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("happy path: finished with subcollections — batches all 3 deletes (players + tables + parent)", async () => {
+    mockGetTournament(makeTournament({ state: "finished" }));
+    const playerIds = Array.from({ length: 20 }, (_, i) => `p${i + 1}`);
+    const tableIds = Array.from({ length: 6 }, (_, i) => String(i + 1));
+    mockSubcollections(playerIds, tableIds);
+    const batch = mockBatch();
+
+    await deleteTournament("t1", "u1", ["g1"]);
+
+    // players(20) + tables(6) + parent(1) = 27 deletes in one batch
+    expect(batch.delete).toHaveBeenCalledTimes(20 + 6 + 1);
+    expect(batch.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("wraps batch.commit errors as firestore/write_failed", async () => {
+    mockGetTournament(makeTournament({ state: "setup" }));
+    mockSubcollections([], []);
+    mockBatch(async () => {
+      throw new Error("perm");
+    });
+
+    await expect(deleteTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
+  });
+});
+
+describe("subscribeTournamentsByGroup", () => {
+  it("returns the unsubscribe function from onSnapshot", () => {
+    const unsub = vi.fn();
+    vi.mocked(onSnapshot).mockReturnValueOnce(unsub as never);
+    const result = subscribeTournamentsByGroup("g1", vi.fn(), vi.fn());
+    expect(result).toBe(unsub);
+  });
+
+  it("delivers items sorted by createdAt descending", () => {
+    const newer = Timestamp.fromMillis(t0.toMillis() + 10_000);
+    const older = makeTournament({ id: "old", createdAt: t0 });
+    const fresh = makeTournament({ id: "new", createdAt: newer });
+    const onNext = vi.fn();
+    const onError = vi.fn();
+
+    vi.mocked(onSnapshot).mockImplementationOnce(
+      ((_q: unknown, next: (s: unknown) => void) => {
+        next({
+          docs: [
+            { id: older.id, data: () => stripId(older) },
+            { id: fresh.id, data: () => stripId(fresh) },
+          ],
+        });
+        return () => {};
+      }) as never,
+    );
+
+    subscribeTournamentsByGroup("g1", onNext, onError);
+
+    expect(onNext).toHaveBeenCalledTimes(1);
+    const items = onNext.mock.calls[0][0] as Array<{ id: string }>;
+    expect(items.map((x) => x.id)).toEqual(["new", "old"]);
+  });
+
+  it("propagates onError when SDK emits error", () => {
+    const onNext = vi.fn();
+    const onError = vi.fn();
+
+    vi.mocked(onSnapshot).mockImplementationOnce(
+      ((_q: unknown, _next: unknown, err: (e: unknown) => void) => {
+        err(new Error("boom"));
+        return () => {};
+      }) as never,
+    );
+
+    subscribeTournamentsByGroup("g1", onNext, onError);
+
+    expect(onError).toHaveBeenCalled();
+    expect(onError.mock.calls[0][0].code).toBe("firestore/subscribe_failed");
   });
 });

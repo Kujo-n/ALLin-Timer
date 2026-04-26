@@ -71,20 +71,24 @@ describe("AverageStackCard", () => {
     expect(screen.getByText("10,000")).toBeInTheDocument();
   });
 
-  it("does not render when state is setup", () => {
+  it("renders during setup with 受付中 caption (Phase 4.14: 開始前プレビュー)", () => {
     const tournament = makeTournament({ state: "setup" });
-    const { container } = render(
+    render(
       <AverageStackCard tournament={tournament} players={[makePlayer("p1")]} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    // 受付者 1 名だけなら平均 = initialStack
+    expect(screen.getByText("10,000")).toBeInTheDocument();
+    expect(screen.getByText("受付中")).toBeInTheDocument();
+    // running 時の「初期 10,000」キャプションは出さない
+    expect(screen.queryByText(/^初期/)).not.toBeInTheDocument();
   });
 
-  it("does not render when state is seating", () => {
+  it("renders during seating with 受付中 caption", () => {
     const tournament = makeTournament({ state: "seating" });
-    const { container } = render(
+    render(
       <AverageStackCard tournament={tournament} players={[makePlayer("p1")]} />,
     );
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("受付中")).toBeInTheDocument();
   });
 
   it("renders in finished state so the right column stays visible after winner", () => {

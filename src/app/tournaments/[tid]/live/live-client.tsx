@@ -261,7 +261,7 @@ export function LiveClient({ tid }: { tid: string }) {
         <aside className="order-2 flex flex-col gap-3 lg:order-3 lg:sticky lg:top-4 lg:self-start">
           <NextBreakCard tournament={tournament} remainingMs={remainingMs} />
           <AverageStackCard tournament={tournament} players={players} />
-          <PlayersCard tournament={tournament} players={players} />
+          <PlayersCard players={players} />
         </aside>
       </div>
     </main>

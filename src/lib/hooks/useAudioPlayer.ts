@@ -179,6 +179,16 @@ export function useAudioPlayer({
     }
   }, [tournament, players, group?.audioSettings.winnerSoundId, play]);
 
+  // Phase 4.14: 再生中に enabled が false に切替わった瞬間、再生中の <audio> 要素を pause する。
+  // gate（line 115 の play()）は新規再生をブロックするだけで、既に走っている再生は止めない。
+  // これがないと「OFF をクリック → アイコンは ☓ に変わるが、直前のレベルアップ音が最後まで鳴り続ける」
+  // という UI / 音 の不整合が起きる（ユーザー報告）。
+  useEffect(() => {
+    if (!enabled && audioElRef.current) {
+      audioElRef.current.pause();
+    }
+  }, [enabled]);
+
   // unmount 時に audio を破棄
   useEffect(() => {
     return () => {

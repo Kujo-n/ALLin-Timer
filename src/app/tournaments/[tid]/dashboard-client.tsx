@@ -1,8 +1,9 @@
 "use client";
 
+import { Maximize, Minimize } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
@@ -17,7 +18,7 @@ import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +33,7 @@ import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import {
-  deleteTournamentIfSetup,
+  deleteTournament,
   finishTournament,
 } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
@@ -50,7 +51,7 @@ const AUTO_FINISH_DELAY_MS = 2000;
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { groupIds, groups, loading: groupsLoading } = useCurrentGroup();
+  const { groupIds, groups, loading: groupsLoading, refreshGroups } = useCurrentGroup();
 
   // 認証済みユーザー全員に autoAdvance opts を渡す。実際の per-tournament group
   // メンバーシップ check は useTournamentTimer 内（および orchestrator 内 tx）で
@@ -70,6 +71,42 @@ export function DashboardClient({ tid }: { tid: string }) {
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDoc[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Phase 4.14: Fullscreen API でブラウザ chrome を非表示にして同 dashboard を全画面化する。
+  //   - `fullscreenchange` を購読して Esc 解除も含めてアイコン状態を同期。
+  //   - Safari 系の `webkit*` も保険で OR 登録（PC 想定だが負担が小さいため）。
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handler = () => {
+      const fsEl =
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element | null })
+          .webkitFullscreenElement ??
+        null;
+      setIsFullscreen(!!fsEl);
+    };
+    handler(); // 初期同期（既に他経路で fullscreen 化されている場合の保険）
+    document.addEventListener("fullscreenchange", handler);
+    document.addEventListener("webkitfullscreenchange", handler);
+    return () => {
+      document.removeEventListener("fullscreenchange", handler);
+      document.removeEventListener("webkitfullscreenchange", handler);
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {
+      const wrapped = AppError.from(e, "ui/fullscreen-failed", "全画面化に失敗しました");
+      logger.warn(wrapped.message, { code: wrapped.code });
+    }
+  }, []);
 
   // Phase 4: dashboard で players と tables を 1 度だけ subscribe し、
   // PlayerList / SeatingBoard / BalancingInstructionCard / TimerControls に伝搬。
@@ -178,7 +215,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   async function onDelete() {
     if (!user) return;
     try {
-      await deleteTournamentIfSetup(tid, user.uid, groupIds);
+      await deleteTournament(tid, user.uid, groupIds);
       router.push("/tournaments");
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "削除失敗");
@@ -211,17 +248,18 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   const isMember = groupIds.includes(data.groupId);
   const canEdit = isMember && data.state === "setup";
+  // 上の guard で isOrganizer (= isMember) が確定しているため state のみで判定。
+  const canDelete = data.state === "setup" || data.state === "finished";
   const showSeatingBoard =
     data.state === "seating" ||
     data.state === "running" ||
     data.state === "paused";
   const showBalancing = isMember && (data.state === "running" || data.state === "paused");
   const levelInfo = getLevelInfo(data);
-  const showRightColumn =
-    data.state === "running" || data.state === "paused" || data.state === "finished";
-  const gridColsClass = showRightColumn
-    ? "lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]"
-    : "lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)]";
+  // Phase 4.14: state 遷移で grid 列数を跳ねさせない。常に 3 列固定で、各カード内部で
+  // 開始前 / 受付中 / 進行中 の表示分岐を持つ。
+  const gridColsClass =
+    "lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]";
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-8 lg:max-w-7xl">
@@ -229,35 +267,39 @@ export function DashboardClient({ tid }: { tid: string }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">{data.name}</h1>
-            <span className="rounded bg-muted px-2 py-0.5 text-xs">{data.state}</span>
             <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
           </div>
           <p className="text-sm text-muted-foreground">
-            レイトレジスト Lv{data.lateEntryDeadlineLevel} /{" "}
+            レイトレジスト Lv{data.lateEntryDeadlineLevel}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/tournaments">
-            <Button variant="outline" size="sm">
-              一覧へ戻る
-            </Button>
-          </Link>
-          <Link href={`/tournaments/${tid}/live`}>
-            <Button variant="outline" size="sm">
-              全画面表示
-            </Button>
-          </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={isFullscreen ? "全画面表示を解除" : "全画面表示"}
+            onClick={() => {
+              void toggleFullscreen();
+            }}
+          >
+            {isFullscreen ? (
+              <Minimize aria-hidden className="h-4 w-4" />
+            ) : (
+              <Maximize aria-hidden className="h-4 w-4" />
+            )}
+            <span className="ml-1">全画面表示</span>
+          </Button>
           {canEdit ? (
-            <>
-              <Link href={`/tournaments/${tid}/edit`}>
-                <Button variant="outline" size="sm">
-                  編集
-                </Button>
-              </Link>
-              <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
-                削除
+            <Link href={`/tournaments/${tid}/edit`}>
+              <Button variant="outline" size="sm">
+                編集
               </Button>
-            </>
+            </Link>
+          ) : null}
+          {canDelete ? (
+            <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
+              削除
+            </Button>
           ) : null}
         </div>
       </header>
@@ -272,8 +314,9 @@ export function DashboardClient({ tid }: { tid: string }) {
         上段 — 等高 3 列。lg+ で QR / タイマー+操作 / 統計 3 カードを同じ高さに揃える。
         最も背の高い QrPanel を基準に他 2 列が伸びる。
         sticky は等高化と両立しないため廃止（Phase 4.11 までは sticky だった）。
-        state=setup/seating では右列を非表示にし grid を 2 列に縮退する。
-        trace: phase-4.12-dashboard-polish-and-table-rename.plan.md
+        Phase 4.14: state 遷移で grid 列数を跳ねさせないため常に 3 列固定。
+        各カードは内部で setup/seating（受付中）と running 以降を出し分ける。
+        trace: phase-4.14-dashboard-and-nav-polish.plan.md
       */}
       <div className={`grid grid-cols-1 gap-4 ${gridColsClass} lg:items-stretch`}>
         <aside className="order-3 lg:order-1">
@@ -316,7 +359,12 @@ export function DashboardClient({ tid }: { tid: string }) {
                               ? e
                               : AppError.from(e, "firestore/write_failed", "サウンド設定の更新に失敗しました");
                           setError(`${err.code}: ${err.message}`);
+                          return;
                         }
+                        // Phase 4.14: GroupProvider は onSnapshot 購読していないため、
+                        // 書込み成功後に one-shot 再読込してボタン状態を即時反映する。
+                        // best-effort で十分（refreshGroups は内部で warn して握り、reject しない）。
+                        void refreshGroups();
                       },
                     }
                   : undefined
@@ -326,13 +374,11 @@ export function DashboardClient({ tid }: { tid: string }) {
           ) : null}
         </div>
 
-        {showRightColumn ? (
-          <aside className="order-2 grid grid-rows-[repeat(3,minmax(0,1fr))] gap-3 lg:order-3">
-            <NextBreakCard tournament={data} remainingMs={remainingMs} className="h-full" />
-            <AverageStackCard tournament={data} players={players} className="h-full" />
-            <PlayersCard tournament={data} players={players} className="h-full" />
-          </aside>
-        ) : null}
+        <aside className="order-2 grid grid-rows-[repeat(3,minmax(0,1fr))] gap-3 lg:order-3">
+          <NextBreakCard tournament={data} remainingMs={remainingMs} className="h-full" />
+          <AverageStackCard tournament={data} players={players} className="h-full" />
+          <PlayersCard players={players} className="h-full" />
+        </aside>
       </div>
 
       {winner ? <WinnerBanner winner={winner} /> : null}
@@ -385,7 +431,9 @@ export function DashboardClient({ tid }: { tid: string }) {
           <DialogHeader>
             <DialogTitle>トーナメントを削除</DialogTitle>
             <DialogDescription>
-              「{data.name}」を削除します。state が `setup` のトーナメントのみ削除できます。
+              {data.state === "setup"
+                ? `「${data.name}」を削除します。開始前のため安全に削除できます。`
+                : `「${data.name}」を削除します。終了済みのため履歴ごと削除されます。参加者・卓情報も同時に消去されます。`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

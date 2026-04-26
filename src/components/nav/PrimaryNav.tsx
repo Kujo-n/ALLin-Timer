@@ -2,17 +2,39 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { subscribeTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
+import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { logout } from "@/lib/services/auth-actions";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { cn } from "@/lib/utils";
 
 import { NAV_ITEMS, resolveNavItems, type NavContext } from "./nav-items";
+
+/** 開催中とみなす state（受付準備中の `setup` は除外、`finished` は履歴扱い） */
+const ACTIVE_STATES: ReadonlyArray<TournamentDoc["state"]> = [
+  "seating",
+  "running",
+  "paused",
+];
+
+function dotClassFor(state: TournamentDoc["state"]): string {
+  switch (state) {
+    case "running":
+      return "text-emerald-500";
+    case "paused":
+      return "text-amber-500";
+    case "seating":
+      return "text-slate-400";
+    default:
+      return "text-muted-foreground";
+  }
+}
 
 export function PrimaryNav({
   ctx,
@@ -26,6 +48,27 @@ export function PrimaryNav({
   const { user } = useAuthUser();
   const { groups, currentGroupId } = useCurrentGroup();
   const [busy, setBusy] = useState(false);
+  const [activeTournaments, setActiveTournaments] = useState<TournamentDoc[]>([]);
+
+  // Phase 4.14: 「トーナメント一覧」配下に開催中（seating/running/paused）の
+  // トーナメントを realtime で並べる。currentGroupId 切替時に subscribe を切替える。
+  useEffect(() => {
+    if (!currentGroupId) {
+      setActiveTournaments([]);
+      return;
+    }
+    const unsub = subscribeTournamentsByGroup(
+      currentGroupId,
+      (items) =>
+        setActiveTournaments(items.filter((t) => ACTIVE_STATES.includes(t.state))),
+      (err) => {
+        logger.warn(err.message, { code: err.code, gid: currentGroupId });
+        // サブナビは missing でもアプリは動くため、表示だけ空に倒す。
+        setActiveTournaments([]);
+      },
+    );
+    return unsub;
+  }, [currentGroupId]);
 
   const currentGroup = groups.find((g) => g.id === currentGroupId);
   const showSignedInFooter = !!user && !user.isAnonymous;
@@ -51,16 +94,25 @@ export function PrimaryNav({
         {items.map((item) => {
           const Icon = item.icon;
           const isGroups = item.href === "/groups";
+          const isTournaments = item.href === "/tournaments";
           const groupSubHref = currentGroup ? `/groups/${currentGroup.id}` : null;
           const groupSubActive = !!(
             groupSubHref && pathname?.startsWith(groupSubHref)
           );
-          // 親 link の active 判定。`/groups/{gid}` ではサブ link 側が active になるため、
-          // 親「サークル」は active 解除して aria-current の重複を防ぐ（ARIA 12: 1 landmark
-          // 内に current location は単一が望ましい）。
+          const tournamentSubActive = isTournaments
+            ? activeTournaments.some((t) =>
+                pathname?.startsWith(`/tournaments/${t.id}`),
+              )
+            : false;
+          // 親 link の active 判定。`/groups/{gid}` や `/tournaments/{tid}` ではサブ link 側が
+          // active になるため、親 link は active 解除して aria-current の重複を防ぐ
+          // （ARIA 12: 1 landmark 内に current location は単一が望ましい）。
           const rawActive =
             item.href === "/" ? pathname === "/" : (pathname?.startsWith(item.href) ?? false);
-          const active = isGroups && groupSubActive ? false : rawActive;
+          const active =
+            (isGroups && groupSubActive) || (isTournaments && tournamentSubActive)
+              ? false
+              : rawActive;
           return (
             <Fragment key={item.label}>
               <li>
@@ -98,6 +150,34 @@ export function PrimaryNav({
                   </Link>
                 </li>
               ) : null}
+              {isTournaments
+                ? activeTournaments.map((t) => {
+                    const subHref = `/tournaments/${t.id}`;
+                    const subActive = pathname?.startsWith(subHref) ?? false;
+                    return (
+                      <li key={t.id}>
+                        <Link
+                          href={subHref}
+                          aria-current={subActive ? "page" : undefined}
+                          onClick={onNavigate}
+                          title={t.name}
+                          className={cn(
+                            "ml-7 flex h-9 items-center gap-2 truncate rounded-md border-l-2 border-transparent px-3 text-xs",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            subActive &&
+                              "border-l-primary bg-accent font-semibold text-accent-foreground",
+                          )}
+                        >
+                          <span aria-hidden className={dotClassFor(t.state)}>
+                            ●
+                          </span>
+                          <span className="truncate">{t.name}</span>
+                        </Link>
+                      </li>
+                    );
+                  })
+                : null}
             </Fragment>
           );
         })}
