@@ -71,6 +71,11 @@ export const groupBodySchema = z
     // Phase 4.9: 音声通知設定（owner / organizer 経由で更新）。
     //   旧 doc（Phase 4.8 以前）は default() で DEFAULT_AUDIO_SETTINGS が補完される。
     audioSettings: audioSettingsSchema,
+    // Phase 4.16: 終了したトーナメントの累計数。`finishTournament()` の runTransaction で
+    //   `increment(1)` され、`/tournaments/new` のデフォルト名連番に使用する。tx 内で
+    //   `state !== "finished"` を再 read することで、複数端末同時呼び出しでも +1 のみ進める。
+    //   旧 doc（Phase 4.15 以前）は default(0) で受容され、次回終了時に 1 になる。
+    finishedTournamentCount: z.number().int().nonnegative().default(0),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

@@ -493,6 +493,42 @@ describe("groupBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // Phase 4.16: finishedTournamentCount の additive 追加 — 旧 doc 互換 / 範囲検証
+  it("defaults finishedTournamentCount to 0 for legacy docs without the field", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.finishedTournamentCount).toBe(0);
+  });
+
+  it("preserves explicit finishedTournamentCount", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      finishedTournamentCount: 7,
+    });
+    expect(parsed.finishedTournamentCount).toBe(7);
+  });
+
+  it("rejects negative finishedTournamentCount", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      finishedTournamentCount: -1,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("deriveRole", () => {
@@ -508,6 +544,7 @@ describe("deriveRole", () => {
       winnerSoundId: "default:victory-chime",
       volume: 0.7,
     },
+    finishedTournamentCount: 0,
     createdAt: now,
   };
 

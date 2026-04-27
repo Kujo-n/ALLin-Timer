@@ -80,6 +80,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
       winnerSoundId: "default:victory-chime",
       volume: 0.5,
     },
+    finishedTournamentCount: 0,
     createdAt: baseTimestamp,
     ...overrides,
   };
