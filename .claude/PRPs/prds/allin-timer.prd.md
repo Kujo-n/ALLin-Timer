@@ -225,7 +225,8 @@
 | 4.12 | Dashboard Top-Row Equal-Height & "卓 → Table" Rename | Phase 4.11 後の追加フォローアップ。Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を `lg:items-stretch` で QR 高さに揃え、左右 aside の sticky を廃止、TimerDisplay フォント拡大（残時間 `lg:text-[10rem]` / SB/BB/Ante `lg:text-5xl`）、統計 3 カードのタイトルを `text-base/lg font-semibold text-foreground` 化、user-facing 文言「卓 → Table」を一括リネーム（schema フィールド名・AppError ドメインコードは不変）。Winner / SeatingBoard 等を上段 grid から下段に分離。`/live` は無変更 | complete | with 4.10 | 4.11 | [completed/phase-4.12-dashboard-polish-and-table-rename.plan.md](../plans/completed/phase-4.12-dashboard-polish-and-table-rename.plan.md) — 実装レポート: [phase-4.12-dashboard-polish-and-table-rename-report.md](../reports/phase-4.12-dashboard-polish-and-table-rename-report.md) |
 | 4.13 | Nav Shell 刷新 + サウンド設定導線整理 | グローバルレイアウトに `AppShell` + サイドバー（desktop md+）+ モバイル用 `Sheet` ナビを導入し、各画面のページ内 nav ボタン（「サークル」「トーナメント」「ストラクチャ」）を撤去。`SoundUnlockBanner` / `SoundToggleButton` から `settingsHref` を廃止し詳細設定はサイドバー「サウンド設定」に集約。`/groups/[gid]` のサークル名変更を Dialog からインライン編集（`requestAnimationFrame` focus + select / Esc / 同名 / 空でキャンセル）に置換、`AuthBadge` をゲストのみ表示に整理しサークル切替を撤去。`/live` は fullscreen pattern でサイドバー非表示。schema / Firestore Rules 変更なし、純 UI / a11y 改善 | complete | - | 4.12 | local review: [local-phase-4.13-nav-sound-review.md](../reviews/local-phase-4.13-nav-sound-review.md)（plan は ad-hoc 改善のため未作成） |
 | 4.14 | Dashboard 受付画面 + サイドバー UX Polish | Phase 4.13 ナビ刷新後のフォローアップ。Dashboard 受付画面の (1) 右列 3 カード（NextBreak / AverageStack / Players）を `setup` でも描画して state 遷移時の grid 跳ねを排除、(2) サウンドトグルクリック後 `refreshGroups()` で UI 即時反映、(3) `deleteTournamentIfSetup` を `deleteTournament` にリネームし `setup` または `finished` で削除可能化（players / tables sub-collection を `writeBatch` で cascade 削除）、(4) ヘッダの「一覧へ戻る」ボタンと raw state バッジを廃止、(5) 「全画面表示」を `/live` 遷移から **Fullscreen API トグル** に置換。サイドバーは「サークル一覧」「トーナメント一覧」に rename し、「トーナメント一覧」配下に開催中（`seating`/`running`/`paused`）トーナメントを `subscribeTournamentsByGroup` で realtime 表示。Firestore schema / rules 変更なし | complete | - | 4.13 | [completed/phase-4.14-dashboard-and-nav-polish.plan.md](../plans/completed/phase-4.14-dashboard-and-nav-polish.plan.md) — 実装レポート: [phase-4.14-dashboard-and-nav-polish-report.md](../reports/phase-4.14-dashboard-and-nav-polish-report.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12, 4.13, 4.14（4.10 はオプション扱いで blocker 外） | - |
+| 4.15 | Header Slot 機構 + Timer Controls 統合 (Post-4.14 Polish) | Phase 4.14 後のフォローアップ。グローバルヘッダの中央 title slot 機構（`PageTitleProvider` / `usePageTitle` / `PageTitleSlot`）を新設し dashboard でトーナメント名をヘッダ中央に表示、Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル・`ConnectionBadge`（同期中バッジ）を `TimerControls` 右側に統合してコントロール 1 列化、`ConnectionBadge` に縦組み variant、`QrPanel` にレイトレジスト Lv 補助情報、E2E Page Object を新位置へ追従。**schema / Firestore Rules / repository / hook / AppError ドメインコード完全不変**。plan は ad-hoc 改善のため未作成、local review で品質ゲート（Phase 4.13 と同方針） | complete | with 4.10 | 4.14 | local review: TBD（plan は ad-hoc 改善のため未作成） |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12, 4.13, 4.14, 4.15（4.10 は持ち越しのため blocker 外） | - |
 
 ### Phase Details
 
@@ -520,6 +521,25 @@
   - サイドバーの文言が「サークル一覧」「トーナメント一覧」となり、開催中トーナメント作成 → 約 1 秒以内にサブリンクが realtime 表示・ステート遷移で消失
   - typecheck / lint / test / build が green、E2E 全 spec pass
 
+**Phase 4.15: Header Slot 機構 + Timer Controls 統合 (Post-4.14 Polish)**
+- **Goal**: Phase 4.14 後のフォローアップ。グローバルヘッダにページ固有タイトル / 操作 slot を提供する仕組みを導入し、dashboard 上段の重複表示と独自ヘッダ実装を整理する。同時に Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル・接続状態バッジを `TimerControls` 内に統合してタイマー周辺の操作集約を完成させる。**schema / Firestore Rules / repository / hook 完全不変**で純 UI / レイアウト改善に閉じる
+- **背景**: Phase 4.13（AppShell + サイドバー）+ Phase 4.14（受付画面 grid・Fullscreen API・サブナビ）でナビと dashboard 機能は揃ったが、(1) グローバルヘッダの中央領域が空のままで dashboard 側にトーナメント名を別途配置していた、(2) Fullscreen ボタン / 同期中バッジが TimerControls とは別位置に散在し視線移動が大きい、(3) `ConnectionBadge` が横長で領域を圧迫、(4) 受付運用時にレイトレジスト締切 Lv が QR 周りから一目で読み取れない、というレビュー所見が出揃った
+- **Scope**:
+  - **グローバルヘッダ Page Title Slot 機構**: [src/components/nav/page-title.tsx](../../../src/components/nav/page-title.tsx) を新設。`PageTitleProvider` / `usePageTitle(title)` hook / `PageTitleSlot` の 3 構成で、各ページが mount 中に呼ぶだけでヘッダ中央にタイトルを表示、unmount 時に自動クリア。`setTitle` 参照は `useCallback` で安定化し消費側 `useEffect` の deps に乗せても再実行を起こさない
+  - **layout.tsx でのヘッダ slot 化**: 既存 `<header>` 内に `<PageTitleSlot />` を中央配置、`PageTitleProvider` を `AppShell` 配下にラップ
+  - **dashboard でのトーナメント名ヘッダ表示**: `dashboard-client.tsx` から `usePageTitle(tournament.name)` を呼んで dashboard 内ヘッダのトーナメント名表記を撤去、ヘッダ中央に集約
+  - **TimerControls 統合**: Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル（`requestFullscreen` / `exitFullscreen` + `fullscreenchange` listener）と `ConnectionBadge` を `TimerControls` 右側に移動し、タイマー操作・同期状態・全画面切替を 1 行に集約
+  - **ConnectionBadge 縦組み variant**: 縦組み（compact）レイアウト指定を追加し、TimerControls 右端の限られた横幅でも文言が可読に収まるようにする
+  - **QrPanel レイトレジスト Lv 表示**: `QrPanel` に「Late Registration: Lv N まで」（`structureSnapshot.lateRegistrationLevel` 参照）の補助情報を追加。受付運用時に締切が QR と同じカード内で確認できる
+  - **E2E Page Object 追従**: 全画面トグル位置変更（dashboard ヘッダ → TimerControls 内）を `tests/e2e/pages/TournamentsPage.ts` および `tests/e2e/dashboard-polish.spec.ts` の selector に反映
+  - **schema / Firestore Rules / repository / hook / AppError ドメインコード完全不変**（`ui/fullscreen-failed` は Phase 4.14 で導入済み、追加なし）
+- **Success signal**:
+  - dashboard 上段の視線移動が「ヘッダ（トーナメント名 + ナビ）→ TimerControls 集約コントロール → QR / 統計カード」の縦 1 列で完結
+  - 任意のページから `usePageTitle()` を呼ぶだけでヘッダ中央 slot を利用可能（ページ間遷移で残留しない）
+  - Fullscreen トグル / `ConnectionBadge` が TimerControls 右側に統合され、E2E spec が新位置の selector で pass
+  - QR カードからレイトレジスト締切 Lv が一目で読み取れる
+  - typecheck / lint / test / build が green
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -564,7 +584,8 @@
 - Phase 4.12（Dashboard 等高化 & "卓 → Table" rename）は Phase 4.11 完了後に単独実施。**schema / Firestore Rules / hook / repository は完全不変**で純 UI とラベル文字列のみ。Phase 4.10 とは独立で並行可能。AppError ドメインコードと collection / フィールド名は全て維持
 - Phase 4.13（Nav Shell 刷新）は Phase 4.12 完了後に単独実施。**schema / Firestore Rules / repository は完全不変**で AppShell + サイドバー / Sheet 導入と各ページ内 nav ボタン撤去のみ。plan は ad-hoc 改善のため未作成、local review で品質ゲート。Phase 4.10 とは独立で並行可能
 - Phase 4.14（Dashboard 受付画面 + サイドバー UX Polish）は Phase 4.13 のナビ刷新後に単独実施。**schema / Firestore Rules は完全不変**。`deleteTournamentIfSetup` → `deleteTournament` の API 名 rename のみ破壊的（callsite 1 箇所、互換 alias 作らず）。`tournaments.ts` に `subscribeTournamentsByGroup` を additive で新設。`/live` ページは無変更で参加者用フロー / 既存 E2E に影響なし。Phase 4.10 とは独立で並行可能
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 の完了後（**Phase 4.10 は Phase 5 以降の改善候補に持ち越しのため blocker から除外**）
+- Phase 4.15（Post-4.14 Polish）は Phase 4.14 完了後に単独実施。**schema / Firestore Rules / repository / hook 完全不変**で純 UI / レイアウト改善のみ（`PageTitleProvider` / `PageTitleSlot` 新設、`TimerControls` への Fullscreen トグル / `ConnectionBadge` 統合、`QrPanel` レイトレジスト Lv 表示、E2E Page Object 追従）。plan は ad-hoc 改善のため未作成、local review で品質ゲート（Phase 4.13 と同方針）。Phase 4.10 とは独立で並行可能
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 / 4.15 の完了後（**Phase 4.10 は Phase 5 以降の改善候補に持ち越しのため blocker から除外**）
 
 ---
 
