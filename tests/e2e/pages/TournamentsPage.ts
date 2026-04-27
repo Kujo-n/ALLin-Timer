@@ -74,7 +74,8 @@ export class TournamentDashboardPage extends BasePage {
     .getByText(/^(開始前|進行中|一時停止中|終了)$/);
   readonly errorAlert: Locator = this.page.getByRole("alert");
   readonly remainingTime: Locator = this.page.getByLabel("残り時間");
-  // Phase 4.14: ヘッダの「全画面表示」トグルボタン。aria-label は
+  // Phase 4.14: タイマー操作群（TimerControls）内の「全画面表示」トグルアイコンボタン。
+  // 追加要望でヘッダ右上 → サウンドアイコン左横へ移動。aria-label は
   // 「全画面表示」/「全画面表示を解除」で切り替わる（fullscreenchange 連動）。
   readonly fullscreenToggle: Locator = this.page.getByRole("button", {
     name: /^全画面表示(を解除)?$/,

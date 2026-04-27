@@ -8,8 +8,9 @@ import { randomOrganizer, seedOrganizerTournament } from "./fixtures/flows";
  * 既存 spec で未カバーの 3 領域:
  *   1. 受付画面の右列 3 カードが setup 状態でも描画される（grid 列数の固定 + 「一覧へ戻る」と
  *      raw state バッジが消えていること）
- *   2. ヘッダの「全画面表示」トグルボタンが描画される（実 fullscreen の挙動はブラウザ依存
- *      なので aria-label の存在確認に留める）
+ *   2. タイマー操作群の「全画面表示」トグルボタンが描画される（実 fullscreen の挙動は
+ *      ブラウザ依存なので aria-label の存在確認に留める）。Phase 4.14 追加要望で
+ *      旧ヘッダ右上 → サウンドアイコン左横（タイマー直下）に移動済み。
  *   3. 終了済みトーナメントの dashboard から削除できる（rule + cascade はユニットテストで
  *      担保済み。ここは UI フローの導線と /tournaments 側の反映のみ確認）
  *
@@ -59,7 +60,7 @@ test.describe("Phase 4.14: dashboard receipt polish", () => {
     await expect(header.getByText(/^(setup|seating|running|paused|finished)$/)).toHaveCount(0);
   });
 
-  test("ヘッダに『全画面表示』トグルボタンが描画され、aria-label が初期状態で『全画面表示』である", async ({
+  test("タイマー操作群に『全画面表示』アイコンボタンが描画され、aria-label が初期状態で『全画面表示』である", async ({
     page,
     tournamentDashboardPage,
   }) => {
