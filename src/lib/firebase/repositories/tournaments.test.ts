@@ -30,6 +30,7 @@ vi.mock("firebase/firestore", async () => {
     runTransaction: vi.fn(),
     serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
     writeBatch: vi.fn(),
+    increment: vi.fn((n: number) => ({ __op: "increment", n })),
   };
 });
 
@@ -42,6 +43,7 @@ import {
   addDoc,
   getDoc,
   getDocs,
+  increment,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -124,6 +126,7 @@ beforeEach(() => {
   vi.mocked(runTransaction).mockReset();
   vi.mocked(serverTimestamp).mockReturnValue({ __op: "serverTimestamp" } as never);
   vi.mocked(writeBatch).mockReset();
+  vi.mocked(increment).mockReset().mockImplementation(((n: number) => ({ __op: "increment", n })) as never);
 });
 
 describe("createTournament", () => {
@@ -548,24 +551,86 @@ describe("revertLevel", () => {
 });
 
 describe("finishTournament", () => {
-  it("returns silently when already finished", async () => {
+  function mockFinishTransaction(
+    txState: TournamentDoc | null,
+    captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void,
+  ) {
+    vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => txState !== null,
+          id: txState?.id ?? "missing",
+          data: () => (txState ? stripId(txState) : undefined),
+        }),
+        update: vi.fn((ref, patch) =>
+          captureUpdate?.(ref, patch as Record<string, unknown>),
+        ),
+        set: vi.fn(),
+        delete: vi.fn(),
+      };
+      await fn(tx as unknown as Parameters<typeof fn>[0]);
+      return undefined as unknown;
+    });
+  }
+
+  it("returns silently when already finished (no transaction issued)", async () => {
     mockGetTournament(makeTournament({ state: "finished" }));
     await finishTournament("t1", "u1", ["g1"]);
-    expect(updateDoc).not.toHaveBeenCalled();
+    expect(runTransaction).not.toHaveBeenCalled();
   });
 
-  it("writes finished state with finishedAt server timestamp", async () => {
-    mockGetTournament(makeTournament({ state: "running" }));
+  it("writes finished state and increments group counter atomically via runTransaction", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    const updates: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(
+      makeTournament({ state: "running", groupId: "g1" }),
+      (ref, patch) => updates.push([ref, patch]),
+    );
+
     await finishTournament("t1", "u1", ["g1"]);
-    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
-    expect(payload.state).toBe("finished");
-    expect(payload.finishedAt).toEqual({ __op: "serverTimestamp" });
-    expect(payload.pausedAt).toBeNull();
+
+    expect(updates).toHaveLength(2);
+
+    // 1st update: tournaments/{tid}
+    const tournamentPayload = updates[0][1];
+    expect(tournamentPayload.state).toBe("finished");
+    expect(tournamentPayload.finishedAt).toEqual({ __op: "serverTimestamp" });
+    expect(tournamentPayload.pausedAt).toBeNull();
+
+    // 2nd update: groups/{gid}.finishedTournamentCount = increment(1)
+    const groupPayload = updates[1][1];
+    expect(groupPayload.finishedTournamentCount).toEqual({ __op: "increment", n: 1 });
   });
 
-  it("wraps updateDoc errors", async () => {
+  it("re-reads inside tx and skips increment when another client already finished (race guard)", async () => {
+    // 事前 read（assertCanManage）では running だが、tx 内 read で finished を観測するケース。
+    // 二重 increment を防ぐため update は呼ばれない。
     mockGetTournament(makeTournament({ state: "running" }));
-    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    const txUpdate = vi.fn();
+    mockFinishTransaction(makeTournament({ state: "finished" }), (_ref, patch) =>
+      txUpdate(patch),
+    );
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects when tournament document disappears between assertCanManage and tx", async () => {
+    // tx 内で `snap.exists() === false` を観測したケース。tx 内 throw した AppError は
+    // 既存 code を保持したまま外側に伝播する（AppError.from は AppError 引数を上書きしない）。
+    mockGetTournament(makeTournament({ state: "running" }));
+    mockFinishTransaction(null);
+
+    await expect(finishTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
+      code: "firestore/not-found",
+    });
+  });
+
+  it("wraps runTransaction errors as firestore/write_failed", async () => {
+    mockGetTournament(makeTournament({ state: "running" }));
+    vi.mocked(runTransaction).mockRejectedValueOnce(new Error("perm"));
+
     await expect(finishTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
       code: "firestore/write_failed",
     });

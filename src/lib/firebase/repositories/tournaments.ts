@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   onSnapshot,
   query,
   runTransaction,
@@ -348,6 +349,13 @@ export async function revertLevel(tid: string, uid: string, userGroupIds: string
   }
 }
 
+/**
+ * トーナメントを終了する（state: * → finished）。
+ *  - Phase 4.16: tournament の state 更新と group の `finishedTournamentCount` インクリメントを
+ *    runTransaction で atomic に行う。tx 内で state を再 read することで、
+ *    複数端末が同時に呼んだ場合でも片方だけが increment し、二重カウントを防ぐ。
+ *  - 事前 read で finished を観測した場合は tx を起こさず早期 return（read コスト節約）。
+ */
 export async function finishTournament(
   tid: string,
   uid: string,
@@ -356,13 +364,29 @@ export async function finishTournament(
   const t = await assertCanManage(tid, userGroupIds);
   if (t.state === "finished") return;
   try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      state: "finished",
-      finishedAt: serverTimestamp(),
-      pausedAt: null,
-      updatedAt: serverTimestamp(),
+    await runTransaction(firestore, async (tx) => {
+      const ref = doc(tournamentsRef, tid);
+      const snap = await tx.get(ref);
+      if (!snap.exists()) {
+        throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+      }
+      const cur: TournamentDoc = { id: snap.id, ...snap.data() };
+      if (cur.state === "finished") {
+        // 別端末が先に確定済み。二重 increment を避けるため no-op で抜ける。
+        logger.info("tournament finish skipped (race)", { tid, uid });
+        return;
+      }
+      tx.update(ref, {
+        state: "finished",
+        finishedAt: serverTimestamp(),
+        pausedAt: null,
+        updatedAt: serverTimestamp(),
+      });
+      tx.update(doc(firestore, "groups", cur.groupId), {
+        finishedTournamentCount: increment(1),
+      });
     });
-    logger.info("tournament finish ok", { tid, uid });
+    logger.info("tournament finish ok", { tid, uid, gid: t.groupId });
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "終了処理に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
