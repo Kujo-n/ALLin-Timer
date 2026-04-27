@@ -49,6 +49,7 @@ export async function createGroup(
       memberUids: [input.ownerUid],
       memberDisplayNames,
       audioSettings: DEFAULT_AUDIO_SETTINGS,
+      finishedTournamentCount: 0,
       createdAt: serverTimestamp(),
       joinCodeId: null,
     });
@@ -228,6 +229,37 @@ export async function updateAudioSettings(
       e,
       "firestore/write_failed",
       "サウンド設定の更新に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, gid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4.16: groups/{gid}.finishedTournamentCount を任意の非負整数値で上書きする（手動修正経路）。
+ *   - 自動 +1 経路は finishTournament() 内の runTransaction + increment(1) で別途行う
+ *     （tx 内で tournament の state を再 read し、二重 increment race を防止）。
+ *   - rule は organizer 以上の場合のみ許可し、affectedKeys を 'finishedTournamentCount' のみに限定。
+ *   - 値の範囲（>= 0 / int）も rule + 本関数の事前チェックで二重防御。
+ */
+export async function updateFinishedTournamentCount(
+  gid: string,
+  value: number,
+): Promise<void> {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new AppError(
+      "開催数は 0 以上の整数で指定してください",
+      "validation/finished-count-invalid",
+    );
+  }
+  try {
+    await updateDoc(groupDocRef(gid), { finishedTournamentCount: value });
+    logger.info("group finishedTournamentCount updated", { gid, value });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "開催数の更新に失敗しました",
     );
     logger.warn(wrapped.message, { code: wrapped.code, gid });
     throw wrapped;

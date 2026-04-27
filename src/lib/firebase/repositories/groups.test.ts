@@ -39,6 +39,7 @@ import {
   createGroup,
   removeMemberSelf,
   updateAudioSettings,
+  updateFinishedTournamentCount,
   updateGroupRoles,
 } from "./groups";
 
@@ -136,6 +137,36 @@ describe("updateAudioSettings", () => {
         volume: 0.5,
       }),
     ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
+describe("updateFinishedTournamentCount", () => {
+  it("calls updateDoc with the given non-negative int", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateFinishedTournamentCount("g1", 12);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ finishedTournamentCount: 12 });
+  });
+
+  it("rejects negative values with validation code", async () => {
+    await expect(updateFinishedTournamentCount("g1", -1)).rejects.toMatchObject({
+      code: "validation/finished-count-invalid",
+    });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-integer values with validation code", async () => {
+    await expect(updateFinishedTournamentCount("g1", 1.5)).rejects.toMatchObject({
+      code: "validation/finished-count-invalid",
+    });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("wraps updateDoc errors as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(updateFinishedTournamentCount("g1", 5)).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
   });
 });
 
