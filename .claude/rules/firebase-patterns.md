@@ -46,6 +46,15 @@ Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層�
 - 新規 collection 追加時は必ず deny ルールから書き始める
 - `where("field", "==") + orderBy("other")` のクエリは Firestore 複合インデックスが必要。規模が小さい場合は **client 側ソート** を採用して index 追加を回避する設計を優先（詳細は [converters.ts](src/lib/firebase/converters.ts) / `repositories/*.ts` の `listMyXxx` パターン参照）
 
+## 単一フィールドの書込経路を限定するルール（Phase 4.16〜）
+
+`groups/{gid}.finishedTournamentCount`（終了トーナメント累計数）の更新は**以下 2 経路に限定**する。それ以外の場所で書込んでいる箇所があれば違反:
+
+- 自動 +1 — `finishTournament()` の `runTransaction + increment(1)`（[repositories/tournaments.ts](../../src/lib/firebase/repositories/tournaments.ts)）。tx 内で `state !== "finished"` を再 read し、複数端末同時呼び出しでも二重 increment しない
+- 手動修正 — `setFinishedTournamentCount({ gid, uid, value })`（service） → `updateFinishedTournamentCount(gid, value)`（repository）
+
+rule 側でも `affectedKeys().hasOnly(['finishedTournamentCount'])` + `is int` + `>= 0` で他フィールド汚染を deny する（[firestore.rules](../../firestore.rules) の groups update 末尾分岐）。
+
 ## Phase 2.5 以降の注意: `get()` による参照は rule read を消費
 
 - Security rule 内の `get(/documents/...)` は **1 回の評価につき Firestore の読取クォータを 1 件消費**する

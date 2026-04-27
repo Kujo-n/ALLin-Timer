@@ -11,10 +11,16 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / createdAt / **joinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / createdAt / **joinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
+  - `finishedTournamentCount`（Phase 4.16 追加）: 当該サークルで `state="finished"` に遷移したトーナメントの累計数。
+    自動経路は `finishTournament()` の runTransaction で `increment(1)`（tx 内で `state !== "finished"` を
+    再 read することで複数端末同時呼び出し時の二重 increment race を防止）、手動経路はサークル詳細画面の
+    inline edit（owner / organizer 限定）。新規作成画面のデフォルト名連番（`[サークル名]トーナメント-X`）に使用。
+    rule は organizer 以上の任意の非負整数値書換を許可（任意フィールド変更は deny）。空書込攻撃のリスクは
+    [既知のセキュリティリスク](#既知のセキュリティリスク) 参照。
 - `groupJoinCodes/{code}` — gid / expiresAt / maxUses / usedCount
 - `users/{uid}.groupIds` — 逆引き
 - `structures/{sid}` / `tournaments/{tid}` — `groupId` + `createdByUid`
@@ -58,6 +64,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | tournaments/players create（自分の参加） | ○ | ○ | ○ |
 | tournaments/players bust / seat（他人） | ○ | ○ | × |
 | tournaments/players self-delete | ○ | ○ | ○ |
+| 開催数（`finishedTournamentCount`）の参照 | ○ | ○ | ○ |
+| 開催数（`finishedTournamentCount`）の修正 | ○ | ○ | × |
 
 ## ロール遷移
 
@@ -99,6 +107,26 @@ Phase 4.6.1 で `groupJoinCodes` の `allow read` は `get` に限定（list 禁
 3. 代替案として、招待コードを「単一回使用 + クライアント発行」ではなく「サーバ生成・短命 token」モデルに変更する選択肢もある
 
 **判定基準**: `maxUses` を運営者 UI から設定できるようになった時点で対策必須。デフォルトの `maxUses: null` 利用に留まる限りは遅延可。
+
+### `finishedTournamentCount` の任意値書換による嫌がらせ（Phase 4.16〜）
+
+organizer 権限を持つメンバーは `setFinishedTournamentCount` 経由で counter を任意の非負整数値に書き換えできる（rule は `>= 0 の int` のみ許可、任意フィールド変更は deny）。影響範囲は新規作成画面のトーナメント名デフォルト連番のみで、permission / billing / 集計など他のロジックには波及しない。
+
+**緩和**: organizer は既に CRUD 全般を持つ信頼ロールのため、嫌がらせによる実害は無視できる。完全に rule で塞ぐには Cloud Functions 化（`finishTournament` / `setFinishedTournamentCount` を Callable 化し、クライアントから groups.update を deny に戻す）が必要。Phase 5+ で counter を他用途に流用する際は再評価する。
+
+### Phase 4.16 で修復: self-* update 分岐の `affectedKeys` 抜けによる任意フィールド改竄
+
+Phase 4.16 のエミュレータ検証で発覚し、同 phase で修復した既存の rule 設計欠陥:
+
+`groups/{gid}` の **self-add（招待コード加入）/ self-leave / self-key memberDisplayNames update** の 3 分岐は、Phase 4.7 時点では「`name == before` / `ownerUids == before` / …」と個別フィールドの不変性をホワイトリストで列挙していたが、**ドキュメント全体の `affectedKeys` を制約していなかった**。このため Phase 4.9 で `audioSettings`、Phase 4.16 で `finishedTournamentCount` が追加された後、**任意の member が**例えば `setMemberDisplayName` の no-op を装って `audioSettings` / `finishedTournamentCount` を改竄できる経路が成立していた（self-key 分岐の `memberDisplayNames.diff().affectedKeys().hasOnly([uid])` は空集合に対して true を返すため、map 自体を変更しない write でも分岐が allow した）。
+
+Phase 4.16 で 3 分岐すべてに `request.resource.data.diff(resource.data).affectedKeys().hasOnly([...])` を追加し、許可される変更フィールドを以下に限定（[firestore.rules](../../firestore.rules) 参照）:
+
+- self-add: `['memberUids', 'organizerUids', 'joinCodeId', 'memberDisplayNames']`
+- self-leave: `['memberUids', 'organizerUids', 'memberDisplayNames']`
+- self-key memberDisplayNames update: `['memberDisplayNames']`
+
+これにより、今後 `groups/{gid}` に新フィールドが追加されても、明示的に許可しない限り self-* 経路から改竄できない設計となる。エミュレータ検証は [scripts/test-rules-finished-count.mjs](../../scripts/test-rules-finished-count.mjs) を `firebase emulators:exec` から起動して実施する（`firebase` CLI が必要）。
 
 ## 参照
 
