@@ -9,6 +9,7 @@ import {
   groupDocRef,
   removeMemberSelf,
   setMemberDisplayName,
+  updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
@@ -185,6 +186,12 @@ function assertOwner(group: GroupDoc, uid: string): void {
   }
 }
 
+function assertOrganizer(group: GroupDoc, uid: string): void {
+  if (!group.organizerUids.includes(uid)) {
+    throw new AppError("運営のみ実行できます", "group/not-organizer");
+  }
+}
+
 /**
  * group から脱退する。最後のオーナーは脱退不可（先に別メンバーをオーナーに昇格 or group 削除）。
  * owner が残るケース（`ownerUids.length >= 2`）では owner 自身も脱退可能。
@@ -275,6 +282,32 @@ export async function renameGroup({
   const group = await getGroup(gid);
   assertOwner(group, uid);
   await updateGroupName(gid, trimmed);
+}
+
+/**
+ * Phase 4.16: 開催数（finishedTournamentCount）を手動補正する。owner / organizer 限定。
+ *   サークル詳細画面の inline edit から呼ばれる想定。
+ *   rule 側でも organizer-only branch で再 enforce する。
+ */
+export async function setFinishedTournamentCount({
+  gid,
+  uid,
+  value,
+}: {
+  gid: string;
+  uid: string;
+  value: number;
+}): Promise<void> {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new AppError(
+      "開催数は 0 以上の整数で指定してください",
+      "validation/finished-count-invalid",
+    );
+  }
+  const group = await getGroup(gid);
+  assertOrganizer(group, uid);
+  await updateFinishedTournamentCount(gid, value);
+  logger.info("setFinishedTournamentCount ok", { gid, uid, value });
 }
 
 /**

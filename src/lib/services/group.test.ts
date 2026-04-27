@@ -31,6 +31,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   removeMemberSelf: vi.fn(),
   deleteGroup: vi.fn(),
   setMemberDisplayName: vi.fn(),
+  updateFinishedTournamentCount: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
@@ -62,6 +63,7 @@ import {
   getGroup,
   removeMemberSelf,
   setMemberDisplayName,
+  updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
@@ -84,6 +86,7 @@ import {
   promoteToOwner,
   propagateDisplayNameToGroups,
   renameGroup,
+  setFinishedTournamentCount,
 } from "./group";
 
 const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
@@ -107,6 +110,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
       winnerSoundId: "default:victory-chime",
       volume: 0.7,
     },
+    finishedTournamentCount: 0,
     createdAt: now,
     ...overrides,
   };
@@ -133,6 +137,7 @@ beforeEach(() => {
   vi.mocked(updateGroupName).mockReset();
   vi.mocked(updateGroupRoles).mockReset();
   vi.mocked(setMemberDisplayName).mockReset();
+  vi.mocked(updateFinishedTournamentCount).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
@@ -402,6 +407,68 @@ describe("renameGroup", () => {
     await renameGroup({ gid: "g1", uid: "u-owner", name: "  New name  " });
 
     expect(updateGroupName).toHaveBeenCalledWith("g1", "New name");
+  });
+});
+
+describe("setFinishedTournamentCount", () => {
+  it("allows owner to set value", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(updateFinishedTournamentCount).mockResolvedValue();
+
+    await setFinishedTournamentCount({ gid: "g1", uid: "uOwner", value: 8 });
+
+    expect(updateFinishedTournamentCount).toHaveBeenCalledWith("g1", 8);
+  });
+
+  it("allows organizer to set value", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner", "uOrg"],
+        memberUids: ["uOwner", "uOrg"],
+      }),
+    );
+    vi.mocked(updateFinishedTournamentCount).mockResolvedValue();
+
+    await setFinishedTournamentCount({ gid: "g1", uid: "uOrg", value: 3 });
+
+    expect(updateFinishedTournamentCount).toHaveBeenCalledWith("g1", 3);
+  });
+
+  it("rejects general member with group/not-organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner", "uMember"],
+      }),
+    );
+    await expect(
+      setFinishedTournamentCount({ gid: "g1", uid: "uMember", value: 5 }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(updateFinishedTournamentCount).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative value with validation code (without reading group)", async () => {
+    await expect(
+      setFinishedTournamentCount({ gid: "g1", uid: "uOwner", value: -1 }),
+    ).rejects.toMatchObject({ code: "validation/finished-count-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateFinishedTournamentCount).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-integer with validation code (without reading group)", async () => {
+    await expect(
+      setFinishedTournamentCount({ gid: "g1", uid: "uOwner", value: 1.5 }),
+    ).rejects.toMatchObject({ code: "validation/finished-count-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateFinishedTournamentCount).not.toHaveBeenCalled();
   });
 });
 
