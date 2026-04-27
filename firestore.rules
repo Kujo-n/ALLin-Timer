@@ -96,7 +96,12 @@ service cloud.firestore {
         // Phase 4.7: memberDisplayNames にも自分の entry を追加可能（他人の entry は不変）。
         //   値は 1〜15 文字の string に制限（UI 側のスマホ 1 行表示可能長に揃える）。
         //   diff 比較は両辺 .get(..., {}) で legacy doc（フィールド無し）でも evaluate 可能にする。
+        // Phase 4.16: 全体の affectedKeys を `memberUids` / `organizerUids` / `joinCodeId` /
+        //   `memberDisplayNames` のみに限定する。これがないと、招待コード経由の加入時に
+        //   audioSettings / finishedTournamentCount など他フィールドも同時改竄できてしまう。
         isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['memberUids', 'organizerUids', 'joinCodeId', 'memberDisplayNames'])
         && !(request.auth.uid in resource.data.memberUids)
         && request.auth.uid in request.resource.data.memberUids
         && !(request.auth.uid in request.resource.data.organizerUids)
@@ -122,7 +127,11 @@ service cloud.firestore {
         // （これを怠ると、自己脱退を偽装して他の organizer を降格できてしまう）。
         // Phase 4.7: memberDisplayNames からも自分の entry を削除する（他人の entry は不変）。
         //   両辺 .get(..., {}) で包むことで legacy doc（フィールド無し）でも deleteField() が通る。
+        // Phase 4.16: 全体の affectedKeys を `memberUids` / `organizerUids` / `memberDisplayNames`
+        //   のみに限定（脱退時の同時 audioSettings / finishedTournamentCount 改竄を阻止）。
         isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['memberUids', 'organizerUids', 'memberDisplayNames'])
         && request.auth.uid in resource.data.memberUids
         && !(request.auth.uid in resource.data.ownerUids)
         && !(request.auth.uid in request.resource.data.memberUids)
@@ -154,7 +163,11 @@ service cloud.firestore {
         //   他フィールドは全て immutable にチェックし、map の差分は auth.uid キーに限定する。
         //   値は 1〜15 文字の string に制限（self-add と同じ）。
         //   両辺 .get(..., {}) で legacy doc 互換。
+        // Phase 4.16: 全体の affectedKeys を `memberDisplayNames` のみに限定する。これがないと、
+        //   memberDisplayNames を no-op にしつつ audioSettings / finishedTournamentCount などの
+        //   他フィールドを member 権限で改竄できてしまう（emulator validation で検出）。
         isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberDisplayNames'])
         && request.auth.uid in resource.data.memberUids
         && request.resource.data.memberUids == resource.data.memberUids
         && request.resource.data.organizerUids == resource.data.organizerUids
@@ -178,6 +191,19 @@ service cloud.firestore {
         isOrganizer(gid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['audioSettings'])
         && request.resource.data.audioSettings is map
+      ) || (
+        // Phase 4.16: organizer による finishedTournamentCount の任意の非負整数値書換。
+        //   2 経路で発火:
+        //     (1) finishTournament() の runTransaction で `increment(1)`（旧値+1、二重 increment race を tx で防止）
+        //     (2) サークル詳細画面 inline edit で任意の非負整数値（手動補正）
+        //   どちらも affectedKeys は 'finishedTournamentCount' のみに限定。他フィールドは触らせない。
+        //   `+1 限定` にせず `>= 0 の int` まで広げているのは (2) の手動補正用途を rule 側で塞がないため。
+        //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['finishedTournamentCount'])
+        && request.resource.data.finishedTournamentCount is int
+        && request.resource.data.finishedTournamentCount >= 0
       );
 
       allow delete: if isSignedIn()
