@@ -36,6 +36,7 @@ import {
   promoteToOrganizer,
   promoteToOwner,
   renameGroup,
+  setFinishedTournamentCount,
 } from "@/lib/services/group";
 
 type MemberLine = { uid: string; displayName: string; missing: boolean };
@@ -76,6 +77,9 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [renameValue, setRenameValue] = useState("");
   const [editingName, setEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const [editingCount, setEditingCount] = useState(false);
+  const [countValue, setCountValue] = useState<string>("0");
+  const countInputRef = useRef<HTMLInputElement | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [working, setWorking] = useState(false);
@@ -140,6 +144,11 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Phase 4.16: group が読込／reload されたら開催数 input の表示値を同期する。
+  useEffect(() => {
+    if (group) setCountValue(String(group.finishedTournamentCount ?? 0));
+  }, [group]);
 
   if (!user) return null;
 
@@ -217,6 +226,47 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   function cancelEditingName() {
     setEditingName(false);
     setRenameValue(group?.name ?? "");
+  }
+
+  function startEditingCount() {
+    if (!group) return;
+    setCountValue(String(group.finishedTournamentCount ?? 0));
+    setEditingCount(true);
+    requestAnimationFrame(() => {
+      countInputRef.current?.focus();
+      countInputRef.current?.select();
+    });
+  }
+
+  function cancelEditingCount() {
+    setEditingCount(false);
+    setCountValue(String(group?.finishedTournamentCount ?? 0));
+  }
+
+  async function onSaveCount(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !group) return;
+    const parsed = Number(countValue);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      setError("validation/finished-count-invalid: 開催数は 0 以上の整数で指定してください");
+      return;
+    }
+    if (parsed === (group.finishedTournamentCount ?? 0)) {
+      setEditingCount(false);
+      return;
+    }
+    setWorking(true);
+    try {
+      await setFinishedTournamentCount({ gid, uid: user.uid, value: parsed });
+      setEditingCount(false);
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const wrapped = AppError.from(e, "group/finished-count-failed", "開催数の更新に失敗しました");
+      setError(`${wrapped.code}: ${wrapped.message}`);
+    } finally {
+      setWorking(false);
+    }
   }
 
   async function onLeave() {
@@ -352,6 +402,69 @@ export function GroupDetailClient({ gid }: { gid: string }) {
           )}
         </div>
       </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>開催数</CardTitle>
+          <CardDescription>
+            終了したトーナメントの累計数。新規作成画面のデフォルト名連番に使用されます。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isOrganizer && editingCount ? (
+            <form onSubmit={onSaveCount} className="flex flex-wrap items-center gap-2">
+              <Input
+                ref={countInputRef}
+                type="number"
+                min={0}
+                step={1}
+                value={countValue}
+                onChange={(e) => setCountValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelEditingCount();
+                  }
+                }}
+                aria-label="開催数"
+                disabled={working}
+                className="h-10 w-32 text-base"
+              />
+              <span className="text-sm text-muted-foreground">回</span>
+              <Button type="submit" size="sm" disabled={working}>
+                {working ? "保存中…" : "保存"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={cancelEditingCount}
+                disabled={working}
+              >
+                キャンセル
+              </Button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="text-base">
+                終了したトーナメント:{" "}
+                <span className="font-semibold">{group.finishedTournamentCount ?? 0}</span> 回
+              </p>
+              {isOrganizer ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={startEditingCount}
+                  aria-label="開催数を修正"
+                >
+                  <Pencil className="h-4 w-4" aria-hidden /> 修正
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
