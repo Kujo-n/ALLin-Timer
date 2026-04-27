@@ -1,8 +1,9 @@
 "use client";
 
-import { Pause, Play, SkipBack, SkipForward, Square } from "lucide-react";
+import { Maximize, Minimize, Pause, Play, SkipBack, SkipForward, Square } from "lucide-react";
 import { useState } from "react";
 
+import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { SoundToggleButton } from "@/components/tournament/SoundToggleButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,23 @@ interface Props {
     onUnlock: () => Promise<void>;
     onToggleEnabled: (next: boolean) => Promise<void>;
   };
+  /**
+   * Phase 4.14 追加要望: 全画面表示トグルをサウンドアイコンの左横に配置するため、
+   * dashboard が保持する fullscreen 状態をアイコン化して持ち込む。undefined の場合は
+   * 表示しない（/live など fullscreen ボタンを出さないコンテキスト用）。
+   */
+  fullscreen?: {
+    isFullscreen: boolean;
+    onToggle: () => void;
+  };
+  /**
+   * Phase 4.14 追加要望: 「同期中」ConnectionBadge を全画面アイコンの左に配置する。
+   * undefined の場合は表示しない。
+   */
+  connection?: {
+    fromCache: boolean;
+    lastSyncAt: number | null;
+  };
   onError?: (message: string) => void;
 }
 
@@ -67,6 +85,8 @@ export function TimerControls({
   tournament,
   players,
   audio,
+  fullscreen,
+  connection,
   onError,
 }: Props) {
   const [busy, setBusy] = useState<Op | null>(null);
@@ -89,11 +109,43 @@ export function TimerControls({
   const isLast = tournament.currentLevel >= tournament.structureSnapshot.levels.length;
   const isFirst = tournament.currentLevel <= 1;
 
+  // 共通: 全画面表示トグル（アイコンのみ）。
+  //   各 state のボタン群の先頭に置くことで、running/paused のサウンドアイコン左に
+  //   並ぶレイアウトを実現する。fullscreen prop が未指定なら描画しない。
+  const fullscreenButton = fullscreen ? (
+    <Button
+      variant="outline"
+      className="h-10 w-10 p-0"
+      aria-label={fullscreen.isFullscreen ? "全画面表示を解除" : "全画面表示"}
+      onClick={fullscreen.onToggle}
+    >
+      {fullscreen.isFullscreen ? (
+        <Minimize aria-hidden className="h-5 w-5" />
+      ) : (
+        <Maximize aria-hidden className="h-5 w-5" />
+      )}
+    </Button>
+  ) : null;
+
+  // 共通: 「同期中」バッジ。fullscreen ボタンの左に並べるため、各 state の先頭に
+  // fullscreenButton より前に挿入する。connection 未指定の場合は表示しない。
+  // running/paused では「再生アイコンをタイマー中央に揃える」ため横幅を抑える 2 行
+  // (stacked) レイアウトに切り替える。
+  const connectionBadge = connection ? (
+    <ConnectionBadge
+      fromCache={connection.fromCache}
+      lastSyncAt={connection.lastSyncAt}
+      layout="stacked"
+    />
+  ) : null;
+
   if (tournament.state === "setup") {
     const activeCount = players.filter((p) => !p.isBusted).length;
     const alreadyJoined = players.some((p) => p.uid === uid);
     return (
       <div className="flex flex-wrap items-center justify-center gap-2">
+        {connectionBadge}
+        {fullscreenButton}
         <Button
           size="sm"
           disabled={busy !== null || activeCount === 0}
@@ -139,6 +191,8 @@ export function TimerControls({
     const activeCount = players.filter((p) => !p.isBusted).length;
     return (
       <div className="flex flex-wrap items-center justify-center gap-2">
+        {connectionBadge}
+        {fullscreenButton}
         <Button
           size="sm"
           disabled={busy !== null || activeCount === 0}
@@ -175,7 +229,9 @@ export function TimerControls({
 
   if (tournament.state === "finished") {
     return (
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {connectionBadge}
+        {fullscreenButton}
         <Button size="sm" disabled>
           終了済み
         </Button>
@@ -184,14 +240,25 @@ export function TimerControls({
   }
 
   // running / paused
-  // 順序: サウンド On/Off → 前レベル → 再生/一時停止 → 次レベル → 終了
+  // Phase 4.14 追加要望:
+  //   - 再生 / 一時停止アイコンを TimerDisplay の中央と水平に揃える。
+  //   - そのため [サウンド, 前, 再生/停止, 次, 終了] の 5 アイコンを `justify-center`
+  //     で中央配置し、再生アイコン（中央 = 3 つ目）が常に視覚的中央に来るようにする。
+  //   - 全画面アイコンは中央群を押し出さないよう sm+ で `absolute left-0` に固定。
+  //   - 同期中バッジは「終了ボタン右」の位置に置きたいので sm+ で `absolute right-0` に固定。
+  //   狭幅では両方 flow-in で中央群の上下に折り返し配置される。
   // ボタンはアイコン表示（aria-label でラベルを補完）。
   // 横方向はアイコン 1 個分（40px = gap-10）の間隔をあけて誤タップを防ぐ。
   // 縦方向（折り返し時）は gap-y-3 で詰めて占有面積を抑える。
   const iconBtnCls = "h-10 w-10 p-0";
   const isRunning = tournament.state === "running";
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+    <div className="relative flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+      {fullscreenButton ? (
+        <div className="flex items-center sm:absolute sm:left-0 sm:top-1/2 sm:-translate-y-1/2">
+          {fullscreenButton}
+        </div>
+      ) : null}
       {audio ? (
         <SoundToggleButton
           enabled={audio.enabled}
@@ -257,6 +324,12 @@ export function TimerControls({
       >
         <Square aria-hidden className="h-5 w-5" />
       </Button>
+
+      {connectionBadge ? (
+        <div className="flex items-center sm:absolute sm:right-0 sm:top-1/2 sm:-translate-y-1/2">
+          {connectionBadge}
+        </div>
+      ) : null}
 
       <Dialog open={finishConfirmOpen} onOpenChange={setFinishConfirmOpen}>
         <DialogContent>
