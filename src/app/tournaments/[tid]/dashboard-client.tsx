@@ -1,14 +1,13 @@
 "use client";
 
-import { Maximize, Minimize } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
-import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { NextBreakCard } from "@/components/tournament/NextBreakCard";
 import { PlayerList } from "@/components/tournament/PlayerList";
 import { PlayersCard } from "@/components/tournament/PlayersCard";
@@ -72,6 +71,11 @@ export function DashboardClient({ tid }: { tid: string }) {
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDoc[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Phase 4.14 追加要望: トーナメント名を AppRoot のグローバルヘッダ（「ALLin-PokerTimer」
+  // と同じ行）の中央 slot に出す。data ロード前は null（slot 非表示）。
+  // 早期 return より前に呼び、hook 呼び出し順を一定に保つ。
+  usePageTitle(data?.name ?? null);
 
   // Phase 4.14: Fullscreen API でブラウザ chrome を非表示にして同 dashboard を全画面化する。
   //   - `fullscreenchange` を購読して Esc 解除も含めてアイコン状態を同期。
@@ -263,45 +267,29 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-8 lg:max-w-7xl">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">{data.name}</h1>
-            <ConnectionBadge fromCache={fromCache} lastSyncAt={lastSyncAt} />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            レイトレジスト Lv{data.lateEntryDeadlineLevel}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label={isFullscreen ? "全画面表示を解除" : "全画面表示"}
-            onClick={() => {
-              void toggleFullscreen();
-            }}
-          >
-            {isFullscreen ? (
-              <Minimize aria-hidden className="h-4 w-4" />
-            ) : (
-              <Maximize aria-hidden className="h-4 w-4" />
-            )}
-            <span className="ml-1">全画面表示</span>
-          </Button>
-          {canEdit ? (
-            <Link href={`/tournaments/${tid}/edit`}>
-              <Button variant="outline" size="sm">
-                編集
-              </Button>
-            </Link>
-          ) : null}
-          {canDelete ? (
-            <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
-              削除
+      {/*
+        Phase 4.14 追加要望（差分）:
+          - トーナメント名は AppRoot のグローバルヘッダ（「ALLin-PokerTimer」と同じ高さ）の
+            中央スロットへ register 経由で表示する（usePageTitle）。
+          - 旧「レイトレジスト Lv{n}」表示は QrPanel の URL ↔ QR の間に移動。
+          - 「同期中」ConnectionBadge は TimerControls の全画面アイコンの左に移動。
+          - 「全画面表示」アイコンは TimerControls のサウンドアイコンの左に移動。
+        ここのローカル `<header>` は edit / delete ボタンだけを右寄せで保持する。
+        どちらも非表示（running 等）の state ではこのヘッダ行は事実上 0 高さの空行になる。
+      */}
+      <header className="flex flex-wrap justify-end gap-2 empty:hidden">
+        {canEdit ? (
+          <Link href={`/tournaments/${tid}/edit`}>
+            <Button variant="outline" size="sm">
+              編集
             </Button>
-          ) : null}
-        </div>
+          </Link>
+        ) : null}
+        {canDelete ? (
+          <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
+            削除
+          </Button>
+        ) : null}
       </header>
 
       {error ? (
@@ -320,7 +308,11 @@ export function DashboardClient({ tid }: { tid: string }) {
       */}
       <div className={`grid grid-cols-1 gap-4 ${gridColsClass} lg:items-stretch`}>
         <aside className="order-3 lg:order-1">
-          <QrPanel tid={tid} className="h-full" />
+          <QrPanel
+            tid={tid}
+            className="h-full"
+            lateEntryDeadlineLevel={data.lateEntryDeadlineLevel}
+          />
         </aside>
 
         <div className="order-1 flex flex-col gap-4 lg:order-2">
@@ -339,6 +331,13 @@ export function DashboardClient({ tid }: { tid: string }) {
               userGroupIds={groupIds}
               tournament={data}
               players={players}
+              fullscreen={{
+                isFullscreen,
+                onToggle: () => {
+                  void toggleFullscreen();
+                },
+              }}
+              connection={{ fromCache, lastSyncAt }}
               audio={
                 tournamentGroup
                   ? {
