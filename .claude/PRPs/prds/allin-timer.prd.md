@@ -220,7 +220,7 @@
 | 4.7 | Onboarding Polish & Structure Enhancements | Google 新規ログイン時の displayName 設定ダイアログ、匿名参加後のヘッダ displayName 即反映（AuthProvider.refreshUser）、リバイ／アドオン スタック量フィールド追加、平均スタックカード表示、ブレイクレベル（`Level.isBreak`）対応、`groups/{gid}.memberDisplayNames` snapshot 追加（サークル一覧で UID ではなく displayName 表示）、`/tournaments` 一覧の状態別カード色分け。schema は additive、Firestore Rules は groups update に self-key 書込条件を 1 つ追加 | complete | - | 4.6 | [completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md](../plans/completed/phase-4.7-onboarding-polish-structure-enhancements.plan.md) — 実装レポート: [phase-4.7-onboarding-polish-structure-enhancements-report.md](../reports/phase-4.7-onboarding-polish-structure-enhancements-report.md) |
 | 4.8 | Structure Template Library | サークル横断の Structure Templates。`structureTemplates/{tid}` 公開コレクション + `templateAdmins/{uid}` 管理者機構を新設。`/templates` 一覧・作成・編集ページ、`/structures/new` の Firestore 取得 TemplatePicker。作成者名 snapshot、管理者は他人テンプレを削除可。Firestore Rules 追加 + 最初の管理者は Console で手動 seed | complete | - | 4.7 | [completed/phase-4.8-structure-template-library.plan.md](../plans/completed/phase-4.8-structure-template-library.plan.md) — 実装レポート: [phase-4.8-structure-template-library-report.md](../reports/phase-4.8-structure-template-library-report.md) |
 | 4.9 | Audio Notifications (Default Sounds) | ブラインドレベル変更／優勝者確定時の音声再生。`groups/{gid}.audioSettings`（enabled / levelUpSoundId / winnerSoundId / volume）追加、`useAudioPlayer` フック新設、autoplay unlock 明示ボタン、再生はロールベース（owner/organizer のみ）、デフォルト音源 2 種類（blind-up / victory-chime、mp3+ogg）を `public/sounds/` に同梱。Firebase Storage 不使用、schema は additive | complete | - | 4.8 | [completed/phase-4.9-audio-notifications.plan.md](../plans/completed/phase-4.9-audio-notifications.plan.md) — 実装レポート: [phase-4.9-audio-notifications-report.md](../reports/phase-4.9-audio-notifications-report.md) |
-| 4.10 | Audio Notifications (Custom Upload) **[Optional]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Storage 未設定環境でも Phase 4.9 のデフォルト音源で運用継続可能（オプション機能）** | pending | - | 4.9 | - |
+| 4.10 | Audio Notifications (Custom Upload) **[Deferred to Post-Phase 5 改善候補]** | Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、カスタム音源アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能、Storage Rules 追加。Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `default:bell` 以外も受け付けるよう拡張。**Phase 5 のドライラン後にカスタム音源需要が確認できた場合のみ Phase 5.x として正式着手判断**（Phase 5 ブロッカーから除外） | deferred | - | 4.9 | - |
 | 4.11 | Timer Layout & Control Polish | Phase 4.9 投入後のフォローアップ。Live / Dashboard を 3 カラムレイアウト化（左=QR / 中=タイマー / 右=NextBreak / Avg / Players）、StructureSnapshotCard を共通化し /live にも表示、TimerDisplay の SB/BB/Ante 視認性向上、TimerControls をアイコン化＋順序整理＋SoundToggle 統合、終了時タイマーを `finishedAt` 基準で停止、`useAudioPlayer.unlocked` を `useSyncExternalStore` で全コンポーネント同期、`revertLevel`/`advanceLevel` の paused 状態 invariant 修正（pausedAt 再アーム）、`tournament.lastLevelChangeKind` 追加で手動レベル遷移時のサウンド再生をスキップ。schema は additive（`lastLevelChangeKind: "auto"\|"manual"\|null\|undefined`） | complete | - | 4.9 | 実装レポート: [phase-4.11-timer-layout-control-polish-report.md](../reports/phase-4.11-timer-layout-control-polish-report.md) |
 | 4.12 | Dashboard Top-Row Equal-Height & "卓 → Table" Rename | Phase 4.11 後の追加フォローアップ。Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を `lg:items-stretch` で QR 高さに揃え、左右 aside の sticky を廃止、TimerDisplay フォント拡大（残時間 `lg:text-[10rem]` / SB/BB/Ante `lg:text-5xl`）、統計 3 カードのタイトルを `text-base/lg font-semibold text-foreground` 化、user-facing 文言「卓 → Table」を一括リネーム（schema フィールド名・AppError ドメインコードは不変）。Winner / SeatingBoard 等を上段 grid から下段に分離。`/live` は無変更 | complete | with 4.10 | 4.11 | [completed/phase-4.12-dashboard-polish-and-table-rename.plan.md](../plans/completed/phase-4.12-dashboard-polish-and-table-rename.plan.md) — 実装レポート: [phase-4.12-dashboard-polish-and-table-rename-report.md](../reports/phase-4.12-dashboard-polish-and-table-rename-report.md) |
 | 4.13 | Nav Shell 刷新 + サウンド設定導線整理 | グローバルレイアウトに `AppShell` + サイドバー（desktop md+）+ モバイル用 `Sheet` ナビを導入し、各画面のページ内 nav ボタン（「サークル」「トーナメント」「ストラクチャ」）を撤去。`SoundUnlockBanner` / `SoundToggleButton` から `settingsHref` を廃止し詳細設定はサイドバー「サウンド設定」に集約。`/groups/[gid]` のサークル名変更を Dialog からインライン編集（`requestAnimationFrame` focus + select / Esc / 同名 / 空でキャンセル）に置換、`AuthBadge` をゲストのみ表示に整理しサークル切替を撤去。`/live` は fullscreen pattern でサイドバー非表示。schema / Firestore Rules 変更なし、純 UI / a11y 改善 | complete | - | 4.12 | local review: [local-phase-4.13-nav-sound-review.md](../reviews/local-phase-4.13-nav-sound-review.md)（plan は ad-hoc 改善のため未作成） |
@@ -376,8 +376,8 @@
   - autoplay unlock ボタンを押さないと音が鳴らない（ブラウザ仕様準拠）
   - typecheck / lint / test / build が green
 
-**Phase 4.10: Audio Notifications (Custom Upload) [Optional]**
-- **位置付け**: **オプション機能（Storage 未設定環境では実装スキップ可能）**。Phase 4.9 のデフォルト音源だけでも MVP 要件は満たせるため、Phase 4.10 を実装しない場合でもアプリは正常動作する
+**Phase 4.10: Audio Notifications (Custom Upload) [Deferred to Post-Phase 5]**
+- **位置付け**: **Phase 5 以降の改善候補に持ち越し**。Phase 4.9 のデフォルト音源で MVP 要件は満たせており、カスタム音源は付加価値であるため Phase 5 のドライラン前に実装しない。Phase 5 のフィールドテストで運営者ヒアリングを行い、カスタム音源の実需要が確認できた場合のみ Phase 5.x として着手判断する。Storage 未設定環境では引き続き Phase 4.9 のデフォルト音源で運用継続可能
 - **Goal**: サークルが独自の音源（自作・選曲）をアップロードして level-up / winner 通知に使えるようにする。Phase 4.9 の MVP からの自然拡張
 - **背景**: Phase 4.9 は実装シンプル化のためデフォルト音源 1 種固定。フィールドテスト前に「サークルらしさを出したい」「優勝の歓声音を別のものにしたい」要望に応えるためカスタム音源を追加
 - **オプション化の理由**:
@@ -530,6 +530,24 @@
   - 即時修正と次回投入準備
 - **UX 磨き込み候補（Phase 4.5 から繰越）**:
   - `/groups` 一覧カードの「詳細」ボタンを **「開く」** にリネーム（遷移先の意図を強調、Phase 4.5 レビューで判明した「`/groups` と `/groups/[gid]` の役割が一見して分かりづらい」への対応）
+- **機能候補（運営者ヒアリング後に Phase 5.x として実施判断）**:
+  - **カスタム音源アップロード（旧 Phase 4.10 から持ち越し）**
+    - **背景**: Phase 4.9 のデフォルト音源（`level-up.{mp3,ogg}` / `winner.{mp3,ogg}`）で MVP 要件は満たせるが、サークル独自の音源（自作・選曲）への要望は付加価値として残存
+    - **想定 Scope**: Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能。詳細は Phase 4.10 セクションを参照
+    - **判断時期**: Phase 5 のドライラン後の運営者ヒアリングで、デフォルト音源では不足する具体的なシーンを確認してから着手判断。Firebase Storage の有効化（Spark プランで可否要確認 / Blaze プラン許容可否）も合わせて判断する
+  - **マスター機 1 台モード（ネットワーク非依存運用）**
+    - **背景 / 想定シナリオ**: サークルが借りるレンタルスペースに Wi-Fi が無く、運営者がスマートフォンのテザリングも避けたいケースで「PC 1 台だけでトーナメントを完走させたい」という要望
+    - **目的（解釈 A 限定）**: **マスター機自身の画面でブラインド進行と表示が止まらないこと**で十分。参加者の `/live` をオフライン中も同期する要件は範囲外（Firestore はクラウドブローカ型で両端のオンライン必須のため、原理的に Firestore のみでは満たせない）
+    - **現状の素地**:
+      - Firestore SDK の `persistentLocalCache` は既に有効（[src/lib/firebase/client.ts](../../../src/lib/firebase/client.ts) L86-87）
+      - `useTournamentTimer` の `setInterval` はネット切断でも継続動作（[src/lib/hooks/useTournamentTimer.ts](../../../src/lib/hooks/useTournamentTimer.ts) L65-96）
+      - 不足: 「進行担当を 1 台に固定する」仕組みが未実装。現状は組織者ダッシュボードを開いた全員が `advanceLevel` を試みる構造（[src/app/tournaments/[tid]/dashboard-client.tsx](../../../src/app/tournaments/[tid]/dashboard-client.tsx) L64-65）
+    - **Phase 5 で運営者に確認したい論点**:
+      1. 「マスター機」を tournament 単位で 1 台に固定する UX で十分か（dashboard に「このPCをマスターに設定」ボタン）
+      2. オフライン中に蓄積された write を再接続時に flush する挙動を許容するか（複数レベル分の `advanceLevel` 暴発リスク・`serverTimestamp` がオフライン中確定しない問題への対処要否）
+      3. オフライン中、参加者の `/live` 表示が固まることを「明示エラー表示」で許容するか、それとも「Wi-Fi 無し会場では `/live` を提供しない」運用ガイドで割り切るか
+      4. PC 1 台モードと既存の「複数 organizer 端末で冗長化される」現挙動を共存させるか、片方に倒すか
+    - **判断時期**: Phase 5 ドライラン後の運営者ヒアリングで、Wi-Fi 無し会場の発生頻度と回避策（テザリング受容度）を確認してから Phase 5.x として正式着手するか決定
 - **Success signal**: サークル 1 回目の投入でトーナメントが完走し、運営者から継続利用の意思表明を得る
 
 ### Parallelism Notes
@@ -541,12 +559,12 @@
 - Phase 4.7（UX / schema additive）は Phase 4.6 完了後に単独実施。**schema は additive**（zod default / nullable / record default({})）で破壊的 migration 不要。Firestore Rules は groups update に self-key 書込条件を 1 つ追加するのみ（他 collection 変更なし）
 - Phase 4.8（Template Library）は Phase 4.7 完了後に単独実施。**新規 2 collection + Firestore Rules 追加デプロイ**と **Firestore Console での管理者 bootstrap**（`templateAdmins/{uid}` に空 doc 1 件）が必要。Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` に依存するため 4.7 → 4.8 の順で実施
 - Phase 4.9（音声通知 段階1）は Phase 4.8 完了後に単独実施。**schema は additive**（`groups/{gid}.audioSettings` フィールド追加 + zod default で既存 doc を補完）、Firestore Rules は groups update に audioSettings 書込条件を 1 つ追加。Storage 不使用で破壊的 migration なし
-- Phase 4.10（音声通知 段階2）は **オプション機能**。Phase 4.9 完了後、Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
+- Phase 4.10（音声通知 段階2）は **Phase 5 以降の改善候補に持ち越し**。Phase 5 のフィールドテスト後に運営者ヒアリングを経て着手判断する。実装時は Firebase Storage が有効化できる環境（既存 Firebase プロジェクトで Spark のまま Storage 有効化可能、または Blaze プランへのアップグレード許容）でのみ実施。**Firebase Storage 初期導入**（プロジェクト設定 + Storage Rules + `firebase/storage` SDK 追加）と `groups/{gid}/audioAssets` サブコレクション新設が必要。Phase 4.9 の `audioSettings` schema を extend する additive 変更
 - Phase 4.11（タイマー UI/UX フォローアップ）は Phase 4.9 完了後に単独実施。**schema は additive**（`tournaments/{tid}.lastLevelChangeKind` を optional で追加、既存 doc の missing field を許容）。Firestore Rules 変更なし、破壊的 migration なし。Phase 4.10 とは独立で並行可能（互いに別 collection / 別関数を触る）
 - Phase 4.12（Dashboard 等高化 & "卓 → Table" rename）は Phase 4.11 完了後に単独実施。**schema / Firestore Rules / hook / repository は完全不変**で純 UI とラベル文字列のみ。Phase 4.10 とは独立で並行可能。AppError ドメインコードと collection / フィールド名は全て維持
 - Phase 4.13（Nav Shell 刷新）は Phase 4.12 完了後に単独実施。**schema / Firestore Rules / repository は完全不変**で AppShell + サイドバー / Sheet 導入と各ページ内 nav ボタン撤去のみ。plan は ad-hoc 改善のため未作成、local review で品質ゲート。Phase 4.10 とは独立で並行可能
 - Phase 4.14（Dashboard 受付画面 + サイドバー UX Polish）は Phase 4.13 のナビ刷新後に単独実施。**schema / Firestore Rules は完全不変**。`deleteTournamentIfSetup` → `deleteTournament` の API 名 rename のみ破壊的（callsite 1 箇所、互換 alias 作らず）。`tournaments.ts` に `subscribeTournamentsByGroup` を additive で新設。`/live` ページは無変更で参加者用フロー / 既存 E2E に影響なし。Phase 4.10 とは独立で並行可能
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 の完了後（**Phase 4.10 はオプションのため blocker から除外**）
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 の完了後（**Phase 4.10 は Phase 5 以降の改善候補に持ち越しのため blocker から除外**）
 
 ---
 
