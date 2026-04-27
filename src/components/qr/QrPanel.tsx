@@ -8,7 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
 import { buildJoinUrl } from "@/lib/services/qr";
 
-export function QrPanel({ tid, className }: { tid: string; className?: string }) {
+interface Props {
+  tid: string;
+  className?: string;
+  /**
+   * Phase 4.14 追加要望: 受付ダッシュボード側で「参加者向け受付 URL」の下に
+   * レイトレジスト終了レベルを表示するために受け取る。/live など省略可能な
+   * 文脈では undefined で渡さない運用。
+   */
+  lateEntryDeadlineLevel?: number;
+}
+
+export function QrPanel({ tid, className, lateEntryDeadlineLevel }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -51,6 +62,15 @@ export function QrPanel({ tid, className }: { tid: string; className?: string })
         ) : (
           <p className="text-sm text-muted-foreground">URL を生成中…</p>
         )}
+        {/*
+          Phase 4.14 追加要望: レイトレジスト終了レベルは「URL をコピー」ボタンの下に
+          配置する（補助情報として末尾に表示する位置付け）。
+        */}
+        {typeof lateEntryDeadlineLevel === "number" ? (
+          <p className="text-sm text-muted-foreground">
+            レイトレジスト Lv{lateEntryDeadlineLevel}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
