@@ -529,6 +529,66 @@ describe("groupBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // Phase 4.17: defaultSeatsPerTable の additive 追加 — 旧 doc 互換 / 範囲検証
+  it("defaults defaultSeatsPerTable to 9 for legacy docs without the field", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.defaultSeatsPerTable).toBe(9);
+  });
+
+  it("preserves explicit defaultSeatsPerTable in [2..10]", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      defaultSeatsPerTable: 6,
+    });
+    expect(parsed.defaultSeatsPerTable).toBe(6);
+  });
+
+  it("rejects defaultSeatsPerTable below 2", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      defaultSeatsPerTable: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects defaultSeatsPerTable above 10", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      defaultSeatsPerTable: 11,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-integer defaultSeatsPerTable", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      defaultSeatsPerTable: 5.5,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("deriveRole", () => {
@@ -545,6 +605,7 @@ describe("deriveRole", () => {
       volume: 0.7,
     },
     finishedTournamentCount: 0,
+    defaultSeatsPerTable: 9,
     createdAt: now,
   };
 

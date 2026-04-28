@@ -76,6 +76,12 @@ export const groupBodySchema = z
     //   `state !== "finished"` を再 read することで、複数端末同時呼び出しでも +1 のみ進める。
     //   旧 doc（Phase 4.15 以前）は default(0) で受容され、次回終了時に 1 になる。
     finishedTournamentCount: z.number().int().nonnegative().default(0),
+    // Phase 4.17: トーナメント新規作成時の `seatsPerTable` 初期値。サークル詳細画面の inline edit
+    //   から organizer 以上が更新する。値域は src/lib/firebase/schemas/tournament.ts の
+    //   `seatsPerTable.min(2).max(10)` と完全一致させる（DRIFT WARNING: tournaments の
+    //   seatsPerTable / players seatNum 上限 10 と連動。同時に変更）。
+    //   旧 doc（Phase 4.16 以前）は default(9) で受容され、未明示なら 9 として hydrate される。
+    defaultSeatsPerTable: z.number().int().min(2).max(10).default(9),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),
