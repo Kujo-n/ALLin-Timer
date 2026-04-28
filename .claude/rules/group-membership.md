@@ -11,7 +11,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / createdAt / **joinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / createdAt / **joinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
@@ -21,6 +21,11 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
     inline edit（owner / organizer 限定）。新規作成画面のデフォルト名連番（`[サークル名]トーナメント-X`）に使用。
     rule は organizer 以上の任意の非負整数値書換を許可（任意フィールド変更は deny）。空書込攻撃のリスクは
     [既知のセキュリティリスク](#既知のセキュリティリスク) 参照。
+  - `defaultSeatsPerTable`（Phase 4.17 追加・default 9）: トーナメント新規作成画面の「1 Table あたりの席数」初期値。
+    値域は 2..10 で `tournament.seatsPerTable` と完全一致（DRIFT WARNING: `firestore.rules` の `players seatNum`
+    上限と連動）。書込経路はサークル詳細画面の inline edit（owner / organizer 限定）の 1 系統のみ。
+    rule は organizer 以上で `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + 2..10 を強制。
+    旧 doc は zod default で 9 として hydrate されるため破壊的 migration なし。
 - `groupJoinCodes/{code}` — gid / expiresAt / maxUses / usedCount
 - `users/{uid}.groupIds` — 逆引き
 - `structures/{sid}` / `tournaments/{tid}` — `groupId` + `createdByUid`
@@ -66,6 +71,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | tournaments/players self-delete | ○ | ○ | ○ |
 | 開催数（`finishedTournamentCount`）の参照 | ○ | ○ | ○ |
 | 開催数（`finishedTournamentCount`）の修正 | ○ | ○ | × |
+| デフォルト席数（`defaultSeatsPerTable`）の参照 | ○ | ○ | ○ |
+| デフォルト席数（`defaultSeatsPerTable`）の修正 | ○ | ○ | × |
 
 ## ロール遷移
 
@@ -113,6 +120,12 @@ Phase 4.6.1 で `groupJoinCodes` の `allow read` は `get` に限定（list 禁
 organizer 権限を持つメンバーは `setFinishedTournamentCount` 経由で counter を任意の非負整数値に書き換えできる（rule は `>= 0 の int` のみ許可、任意フィールド変更は deny）。影響範囲は新規作成画面のトーナメント名デフォルト連番のみで、permission / billing / 集計など他のロジックには波及しない。
 
 **緩和**: organizer は既に CRUD 全般を持つ信頼ロールのため、嫌がらせによる実害は無視できる。完全に rule で塞ぐには Cloud Functions 化（`finishTournament` / `setFinishedTournamentCount` を Callable 化し、クライアントから groups.update を deny に戻す）が必要。Phase 5+ で counter を他用途に流用する際は再評価する。
+
+### `defaultSeatsPerTable` の任意値書換による嫌がらせ（Phase 4.17〜）
+
+organizer 権限を持つメンバーは `setDefaultSeatsPerTable` 経由でデフォルト席数を任意の `2..10` の整数値に書き換えできる（rule は値域内の int のみ許可、任意フィールド変更は deny）。影響範囲は新規作成画面の `seatsPerTable` 初期値のみで、卓数・賞金計算・集計には波及しない（運営者は作成時に上書き可能）。
+
+**緩和**: organizer は元々サークルの全 CRUD を持つ信頼ロールのため、嫌がらせによる実害は無視できる。`finishedTournamentCount` と同方針で Cloud Functions 化は将来課題。
 
 ### Phase 4.16 で修復: self-* update 分岐の `affectedKeys` 抜けによる任意フィールド改竄
 

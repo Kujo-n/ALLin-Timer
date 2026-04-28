@@ -46,14 +46,28 @@ Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層�
 - 新規 collection 追加時は必ず deny ルールから書き始める
 - `where("field", "==") + orderBy("other")` のクエリは Firestore 複合インデックスが必要。規模が小さい場合は **client 側ソート** を採用して index 追加を回避する設計を優先（詳細は [converters.ts](src/lib/firebase/converters.ts) / `repositories/*.ts` の `listMyXxx` パターン参照）
 
-## 単一フィールドの書込経路を限定するルール（Phase 4.16〜）
+## 単一フィールド単独書換の rule 経路（Phase 4.16 以降の polish 系列）
 
-`groups/{gid}.finishedTournamentCount`（終了トーナメント累計数）の更新は**以下 2 経路に限定**する。それ以外の場所で書込んでいる箇所があれば違反:
+`groups/{gid}` に additive で追加された数値フィールドは、書込経路を 1〜2 系統に限定し、rule 側でも `affectedKeys().hasOnly([...])` + 値域制約で他フィールド汚染を deny する設計を踏襲する。新フィールドを追加する場合も同パターンで実装すること（[firestore.rules](../../firestore.rules) の groups update 末尾分岐参照）。
+
+### `finishedTournamentCount`（終了トーナメント累計数）
+
+更新経路は**以下 2 系統に限定**する:
 
 - 自動 +1 — `finishTournament()` の `runTransaction + increment(1)`（[repositories/tournaments.ts](../../src/lib/firebase/repositories/tournaments.ts)）。tx 内で `state !== "finished"` を再 read し、複数端末同時呼び出しでも二重 increment しない
 - 手動修正 — `setFinishedTournamentCount({ gid, uid, value })`（service） → `updateFinishedTournamentCount(gid, value)`（repository）
 
-rule 側でも `affectedKeys().hasOnly(['finishedTournamentCount'])` + `is int` + `>= 0` で他フィールド汚染を deny する（[firestore.rules](../../firestore.rules) の groups update 末尾分岐）。
+rule: `isOrganizer(gid) + affectedKeys().hasOnly(['finishedTournamentCount']) + is int + >= 0`
+
+### `defaultSeatsPerTable`（新規作成画面の席数初期値、Phase 4.17）
+
+更新経路は**以下 1 系統に限定**する:
+
+- 手動更新 — `setDefaultSeatsPerTable({ gid, uid, value })`（service） → `updateDefaultSeatsPerTable(gid, value)`（repository）。サークル詳細画面の inline edit からのみ呼ばれる
+
+rule: `isOrganizer(gid) + affectedKeys().hasOnly(['defaultSeatsPerTable']) + is int + >= 2 + <= 10`
+
+⚠ DRIFT WARNING: 上限 10 は `firestore.rules` の `players seatNum <= 10` および [tournament.ts](../../src/lib/firebase/schemas/tournament.ts) の `seatsPerTable.max(10)` と連動。同時に変更すること。
 
 ## Phase 2.5 以降の注意: `get()` による参照は rule read を消費
 

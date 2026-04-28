@@ -227,7 +227,8 @@
 | 4.14 | Dashboard 受付画面 + サイドバー UX Polish | Phase 4.13 ナビ刷新後のフォローアップ。Dashboard 受付画面の (1) 右列 3 カード（NextBreak / AverageStack / Players）を `setup` でも描画して state 遷移時の grid 跳ねを排除、(2) サウンドトグルクリック後 `refreshGroups()` で UI 即時反映、(3) `deleteTournamentIfSetup` を `deleteTournament` にリネームし `setup` または `finished` で削除可能化（players / tables sub-collection を `writeBatch` で cascade 削除）、(4) ヘッダの「一覧へ戻る」ボタンと raw state バッジを廃止、(5) 「全画面表示」を `/live` 遷移から **Fullscreen API トグル** に置換。サイドバーは「サークル一覧」「トーナメント一覧」に rename し、「トーナメント一覧」配下に開催中（`seating`/`running`/`paused`）トーナメントを `subscribeTournamentsByGroup` で realtime 表示。Firestore schema / rules 変更なし | complete | - | 4.13 | [completed/phase-4.14-dashboard-and-nav-polish.plan.md](../plans/completed/phase-4.14-dashboard-and-nav-polish.plan.md) — 実装レポート: [phase-4.14-dashboard-and-nav-polish-report.md](../reports/phase-4.14-dashboard-and-nav-polish-report.md) |
 | 4.15 | Header Slot 機構 + Timer Controls 統合 (Post-4.14 Polish) | Phase 4.14 後のフォローアップ。グローバルヘッダの中央 title slot 機構（`PageTitleProvider` / `usePageTitle` / `PageTitleSlot`）を新設し dashboard でトーナメント名をヘッダ中央に表示、Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル・`ConnectionBadge`（同期中バッジ）を `TimerControls` 右側に統合してコントロール 1 列化、`ConnectionBadge` に縦組み variant、`QrPanel` にレイトレジスト Lv 補助情報、E2E Page Object を新位置へ追従。**schema / Firestore Rules / repository / hook / AppError ドメインコード完全不変**。plan は ad-hoc 改善のため未作成、local review で品質ゲート（Phase 4.13 と同方針） | complete | with 4.10 | 4.14 | local review: TBD（plan は ad-hoc 改善のため未作成） |
 | 4.16 | Tournament Default Name (Finished Counter) | 新規作成画面でトーナメント名を `[サークル名]トーナメント-X`（X = 終了済み件数+1）でプリセット。`groups/{gid}.finishedTournamentCount` を additive 追加し、`finishTournament()` を `runTransaction` 化して group counter を `increment(1)`（tx 内で `state !== "finished"` を再 read し二重 increment race を防止）。サークル詳細（`/groups/[gid]`）に開催数の確認・修正 UI を追加（owner / organizer のみ手動編集可）。Firestore Rules に organizer-only counter update branch を 1 件追加（任意の非負整数値を許可）。schema は default(0) で legacy doc 受容、破壊的 migration なし | complete | with 4.10 | 4.15 | [completed/phase-4.16-tournament-default-name-from-finished-counter.plan.md](../plans/completed/phase-4.16-tournament-default-name-from-finished-counter.plan.md) — 実装レポート: [phase-4.16-tournament-default-name-from-finished-counter-report.md](../reports/phase-4.16-tournament-default-name-from-finished-counter-report.md) |
-| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12, 4.13, 4.14, 4.15（4.10 / 4.16 は blocker 外） | - |
+| 4.17 | Group Default Seats Per Table | サークル単位で「1 Table あたりの席数」初期値を保存。`groups/{gid}.defaultSeatsPerTable` を `z.number().int().min(2).max(10).default(9)` で additive 追加し、`/tournaments/new` の `<TournamentForm initialSeatsPerTable=...>` に流し込む。サークル詳細（`/groups/[gid]`）に Phase 4.16「開催数」と同型の inline edit カードを追加（owner / organizer のみ編集可、参照は全メンバー）。Firestore Rules に organizer-only `defaultSeatsPerTable` 単独書換 branch を追加（`affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + `>= 2` + `<= 10`）。schema は default(9) で legacy doc 受容、破壊的 migration なし | complete | with 4.10 | 4.16 | [completed/phase-4.17-group-default-seats-per-table.plan.md](../plans/completed/phase-4.17-group-default-seats-per-table.plan.md) — 実装レポート: [phase-4.17-group-default-seats-per-table-report.md](../reports/phase-4.17-group-default-seats-per-table-report.md) |
+| 5 | Field Test & Polish | 有志ドライラン、バグ修正、UX 磨き込み、初回サークル投入、Should 機能（賞金計算）の余力判断 | pending | - | 3, 4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.11, 4.12, 4.13, 4.14, 4.15（4.10 / 4.16 / 4.17 は blocker 外） | - |
 
 ### Phase Details
 
@@ -541,6 +542,47 @@
   - QR カードからレイトレジスト締切 Lv が一目で読み取れる
   - typecheck / lint / test / build が green
 
+**Phase 4.16: Tournament Default Name (Finished Counter)**
+- **Goal**: 新規トーナメント作成画面のトーナメント名フィールドが空欄のまま提示される UX を改善し、`[サークル名]トーナメント-X`（X = サークルで終了したトーナメント数 + 1）のフォーマットで自動プリセットする。サークル詳細画面では運営者（owner / organizer）が開催数を確認・手動補正でき、一般メンバーは値の閲覧のみ可能にする
+- **背景**: Phase 4.15 までの `/tournaments/new` は `<TournamentForm initialName="">` で空欄スタートだったため、運営者は毎回手で「Saturday 月例 #3」のような名前を入力していた。サークル単位で「何回目のトーナメント」を機械可読に持っておけば、命名の手間と認知負荷を同時に減らせる。同時に、実装前から運用していたサークルの実績数や、誤操作で counter がズレた場合に備えて、手動で値を補正できる導線が必要
+- **Scope**:
+  - **データモデル**: `groups/{gid}.finishedTournamentCount` フィールド追加（schema additive）
+    - `z.number().int().nonnegative().default(0)`（旧 doc は 0 で hydrate、破壊的 migration なし）
+  - **自動 +1 経路**: `finishTournament()` を `runTransaction` 化し、tournament の状態更新（`state: "finished"` / `finishedAt` / `pausedAt: null`）と `groups/{gid}.finishedTournamentCount` の `increment(1)` を atomic に実行。tx 内で `state !== "finished"` を再 read することで、複数端末同時呼び出し時の二重 increment race を防止
+  - **手動補正経路**: `setFinishedTournamentCount({ gid, uid, value })`（service） → `updateFinishedTournamentCount(gid, value)`（repository）。owner / organizer 限定で任意の非負整数値を書込可能。値域チェック（>= 0 / 整数）は service / repository / rule の三層で防御
+  - **新規作成画面**: `/tournaments/new` で `useCurrentGroup().groups` から `defaultName` を `useMemo` 派生して `<TournamentForm initialName=...>` に流し込む。追加 fetch なし
+  - **サークル詳細画面**: `/groups/[gid]` に「開催数」カードを追加。全メンバーが現在値を確認でき、owner / organizer は inline edit（`Pencil` アイコン + Input + 保存/キャンセル + Esc キャンセル + 同値 noop close）で値を補正可能
+  - **Firestore Rules**: `groups/{gid}` update に organizer-only `finishedTournamentCount` 単独書換 branch を 1 件 OR 追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['finishedTournamentCount'])` + `is int` + `>= 0`）。自動 +1 と手動補正の両経路を同 branch でカバー
+  - **self-* 分岐の security patch**（emulator 検証で発覚した既存欠陥の修復）: `groups/{gid}` update の self-add / self-leave / self-key memberDisplayNames 3 分岐に `request.resource.data.diff(resource.data).affectedKeys().hasOnly([...])` を追加し、map diff の `hasOnly([uid])` が空集合で true になる性質を悪用した audioSettings / finishedTournamentCount の任意 member 改竄経路を deny
+  - **テスト**: schema additive（3 ケース）、`finishTournament` の runTransaction 化（race guard 含む）、repository（happy / 負値 / 小数 / write エラー）、service（owner / organizer / member / 負値 / 小数）、rules emulator スクリプト（`scripts/test-rules-finished-count.mjs`、8 ケース全 pass）
+- **Success signal**:
+  - Owner / Organizer / Member の 3 視点でブラウザ検証: 開催数カードの表示は全員、編集ボタンは owner / organizer のみ
+  - `finishTournament()` 完了で対応する group の `finishedTournamentCount` が +1 され、`/tournaments/new` の連番が繰り上がる
+  - サークル詳細画面の inline edit で任意の非負整数値に補正でき、その値が次回作成時のデフォルト名に反映される
+  - rule + service の二重防御で範囲外値（負値・小数）が deny される
+  - rules emulator 8 ケースが全 pass、self-* 分岐の affectedKeys 漏洩も修復後に green
+  - typecheck / lint / test / build が green
+
+**Phase 4.17: Group Default Seats Per Table**
+- **Goal**: トーナメント新規作成時の「1 Table あたりの席数」初期値をサークル単位で永続化し、毎回手動で書き換える運用ペインを解消する。`/tournaments/new` のフォーム初期値として自動適用されるが、運営者は引き続き任意の値で上書き可能
+- **背景**: 6 人卓運用のサークルでは現状 `DEFAULT_SEATS_PER_TABLE = 9` がフォームに固定で出るため、トーナメントを作るたびに `9 → 6` に直す手間が発生。サークル単位で標準席数が決まっている運営実態に合わせ、`groups/{gid}` 側でデフォルト値を保存できるようにする
+- **Scope**:
+  - **データモデル**: `groups/{gid}.defaultSeatsPerTable` フィールド追加（schema additive）
+    - `z.number().int().min(2).max(10).default(9)`（`tournament.ts` の `seatsPerTable.min(2).max(10)` と完全一致）
+    - 既存 group docs は zod default で 9 として hydrate（破壊的 migration なし）
+  - **新規作成画面**: `/tournaments/new` で `useCurrentGroup().groups` から `defaultSeatsPerTable` を派生し、`<TournamentForm initialSeatsPerTable=...>` に流し込む。Phase 4.16 の `defaultName` 派生と同じ `useMemo` パターン。`undefined` 時は TournamentForm 側の `DEFAULT_SEATS_PER_TABLE = 9` にフォールバック
+  - **編集 UI**: サークル詳細画面（`/groups/[gid]`）に「1 Table あたりの席数（デフォルト）」カードを追加。Phase 4.16「開催数」カードの inline edit パターン（`Pencil` アイコン + Input + 保存/キャンセル + Esc キャンセル + 同値 noop close）を mirror。owner / organizer のみ編集可、参照は全メンバー
+  - **service / repository**: `setDefaultSeatsPerTable({ gid, uid, value })`（service） → `updateDefaultSeatsPerTable(gid, value)`（repository）の 2 層。範囲チェック（2..10 / 整数）は service / repository の両方で実施し、`AppError("validation/default-seats-invalid")` でラップ
+  - **Firestore Rules**: `groups/{gid}` update に organizer-only `defaultSeatsPerTable` 単独書換 branch を 1 件 OR 追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + `>= 2 && <= 10`）。owner はフル update branch でカバー済み
+  - **テスト**: schema additive（5 ケース：default / explicit / min-1 / max+1 / 非整数）、repository（happy path / 範囲外 / Firestore reject）、service（owner / organizer / member / 範囲外）、rules emulator（9 ケース：境界値 / member 拒否 / affectedKeys 拒否 / legacy doc / owner full update）
+  - **DRIFT WARNING**: schema 上限 10 は `firestore.rules` の `players seatNum <= 10` および `tournament.seatsPerTable.max(10)` と連動。同時に変更する制約をコメントで明記
+- **Success signal**:
+  - サークル A（`defaultSeatsPerTable: 6`）で `/tournaments/new` を開くと席数欄に `6` がプリセット、サークル B（未設定）では `9` がプリセット
+  - サークル詳細画面で owner / organizer が inline edit で値を変更できる、member は値表示のみ（編集ボタン非表示）
+  - 範囲外値（`1` / `11`）が service / rule の両層で deny される
+  - 既存 `/tournaments/[tid]/edit` 画面は変更なし（regression なし）
+  - typecheck / lint / test / build / rules emulator が green
+
 **Phase 5: Field Test & Polish**
 - **Goal**: 実運用に投入し、仮説検証を開始する
 - **Scope**:
@@ -587,7 +629,8 @@
 - Phase 4.14（Dashboard 受付画面 + サイドバー UX Polish）は Phase 4.13 のナビ刷新後に単独実施。**schema / Firestore Rules は完全不変**。`deleteTournamentIfSetup` → `deleteTournament` の API 名 rename のみ破壊的（callsite 1 箇所、互換 alias 作らず）。`tournaments.ts` に `subscribeTournamentsByGroup` を additive で新設。`/live` ページは無変更で参加者用フロー / 既存 E2E に影響なし。Phase 4.10 とは独立で並行可能
 - Phase 4.15（Post-4.14 Polish）は Phase 4.14 完了後に単独実施。**schema / Firestore Rules / repository / hook 完全不変**で純 UI / レイアウト改善のみ（`PageTitleProvider` / `PageTitleSlot` 新設、`TimerControls` への Fullscreen トグル / `ConnectionBadge` 統合、`QrPanel` レイトレジスト Lv 表示、E2E Page Object 追従）。plan は ad-hoc 改善のため未作成、local review で品質ゲート（Phase 4.13 と同方針）。Phase 4.10 とは独立で並行可能
 - Phase 4.16（Tournament Default Name）は Phase 4.15 完了後に単独実施。**schema は additive**（`groups/{gid}.finishedTournamentCount` を `default(0)` で追加）、Firestore Rules に organizer-only counter update branch 1 件追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['finishedTournamentCount'])` + 任意の非負整数値を許可。自動 +1 と手動修正の両方を 1 branch でカバー）、`finishTournament()` を `runTransaction` 化して group counter を `increment(1)`（tx 内で `state !== "finished"` を再 read することで複数端末同時呼び出し時の二重 increment race を防止）、サークル詳細ページ（`/groups/[gid]`）に開催数の確認・修正 UI を追加（owner / organizer のみ編集可、参照は全メンバー）。Phase 4.10 とは独立で並行可能。**Phase 5 のブロッカーには加えない**（Phase 5 のドライラン中・後でも投入可能な小規模 polish のため）
-- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 / 4.15 の完了後（**Phase 4.10 / 4.16 は Phase 5 以降に投入可能なため blocker から除外**）
+- Phase 4.17（Group Default Seats Per Table）は Phase 4.16 完了後に単独実施。**schema は additive**（`groups/{gid}.defaultSeatsPerTable` を `default(9)` で追加、値域 2..10 は `tournament.seatsPerTable` と完全一致）、Firestore Rules に organizer-only `defaultSeatsPerTable` 単独書換 branch 1 件追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + 2..10）、新規作成画面と group 詳細画面の UI 追加のみで repository / hook 構造は不変。Phase 4.10 とは独立で並行可能。**Phase 5 のブロッカーには加えない**（Phase 4.16 と同方針）
+- Phase 5（実地テスト）は全機能結合が前提のため、3 / 4 / 4.5 / 4.6 / 4.7 / 4.8 / 4.9 / 4.11 / 4.12 / 4.13 / 4.14 / 4.15 の完了後（**Phase 4.10 / 4.16 / 4.17 は Phase 5 以降に投入可能なため blocker から除外**）
 
 ---
 
