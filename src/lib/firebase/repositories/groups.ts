@@ -50,6 +50,8 @@ export async function createGroup(
       memberDisplayNames,
       audioSettings: DEFAULT_AUDIO_SETTINGS,
       finishedTournamentCount: 0,
+      // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる（9）。
+      defaultSeatsPerTable: 9,
       createdAt: serverTimestamp(),
       joinCodeId: null,
     });
@@ -260,6 +262,38 @@ export async function updateFinishedTournamentCount(
       e,
       "firestore/write_failed",
       "開催数の更新に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, gid });
+    throw wrapped;
+  }
+}
+
+/**
+ * Phase 4.17: groups/{gid}.defaultSeatsPerTable を 2..10 の整数値で上書きする。
+ *   - サークル詳細画面 inline edit からのみ呼ばれる（organizer / owner 限定）。
+ *   - rule は `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + `>= 2` + `<= 10` で
+ *     他フィールド汚染を deny。
+ *   - 値の範囲は本関数の事前チェックで二重防御し、UI バリデーション失敗時の Firestore 余計な
+ *     write を抑止する。
+ */
+export async function updateDefaultSeatsPerTable(
+  gid: string,
+  value: number,
+): Promise<void> {
+  if (!Number.isInteger(value) || value < 2 || value > 10) {
+    throw new AppError(
+      "デフォルト席数は 2 以上 10 以下の整数で指定してください",
+      "validation/default-seats-invalid",
+    );
+  }
+  try {
+    await updateDoc(groupDocRef(gid), { defaultSeatsPerTable: value });
+    logger.info("group defaultSeatsPerTable updated", { gid, value });
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "デフォルト席数の更新に失敗しました",
     );
     logger.warn(wrapped.message, { code: wrapped.code, gid });
     throw wrapped;

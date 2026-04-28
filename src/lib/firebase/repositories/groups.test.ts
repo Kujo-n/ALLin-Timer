@@ -39,6 +39,7 @@ import {
   createGroup,
   removeMemberSelf,
   updateAudioSettings,
+  updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupRoles,
 } from "./groups";
@@ -165,6 +166,42 @@ describe("updateFinishedTournamentCount", () => {
   it("wraps updateDoc errors as firestore/write_failed", async () => {
     vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
     await expect(updateFinishedTournamentCount("g1", 5)).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
+
+describe("updateDefaultSeatsPerTable", () => {
+  it("calls updateDoc with { defaultSeatsPerTable: value } for valid integers in [2,10]", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateDefaultSeatsPerTable("g1", 6);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ defaultSeatsPerTable: 6 });
+  });
+
+  it.each([2, 10])(
+    "accepts boundary value %p",
+    async (value) => {
+      vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+      await updateDefaultSeatsPerTable("g1", value);
+      const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+      expect(patch).toEqual({ defaultSeatsPerTable: value });
+    },
+  );
+
+  it.each([1, 11, 0, -1, 5.5, NaN, Infinity])(
+    "rejects %p with validation/default-seats-invalid",
+    async (bad) => {
+      await expect(updateDefaultSeatsPerTable("g1", bad as number)).rejects.toMatchObject({
+        code: "validation/default-seats-invalid",
+      });
+      expect(updateDoc).not.toHaveBeenCalled();
+    },
+  );
+
+  it("wraps Firestore reject as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(updateDefaultSeatsPerTable("g1", 6)).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
   });
