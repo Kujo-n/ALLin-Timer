@@ -36,6 +36,7 @@ import {
   promoteToOrganizer,
   promoteToOwner,
   renameGroup,
+  setDefaultSeatsPerTable,
   setFinishedTournamentCount,
 } from "@/lib/services/group";
 
@@ -80,6 +81,9 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [editingCount, setEditingCount] = useState(false);
   const [countValue, setCountValue] = useState<string>("0");
   const countInputRef = useRef<HTMLInputElement | null>(null);
+  const [editingSeats, setEditingSeats] = useState(false);
+  const [seatsValue, setSeatsValue] = useState<string>("9");
+  const seatsInputRef = useRef<HTMLInputElement | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [working, setWorking] = useState(false);
@@ -148,6 +152,11 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   // Phase 4.16: group が読込／reload されたら開催数 input の表示値を同期する。
   useEffect(() => {
     if (group) setCountValue(String(group.finishedTournamentCount ?? 0));
+  }, [group]);
+
+  // Phase 4.17: group 読込後に席数 input の表示値も同期する。
+  useEffect(() => {
+    if (group) setSeatsValue(String(group.defaultSeatsPerTable ?? 9));
   }, [group]);
 
   if (!user) return null;
@@ -263,6 +272,53 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await refreshGroups();
     } catch (e) {
       const wrapped = AppError.from(e, "group/finished-count-failed", "開催数の更新に失敗しました");
+      setError(`${wrapped.code}: ${wrapped.message}`);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function startEditingSeats() {
+    if (!group) return;
+    setSeatsValue(String(group.defaultSeatsPerTable ?? 9));
+    setEditingSeats(true);
+    requestAnimationFrame(() => {
+      seatsInputRef.current?.focus();
+      seatsInputRef.current?.select();
+    });
+  }
+
+  function cancelEditingSeats() {
+    setEditingSeats(false);
+    setSeatsValue(String(group?.defaultSeatsPerTable ?? 9));
+  }
+
+  async function onSaveSeats(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !group) return;
+    const parsed = Number(seatsValue);
+    if (!Number.isInteger(parsed) || parsed < 2 || parsed > 10) {
+      setError(
+        "validation/default-seats-invalid: デフォルト席数は 2 以上 10 以下の整数で指定してください",
+      );
+      return;
+    }
+    if (parsed === (group.defaultSeatsPerTable ?? 9)) {
+      setEditingSeats(false);
+      return;
+    }
+    setWorking(true);
+    try {
+      await setDefaultSeatsPerTable({ gid, uid: user.uid, value: parsed });
+      setEditingSeats(false);
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const wrapped = AppError.from(
+        e,
+        "group/default-seats-failed",
+        "デフォルト席数の更新に失敗しました",
+      );
       setError(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       setWorking(false);
@@ -459,6 +515,69 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                   aria-label="開催数を修正"
                 >
                   <Pencil className="h-4 w-4" aria-hidden /> 修正
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>1 Table あたりの席数（デフォルト）</CardTitle>
+          <CardDescription>
+            新規トーナメント作成時の「1 Table あたりの席数」初期値（2〜10）。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isOrganizer && editingSeats ? (
+            <form onSubmit={onSaveSeats} className="flex flex-wrap items-center gap-2">
+              <Input
+                ref={seatsInputRef}
+                type="number"
+                min={2}
+                max={10}
+                step={1}
+                value={seatsValue}
+                onChange={(e) => setSeatsValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelEditingSeats();
+                  }
+                }}
+                aria-label="1 Table あたりの席数（デフォルト）"
+                disabled={working}
+                className="h-10 w-32 text-base"
+              />
+              <span className="text-sm text-muted-foreground">席</span>
+              <Button type="submit" size="sm" disabled={working}>
+                {working ? "保存中…" : "保存"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={cancelEditingSeats}
+                disabled={working}
+              >
+                キャンセル
+              </Button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="text-base">
+                <span className="font-semibold">{group.defaultSeatsPerTable ?? 9}</span> 席
+              </p>
+              {isOrganizer ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={startEditingSeats}
+                  aria-label="デフォルト席数を変更"
+                >
+                  <Pencil className="h-4 w-4" aria-hidden /> 変更
                 </Button>
               ) : null}
             </div>
