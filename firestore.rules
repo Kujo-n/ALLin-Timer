@@ -204,6 +204,20 @@ service cloud.firestore {
              .hasOnly(['finishedTournamentCount'])
         && request.resource.data.finishedTournamentCount is int
         && request.resource.data.finishedTournamentCount >= 0
+      ) || (
+        // Phase 4.17: organizer による defaultSeatsPerTable の単独書換。
+        //   サークル詳細画面 inline edit から `setDefaultSeatsPerTable({ gid, uid, value })` 経由で発火。
+        //   affectedKeys は 'defaultSeatsPerTable' のみに限定。他フィールドは触らせない。
+        //   値域 2..10 は src/lib/firebase/schemas/tournament.ts の seatsPerTable.min(2).max(10) と
+        //   厳密一致させる（DRIFT WARNING: tournaments seatsPerTable / players seatNum 上限 10 と連動。
+        //   同時に変更すること）。
+        //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['defaultSeatsPerTable'])
+        && request.resource.data.defaultSeatsPerTable is int
+        && request.resource.data.defaultSeatsPerTable >= 2
+        && request.resource.data.defaultSeatsPerTable <= 10
       );
 
       allow delete: if isSignedIn()
