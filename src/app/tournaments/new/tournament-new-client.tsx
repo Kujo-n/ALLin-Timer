@@ -32,6 +32,16 @@ export function TournamentNewClient() {
     return `[${g.name}]トーナメント-${next}`;
   }, [currentGroupId, groups]);
 
+  // Phase 4.17: サークル設定の `defaultSeatsPerTable` を新規作成画面の初期値として流し込む。
+  //   `useCurrentGroup` が既に `groups` を fetch 済みのため追加 read は不要。legacy doc（未設定）
+  //   は zod default で 9 として hydrate されるため undefined はほぼ発生しないが、
+  //   コンテキストから group が見つからないケース（race / 切替直後）に備えて undefined を許容する。
+  const defaultSeatsPerTable = useMemo(() => {
+    if (!currentGroupId) return undefined;
+    const g = groups.find((x) => x.id === currentGroupId);
+    return g?.defaultSeatsPerTable;
+  }, [currentGroupId, groups]);
+
   if (!user || !currentGroupId) return null;
   if (loading || !isOrganizer) {
     return <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">読込中…</main>;
@@ -43,6 +53,7 @@ export function TournamentNewClient() {
       <TournamentForm
         groupId={currentGroupId}
         initialName={defaultName}
+        initialSeatsPerTable={defaultSeatsPerTable}
         onSubmit={async ({ name, snapshot, seatsPerTable }) => {
           const tid = await createTournament({
             groupId: currentGroupId,
