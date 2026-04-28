@@ -32,6 +32,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   deleteGroup: vi.fn(),
   setMemberDisplayName: vi.fn(),
   updateFinishedTournamentCount: vi.fn(),
+  updateDefaultSeatsPerTable: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
@@ -63,6 +64,7 @@ import {
   getGroup,
   removeMemberSelf,
   setMemberDisplayName,
+  updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
@@ -86,6 +88,7 @@ import {
   promoteToOwner,
   propagateDisplayNameToGroups,
   renameGroup,
+  setDefaultSeatsPerTable,
   setFinishedTournamentCount,
 } from "./group";
 
@@ -111,6 +114,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
       volume: 0.7,
     },
     finishedTournamentCount: 0,
+    defaultSeatsPerTable: 9,
     createdAt: now,
     ...overrides,
   };
@@ -138,6 +142,7 @@ beforeEach(() => {
   vi.mocked(updateGroupRoles).mockReset();
   vi.mocked(setMemberDisplayName).mockReset();
   vi.mocked(updateFinishedTournamentCount).mockReset();
+  vi.mocked(updateDefaultSeatsPerTable).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
@@ -470,6 +475,65 @@ describe("setFinishedTournamentCount", () => {
     expect(getGroup).not.toHaveBeenCalled();
     expect(updateFinishedTournamentCount).not.toHaveBeenCalled();
   });
+});
+
+describe("setDefaultSeatsPerTable", () => {
+  it("allows owner to set value", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(updateDefaultSeatsPerTable).mockResolvedValue();
+
+    await setDefaultSeatsPerTable({ gid: "g1", uid: "uOwner", value: 6 });
+
+    expect(updateDefaultSeatsPerTable).toHaveBeenCalledWith("g1", 6);
+  });
+
+  it("allows organizer (non-owner) to set value", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner", "uOrg"],
+        memberUids: ["uOwner", "uOrg"],
+      }),
+    );
+    vi.mocked(updateDefaultSeatsPerTable).mockResolvedValue();
+
+    await setDefaultSeatsPerTable({ gid: "g1", uid: "uOrg", value: 8 });
+
+    expect(updateDefaultSeatsPerTable).toHaveBeenCalledWith("g1", 8);
+  });
+
+  it("rejects general member with group/not-organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner", "uMember"],
+      }),
+    );
+    await expect(
+      setDefaultSeatsPerTable({ gid: "g1", uid: "uMember", value: 6 }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(updateDefaultSeatsPerTable).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 11, 5.5, -1, 0])(
+    "rejects out-of-range value %p before fetching group",
+    async (bad) => {
+      await expect(
+        setDefaultSeatsPerTable({ gid: "g1", uid: "uOwner", value: bad as number }),
+      ).rejects.toMatchObject({
+        code: "validation/default-seats-invalid",
+      });
+      expect(getGroup).not.toHaveBeenCalled();
+      expect(updateDefaultSeatsPerTable).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("promoteToOrganizer", () => {

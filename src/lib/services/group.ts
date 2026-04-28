@@ -9,6 +9,7 @@ import {
   groupDocRef,
   removeMemberSelf,
   setMemberDisplayName,
+  updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
@@ -308,6 +309,32 @@ export async function setFinishedTournamentCount({
   assertOrganizer(group, uid);
   await updateFinishedTournamentCount(gid, value);
   logger.info("setFinishedTournamentCount ok", { gid, uid, value });
+}
+
+/**
+ * Phase 4.17: デフォルト席数（defaultSeatsPerTable）を手動補正する。owner / organizer 限定。
+ *   サークル詳細画面の inline edit から呼ばれる。
+ *   rule 側でも organizer-only branch で再 enforce する。
+ */
+export async function setDefaultSeatsPerTable({
+  gid,
+  uid,
+  value,
+}: {
+  gid: string;
+  uid: string;
+  value: number;
+}): Promise<void> {
+  if (!Number.isInteger(value) || value < 2 || value > 10) {
+    throw new AppError(
+      "デフォルト席数は 2 以上 10 以下の整数で指定してください",
+      "validation/default-seats-invalid",
+    );
+  }
+  const group = await getGroup(gid);
+  assertOrganizer(group, uid);
+  await updateDefaultSeatsPerTable(gid, value);
+  logger.info("setDefaultSeatsPerTable ok", { gid, uid, value });
 }
 
 /**
