@@ -45,10 +45,13 @@ export function LoginClient() {
   const [displayNameDialogOpen, setDisplayNameDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && user && !user.isAnonymous) {
+    // submitting / displayNameDialogOpen 中は onGoogleSignIn 側の制御に委ねる
+    // （Google 新規ユーザーで onAuthStateChanged が DisplayNameDialog より先に
+    // 走っても、ここで redirect しないようにするため）。
+    if (!loading && user && !user.isAnonymous && !submitting && !displayNameDialogOpen) {
       router.replace(redirect);
     }
-  }, [user, loading, router, redirect]);
+  }, [user, loading, router, redirect, submitting, displayNameDialogOpen]);
 
   async function onSubmitPassword(e: React.FormEvent) {
     e.preventDefault();
