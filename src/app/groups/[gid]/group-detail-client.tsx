@@ -75,6 +75,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [members, setMembers] = useState<MemberLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [editingName, setEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
@@ -191,11 +192,27 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         createdByUid: user.uid,
       });
       setIssuedCode(code);
+      setInviteCopied(false);
     } catch (e) {
       const wrapped = AppError.from(e, "group/code-failed", "招待コード発行に失敗しました");
       setError(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function onCopyInviteUrl() {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch (e) {
+      logger.warn("clipboard copy failed", {
+        code: "clipboard/unavailable",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      setError("clipboard/unavailable: クリップボードにコピーできませんでした");
     }
   }
 
@@ -731,7 +748,18 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                 <p className="text-xs text-muted-foreground">
                   以下のリンクを共有してください（7 日有効）
                 </p>
-                <Input readOnly value={inviteUrl} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input readOnly value={inviteUrl} className="flex-1 min-w-0" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void onCopyInviteUrl()}
+                    aria-label="招待 URL をコピー"
+                  >
+                    {inviteCopied ? "コピーしました" : "URL をコピー"}
+                  </Button>
+                </div>
               </div>
             ) : null}
           </CardContent>
