@@ -28,7 +28,7 @@ function notify(state: AudioContextState | null): void {
   });
 }
 
-export function getOrCreateAudioContext(): AudioContext | null {
+function getOrCreateAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
   if (cachedContext) return cachedContext;
   const Ctor =
