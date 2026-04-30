@@ -23,6 +23,7 @@ import {
   type CreateGroupInput,
   type GroupDoc,
 } from "@/lib/firebase/schemas/group";
+import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 const groupsRef = collection(firestore, "groups").withConverter(
@@ -36,47 +37,49 @@ export function groupDocRef(gid: string) {
 export async function createGroup(
   input: CreateGroupInput & { ownerDisplayName?: string | null },
 ): Promise<string> {
-  try {
-    const ownerDisplayName = input.ownerDisplayName?.trim();
-    // Phase 4.7: memberDisplayNames にはオーナー自身の entry を初期登録する（displayName が取れれば）。
-    //           空の場合は後続の updateDisplayName / propagateDisplayNameToGroups で backfill される。
-    const memberDisplayNames: Record<string, string> = ownerDisplayName
-      ? { [input.ownerUid]: ownerDisplayName }
-      : {};
-    const ref = await addDoc(groupsRef, {
-      name: input.name,
-      ownerUids: [input.ownerUid],
-      organizerUids: [input.ownerUid],
-      memberUids: [input.ownerUid],
-      memberDisplayNames,
-      audioSettings: DEFAULT_AUDIO_SETTINGS,
-      finishedTournamentCount: 0,
-      // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる。
-      defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
-      createdAt: serverTimestamp(),
-      joinCodeId: null,
-    });
-    logger.info("group create ok", { gid: ref.id });
-    return ref.id;
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "サークル作成に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
+  const gid = await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークル作成に失敗しました",
+    async () => {
+      const ownerDisplayName = input.ownerDisplayName?.trim();
+      // Phase 4.7: memberDisplayNames にはオーナー自身の entry を初期登録する（displayName が取れれば）。
+      //           空の場合は後続の updateDisplayName / propagateDisplayNameToGroups で backfill される。
+      const memberDisplayNames: Record<string, string> = ownerDisplayName
+        ? { [input.ownerUid]: ownerDisplayName }
+        : {};
+      const ref = await addDoc(groupsRef, {
+        name: input.name,
+        ownerUids: [input.ownerUid],
+        organizerUids: [input.ownerUid],
+        memberUids: [input.ownerUid],
+        memberDisplayNames,
+        audioSettings: DEFAULT_AUDIO_SETTINGS,
+        finishedTournamentCount: 0,
+        // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる。
+        defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
+        createdAt: serverTimestamp(),
+        joinCodeId: null,
+      });
+      return ref.id;
+    },
+  );
+  logger.info("group create ok", { gid });
+  return gid;
 }
 
 export async function getGroup(gid: string): Promise<GroupDoc> {
-  try {
-    const snap = await getDoc(groupDocRef(gid));
-    if (!snap.exists()) {
-      throw new AppError(`group not found: ${gid}`, "firestore/not-found");
-    }
-    return { id: snap.id, ...snap.data() };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "サークル取得に失敗しました",
+    async () => {
+      const snap = await getDoc(groupDocRef(gid));
+      if (!snap.exists()) {
+        throw new AppError(`group not found: ${gid}`, "firestore/not-found");
+      }
+      return { id: snap.id, ...snap.data() };
+    },
+    { gid },
+  );
 }
 
 /**
@@ -109,14 +112,15 @@ export async function listMyGroups(groupIds: string[]): Promise<{
 }
 
 export async function updateGroupName(gid: string, name: string): Promise<void> {
-  try {
-    await updateDoc(groupDocRef(gid), { name });
-    logger.info("group rename ok", { gid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "サークル名の更新に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークル名の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { name });
+    },
+    { gid },
+  );
+  logger.info("group rename ok", { gid });
 }
 
 /**
@@ -128,14 +132,15 @@ export async function updateGroupRoles(
   gid: string,
   patch: { ownerUids?: string[]; organizerUids?: string[]; memberUids?: string[] },
 ): Promise<void> {
-  try {
-    await updateDoc(groupDocRef(gid), patch);
-    logger.info("group roles updated", { gid, patchKeys: Object.keys(patch) });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "ロール更新に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "ロール更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), patch);
+    },
+    { gid },
+  );
+  logger.info("group roles updated", { gid, patchKeys: Object.keys(patch) });
 }
 
 /**
@@ -146,19 +151,20 @@ export async function updateGroupRoles(
  * Phase 4.7: `memberDisplayNames` マップからも自分の entry を同時に削除する。
  */
 export async function removeMemberSelf(gid: string, uid: string): Promise<void> {
-  try {
-    await updateDoc(groupDocRef(gid), {
-      memberUids: arrayRemove(uid),
-      organizerUids: arrayRemove(uid),
-      ownerUids: arrayRemove(uid),
-      [`memberDisplayNames.${uid}`]: deleteField(),
-    });
-    logger.info("group remove member ok", { gid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "サークル脱退に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, gid, uid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークル脱退に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), {
+        memberUids: arrayRemove(uid),
+        organizerUids: arrayRemove(uid),
+        ownerUids: arrayRemove(uid),
+        [`memberDisplayNames.${uid}`]: deleteField(),
+      });
+    },
+    { gid, uid },
+  );
+  logger.info("group remove member ok", { gid, uid });
 }
 
 /**
@@ -181,20 +187,17 @@ export async function setMemberDisplayName(
       "validation/display-name-too-long",
     );
   }
-  try {
-    await updateDoc(groupDocRef(gid), {
-      [`memberDisplayNames.${uid}`]: trimmed,
-    });
-    logger.info("group member displayName set ok", { gid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "メンバー表示名の更新に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code, gid, uid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "メンバー表示名の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), {
+        [`memberDisplayNames.${uid}`]: trimmed,
+      });
+    },
+    { gid, uid },
+  );
+  logger.info("group member displayName set ok", { gid, uid });
 }
 
 /**
@@ -215,22 +218,19 @@ export async function updateAudioSettings(
       "validation/audio-settings-invalid",
     );
   }
-  try {
-    await updateDoc(groupDocRef(gid), { audioSettings: parsed.data });
-    logger.info("group audio settings updated", {
-      gid,
-      enabled: parsed.data.enabled,
-      volume: parsed.data.volume,
-    });
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "サウンド設定の更新に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サウンド設定の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { audioSettings: parsed.data });
+    },
+    { gid },
+  );
+  logger.info("group audio settings updated", {
+    gid,
+    enabled: parsed.data.enabled,
+    volume: parsed.data.volume,
+  });
 }
 
 /**
@@ -250,18 +250,15 @@ export async function updateFinishedTournamentCount(
       "validation/finished-count-invalid",
     );
   }
-  try {
-    await updateDoc(groupDocRef(gid), { finishedTournamentCount: value });
-    logger.info("group finishedTournamentCount updated", { gid, value });
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "開催数の更新に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "開催数の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { finishedTournamentCount: value });
+    },
+    { gid },
+  );
+  logger.info("group finishedTournamentCount updated", { gid, value });
 }
 
 /**
@@ -286,27 +283,25 @@ export async function updateDefaultSeatsPerTable(
       "validation/default-seats-invalid",
     );
   }
-  try {
-    await updateDoc(groupDocRef(gid), { defaultSeatsPerTable: value });
-    logger.info("group defaultSeatsPerTable updated", { gid, value });
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "デフォルト席数の更新に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "デフォルト席数の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { defaultSeatsPerTable: value });
+    },
+    { gid },
+  );
+  logger.info("group defaultSeatsPerTable updated", { gid, value });
 }
 
 export async function deleteGroup(gid: string): Promise<void> {
-  try {
-    await deleteDoc(groupDocRef(gid));
-    logger.info("group delete ok", { gid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "サークル削除に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, gid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークル削除に失敗しました",
+    async () => {
+      await deleteDoc(groupDocRef(gid));
+    },
+    { gid },
+  );
+  logger.info("group delete ok", { gid });
 }

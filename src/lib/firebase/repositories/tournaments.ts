@@ -23,6 +23,7 @@ import {
   type TournamentDoc,
   type UpdateTournamentInput,
 } from "@/lib/firebase/schemas/tournament";
+import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 const tournamentsRef = collection(firestore, "tournaments").withConverter(
@@ -30,45 +31,47 @@ const tournamentsRef = collection(firestore, "tournaments").withConverter(
 );
 
 export async function createTournament(input: CreateTournamentInput): Promise<string> {
-  try {
-    const ref = await addDoc(tournamentsRef, {
-      groupId: input.groupId,
-      createdByUid: input.createdByUid,
-      name: input.name,
-      structureSnapshot: input.structureSnapshot,
-      state: "setup",
-      startedAt: null,
-      levelStartedAt: null,
-      pausedAt: null,
-      pausedAccumMs: 0,
-      finishedAt: null,
-      currentLevel: 0,
-      lateEntryDeadlineLevel: input.structureSnapshot.lateEntryDeadlineLevel,
-      seatsPerTable: input.seatsPerTable,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament create ok", { tid: ref.id, gid: input.groupId });
-    return ref.id;
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント作成に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
+  const tid = await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "トーナメント作成に失敗しました",
+    async () => {
+      const ref = await addDoc(tournamentsRef, {
+        groupId: input.groupId,
+        createdByUid: input.createdByUid,
+        name: input.name,
+        structureSnapshot: input.structureSnapshot,
+        state: "setup",
+        startedAt: null,
+        levelStartedAt: null,
+        pausedAt: null,
+        pausedAccumMs: 0,
+        finishedAt: null,
+        currentLevel: 0,
+        lateEntryDeadlineLevel: input.structureSnapshot.lateEntryDeadlineLevel,
+        seatsPerTable: input.seatsPerTable,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return ref.id;
+    },
+  );
+  logger.info("tournament create ok", { tid, gid: input.groupId });
+  return tid;
 }
 
 export async function getTournament(tid: string): Promise<TournamentDoc> {
-  try {
-    const snap = await getDoc(doc(tournamentsRef, tid));
-    if (!snap.exists()) {
-      throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-    }
-    return { id: snap.id, ...snap.data() };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "トーナメント取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "トーナメント取得に失敗しました",
+    async () => {
+      const snap = await getDoc(doc(tournamentsRef, tid));
+      if (!snap.exists()) {
+        throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+      }
+      return { id: snap.id, ...snap.data() };
+    },
+    { tid },
+  );
 }
 
 /**
@@ -80,42 +83,44 @@ export async function getTournament(tid: string): Promise<TournamentDoc> {
  * 完全に開けなくなる事故を防ぐ）。
  */
 export async function listTournamentsByGroup(groupId: string): Promise<TournamentDoc[]> {
-  try {
-    const q = query(tournamentsRef, where("groupId", "==", groupId));
-    const snap = await getDocs(q);
-    const items: TournamentDoc[] = [];
-    for (const d of snap.docs) {
-      try {
-        items.push({ id: d.id, ...d.data() });
-      } catch (e) {
-        const wrapped = AppError.from(e, "firestore/invalid-data", "不正なドキュメント");
-        logger.warn("tournament list skipped invalid doc", {
-          tid: d.id,
-          code: wrapped.code,
-        });
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "トーナメント一覧取得に失敗しました",
+    async () => {
+      const q = query(tournamentsRef, where("groupId", "==", groupId));
+      const snap = await getDocs(q);
+      const items: TournamentDoc[] = [];
+      for (const d of snap.docs) {
+        try {
+          items.push({ id: d.id, ...d.data() });
+        } catch (e) {
+          const wrapped = AppError.from(e, "firestore/invalid-data", "不正なドキュメント");
+          logger.warn("tournament list skipped invalid doc", {
+            tid: d.id,
+            code: wrapped.code,
+          });
+        }
       }
-    }
-    items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
-    return items;
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "トーナメント一覧取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, groupId });
-    throw wrapped;
-  }
+      items.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+      return items;
+    },
+    { groupId },
+  );
 }
 
 export async function updateTournament(tid: string, patch: UpdateTournamentInput): Promise<void> {
-  try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      ...patch,
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament update ok", { tid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント更新に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "トーナメント更新に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        ...patch,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament update ok", { tid });
 }
 
 /**
@@ -145,17 +150,18 @@ export async function beginSeating(
   if (t.state !== "setup") {
     throw new AppError("setup 状態ではありません", "tournament/invalid-state");
   }
-  try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      state: "seating",
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament seating begin ok", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "席決めフェーズへの遷移に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "席決めフェーズへの遷移に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        state: "seating",
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament seating begin ok", { tid, uid });
 }
 
 /**
@@ -170,23 +176,24 @@ export async function confirmSeating(
   if (t.state !== "seating") {
     throw new AppError("seating 状態ではありません", "tournament/invalid-state");
   }
-  try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      state: "running",
-      startedAt: serverTimestamp(),
-      levelStartedAt: serverTimestamp(),
-      pausedAt: null,
-      pausedAccumMs: 0,
-      finishedAt: null,
-      currentLevel: 1,
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament seating confirm ok", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント開始に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "トーナメント開始に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        state: "running",
+        startedAt: serverTimestamp(),
+        levelStartedAt: serverTimestamp(),
+        pausedAt: null,
+        pausedAccumMs: 0,
+        finishedAt: null,
+        currentLevel: 1,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament seating confirm ok", { tid, uid });
 }
 
 export async function pauseTournament(
@@ -198,18 +205,19 @@ export async function pauseTournament(
   if (t.state !== "running") {
     throw new AppError("running 状態ではありません", "tournament/invalid-state");
   }
-  try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      state: "paused",
-      pausedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament pause ok", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "一時停止に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "一時停止に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        state: "paused",
+        pausedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament pause ok", { tid, uid });
 }
 
 export async function resumeTournament(
@@ -226,19 +234,20 @@ export async function resumeTournament(
   }
   // 端末時計ベースで pause 持続時間を概算（精度は ~1 秒、level 遷移時にリセット）。
   const pausedFor = Math.max(0, Date.now() - t.pausedAt.toMillis());
-  try {
-    await updateDoc(doc(tournamentsRef, tid), {
-      state: "running",
-      pausedAt: null,
-      pausedAccumMs: (t.pausedAccumMs ?? 0) + pausedFor,
-      updatedAt: serverTimestamp(),
-    });
-    logger.info("tournament resume ok", { tid, uid, pausedFor });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "再開に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "再開に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        state: "running",
+        pausedAt: null,
+        pausedAccumMs: (t.pausedAccumMs ?? 0) + pausedFor,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament resume ok", { tid, uid, pausedFor });
 }
 
 /**
@@ -282,35 +291,36 @@ export async function advanceLevel(
 ): Promise<void> {
   if (opts.expectedLevel !== undefined) {
     const expected = opts.expectedLevel;
-    try {
-      await runTransaction(firestore, async (tx) => {
-        const ref = doc(tournamentsRef, tid);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) {
-          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-        }
-        const t: TournamentDoc = { id: snap.id, ...snap.data() };
-        if (!t.groupId || !userGroupIds.includes(t.groupId)) {
-          throw new AppError("not allowed", "firestore/permission-denied");
-        }
-        if (t.currentLevel !== expected) {
-          // 別端末が先に進めた。no-op で抜ける。
-          logger.info("advance level skipped (race)", {
-            tid,
-            expected,
-            actual: t.currentLevel,
-          });
-          return;
-        }
-        if (t.currentLevel >= t.structureSnapshot.levels.length) return;
-        tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
-      });
-      logger.info("advance level ok (auto)", { tid, uid, expected });
-    } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "レベル進行に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code, tid });
-      throw wrapped;
-    }
+    await wrapFirestoreWrite(
+      "firestore/write_failed",
+      "レベル進行に失敗しました",
+      async () => {
+        await runTransaction(firestore, async (tx) => {
+          const ref = doc(tournamentsRef, tid);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) {
+            throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+          }
+          const t: TournamentDoc = { id: snap.id, ...snap.data() };
+          if (!t.groupId || !userGroupIds.includes(t.groupId)) {
+            throw new AppError("not allowed", "firestore/permission-denied");
+          }
+          if (t.currentLevel !== expected) {
+            // 別端末が先に進めた。no-op で抜ける。
+            logger.info("advance level skipped (race)", {
+              tid,
+              expected,
+              actual: t.currentLevel,
+            });
+            return;
+          }
+          if (t.currentLevel >= t.structureSnapshot.levels.length) return;
+          tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
+        });
+      },
+      { tid },
+    );
+    logger.info("advance level ok (auto)", { tid, uid, expected });
     return;
   }
 
@@ -318,17 +328,18 @@ export async function advanceLevel(
   if (t.currentLevel >= t.structureSnapshot.levels.length) {
     throw new AppError("最終レベルです", "tournament/invalid-state");
   }
-  try {
-    await updateDoc(
-      doc(tournamentsRef, tid),
-      levelTransitionUpdates(t.state, t.currentLevel + 1, "manual"),
-    );
-    logger.info("advance level ok (manual)", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "レベル進行に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "レベル進行に失敗しました",
+    async () => {
+      await updateDoc(
+        doc(tournamentsRef, tid),
+        levelTransitionUpdates(t.state, t.currentLevel + 1, "manual"),
+      );
+    },
+    { tid },
+  );
+  logger.info("advance level ok (manual)", { tid, uid });
 }
 
 export async function revertLevel(tid: string, uid: string, userGroupIds: string[]): Promise<void> {
@@ -336,17 +347,18 @@ export async function revertLevel(tid: string, uid: string, userGroupIds: string
   if (t.currentLevel <= 1) {
     throw new AppError("最初のレベルです", "tournament/invalid-state");
   }
-  try {
-    await updateDoc(
-      doc(tournamentsRef, tid),
-      levelTransitionUpdates(t.state, t.currentLevel - 1, "manual"),
-    );
-    logger.info("revert level ok", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "レベル巻き戻しに失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "レベル巻き戻しに失敗しました",
+    async () => {
+      await updateDoc(
+        doc(tournamentsRef, tid),
+        levelTransitionUpdates(t.state, t.currentLevel - 1, "manual"),
+      );
+    },
+    { tid },
+  );
+  logger.info("revert level ok", { tid, uid });
 }
 
 /**
@@ -363,35 +375,36 @@ export async function finishTournament(
 ): Promise<void> {
   const t = await assertCanManage(tid, userGroupIds);
   if (t.state === "finished") return;
-  try {
-    await runTransaction(firestore, async (tx) => {
-      const ref = doc(tournamentsRef, tid);
-      const snap = await tx.get(ref);
-      if (!snap.exists()) {
-        throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-      }
-      const cur: TournamentDoc = { id: snap.id, ...snap.data() };
-      if (cur.state === "finished") {
-        // 別端末が先に確定済み。二重 increment を避けるため no-op で抜ける。
-        logger.info("tournament finish skipped (race)", { tid, uid });
-        return;
-      }
-      tx.update(ref, {
-        state: "finished",
-        finishedAt: serverTimestamp(),
-        pausedAt: null,
-        updatedAt: serverTimestamp(),
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "終了処理に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        const ref = doc(tournamentsRef, tid);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) {
+          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+        }
+        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
+        if (cur.state === "finished") {
+          // 別端末が先に確定済み。二重 increment を避けるため no-op で抜ける。
+          logger.info("tournament finish skipped (race)", { tid, uid });
+          return;
+        }
+        tx.update(ref, {
+          state: "finished",
+          finishedAt: serverTimestamp(),
+          pausedAt: null,
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(doc(firestore, "groups", cur.groupId), {
+          finishedTournamentCount: increment(1),
+        });
       });
-      tx.update(doc(firestore, "groups", cur.groupId), {
-        finishedTournamentCount: increment(1),
-      });
-    });
-    logger.info("tournament finish ok", { tid, uid, gid: t.groupId });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "終了処理に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+    },
+    { tid },
+  );
+  logger.info("tournament finish ok", { tid, uid, gid: t.groupId });
 }
 
 interface TournamentSnapshotPayload {
@@ -499,24 +512,26 @@ export async function deleteTournament(
       "tournament/in-progress",
     );
   }
-  try {
-    const batch = writeBatch(firestore);
-    const playersSnap = await getDocs(collection(firestore, "tournaments", tid, "players"));
-    playersSnap.forEach((d) => batch.delete(d.ref));
-    const tablesSnap = await getDocs(collection(firestore, "tournaments", tid, "tables"));
-    tablesSnap.forEach((d) => batch.delete(d.ref));
-    batch.delete(doc(tournamentsRef, tid));
-    await batch.commit();
-    logger.info("tournament delete ok", {
-      tid,
-      uid,
-      state: t.state,
-      players: playersSnap.size,
-      tables: tablesSnap.size,
-    });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "トーナメント削除に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
+  const counts = await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "トーナメント削除に失敗しました",
+    async () => {
+      const batch = writeBatch(firestore);
+      const playersSnap = await getDocs(collection(firestore, "tournaments", tid, "players"));
+      playersSnap.forEach((d) => batch.delete(d.ref));
+      const tablesSnap = await getDocs(collection(firestore, "tournaments", tid, "tables"));
+      tablesSnap.forEach((d) => batch.delete(d.ref));
+      batch.delete(doc(tournamentsRef, tid));
+      await batch.commit();
+      return { players: playersSnap.size, tables: tablesSnap.size };
+    },
+    { tid },
+  );
+  logger.info("tournament delete ok", {
+    tid,
+    uid,
+    state: t.state,
+    players: counts.players,
+    tables: counts.tables,
+  });
 }
