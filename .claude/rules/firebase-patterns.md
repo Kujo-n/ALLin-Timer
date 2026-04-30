@@ -26,6 +26,48 @@ Phase 1 で確立し、Phase 2 で zod runtime validation と repositories 層�
 - 生の `DocumentData` を UI まで持ち込まない
 - repository 関数はエラーを **必ず `AppError.from(e, "firestore/...", 日本語メッセージ)` でラップ**して throw する。呼び出し側で握りつぶさない
 
+## repository の error wrap（Phase 4 architect-refactor 以降・推奨）
+
+新規 repository 関数は `@/lib/firebase/wrap.ts` の `wrapFirestoreWrite` / `wrapFirestoreRead` を経由するのが**推奨**。手書き try/catch + `AppError.from` + `logger.warn` も動作上は等価だが、次回の architect-refactor で統一されるため最初から helper 経由にしておくと差分が少ない。
+
+```ts
+// 推奨形
+export async function updateGroupName(gid: string, name: string): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークル名の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { name });
+    },
+    { gid },
+  );
+  logger.info("group rename ok", { gid });
+}
+```
+
+成功時の `logger.info` は wrap の**外**に置く（wrap は失敗時の warn のみ責任を持つ）。`runTransaction` を含む関数も tx 全体を wrap 内に納める形で対応可能（先例: `finishTournament` / `commitInitialSeating`）。
+
+### 例外: subscribe 系 / 失敗を返却に倒す関数
+
+以下は wrap を使わず従来形を維持する:
+
+- `onSnapshot` 系（`subscribePlayers` / `subscribeTables` / `subscribeTournament` 等）— エラーを `onError` callback に渡す独自契約
+- `templateAdmins.isTemplateAdmin` — 失敗を `false` 返却に倒す独自契約
+
+このような関数はコメントで契約を明示する。
+
+## 数値リミット定数の単一真実源（Phase 4 architect-refactor 以降）
+
+数値リミット（最大卓数 / 最小・最大席数 / 既定値等）は **`src/lib/limits.ts`** に集約する。`engine.ts` / `schemas/*.ts` / `service/*.ts` / repositories / components はここから import する。
+
+`firestore.rules` 内のリテラルは Cloud Firestore Security Rules の言語仕様で const 化できないためハードコードのまま、`scripts/test-rules-limits.mjs` で `limits.ts` との一致を機械検査する。新規リミット追加手順:
+
+1. `src/lib/limits.ts` に `export const NAME = N;` を追加
+2. schema / service / component を `import { NAME } from "@/lib/limits"` に切替
+3. `firestore.rules` に `>= / <=` 制約を追加（必要なら）
+4. `scripts/test-rules-limits.mjs` の `EXPECTED` と `checks` 配列に追加
+5. `npm run test:rules-limits` で green 確認
+
 ## セキュリティルール
 
 - **deny-by-default**（`allow read, write: if false;` から開始）
@@ -67,11 +109,7 @@ rule: `isOrganizer(gid) + affectedKeys().hasOnly(['finishedTournamentCount']) + 
 
 rule: `isOrganizer(gid) + affectedKeys().hasOnly(['defaultSeatsPerTable']) + is int + >= 2 + <= 10`
 
-⚠ DRIFT WARNING: 上限 10 は `firestore.rules` の `players seatNum <= 10` および [tournament.ts](../../src/lib/firebase/schemas/tournament.ts) の `seatsPerTable.max(10)` と連動。同時に変更すること。
-
-### 数値リテラルの drift 検出（Phase 4 architect-refactor 以降）
-
-`firestore.rules` 内のハードコード数値（`tableNum <= 6` / `seatNum <= 10` / `defaultSeatsPerTable >= 2` / `<= 10`）は Cloud Firestore Security Rules の言語仕様上 const 化できない。drift を機械検出するため [scripts/test-rules-limits.mjs](../../scripts/test-rules-limits.mjs) を `npm run test:rules-limits` で走らせる。新規に値域制約を追加する場合は同スクリプトに check ケースを追加し、CI / pre-commit で必ず実行する。
+⚠ DRIFT WARNING: 上限 10 は `firestore.rules` の `players seatNum <= 10` および [tournament.ts](../../src/lib/firebase/schemas/tournament.ts) の `seatsPerTable.max(10)` と連動。同時に変更すること。drift 検出方法は前述の「数値リミット定数の単一真実源」セクション参照。
 
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 

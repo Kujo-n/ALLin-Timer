@@ -93,6 +93,23 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
   - Phase 4.6 → [scripts/migrate-phase-4.6-roles.ts](../../scripts/migrate-phase-4.6-roles.ts) + README の migration 手順
 - **互換レイヤは作らない**（Phase 2.5 先例に従う）。migration 実行前の旧コード／旧クライアントは動作不可
 
+### 任意 `gid` への role 導出（Phase 4 architect-refactor 以降・推奨）
+
+`useCurrentGroup().currentGroupRole` は **「現在選択中の group」**のロールしか扱わない。tournament view（`/tournaments/[tid]`）のように URL から決まる group へのロールが必要な画面では **`useGroupRole(gid: string | null | undefined)`**（[`src/lib/hooks/useGroupRole.ts`](../../src/lib/hooks/useGroupRole.ts)）を使うのが推奨。返り値は `{ group, role }` で、group オブジェクトとロール導出を 1 回で得られる。
+
+```ts
+// 推奨形
+const { group: tournamentGroup, role: myRole } = useGroupRole(data?.groupId);
+
+// 旧パターン（重複・将来 architect-refactor で集約される）
+const tournamentGroup = data ? groups.find((x) => x.id === data.groupId) ?? null : null;
+const myRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
+```
+
+### tournament state ごとの許可判定（Phase 4 architect-refactor 以降・推奨）
+
+`tournament.state === "running"` 等の直接比較ではなく、[`src/lib/services/tournament-state.ts`](../../src/lib/services/tournament-state.ts) の純関数（`canPause` / `canResume` / `isInProgress` / `canDelete` / `showSeatingBoard` 等）を経由するのが推奨。新規 state を追加するときは同 file の関数と [`tournament-state.test.ts`](../../src/lib/services/tournament-state.test.ts) の characterization test を更新する。
+
 ## 既知のセキュリティリスク
 
 ### `groupJoinCodes.usesCount` の悪意ある第三者による空消費
