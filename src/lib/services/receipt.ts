@@ -1,17 +1,14 @@
 import type { User } from "firebase/auth";
 
-import { AppError, getErrorCode } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
-import {
-  deleteUserProfile,
-  getUserProfile,
-  upsertUserProfile,
-} from "@/lib/firebase/repositories/users";
+import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import {
+  attemptAnonymousSelfDelete,
   loginWithEmail,
   signInAsGuest,
   signInWithGoogle,
@@ -161,19 +158,8 @@ export async function cancelOwnEntry(tid: string): Promise<void> {
   await deletePlayer(tid, user.uid);
   logger.info("cancel own entry ok", { tid, uid: user.uid });
 
-  if (user.isAnonymous) {
-    try {
-      await deleteUserProfile(user.uid);
-      await user.delete();
-      logger.info("anonymous self-delete after cancel", { uid: user.uid, tid });
-    } catch (e) {
-      logger.warn("anonymous self-delete failed", {
-        code: getErrorCode(e),
-        uid: user.uid,
-      });
-      // best-effort: 残留は許容
-    }
-  }
+  // 匿名ゲストの場合は users/{uid} + auth user を best-effort で削除（共通 helper）。
+  await attemptAnonymousSelfDelete(user, "cancel");
 }
 
 /**

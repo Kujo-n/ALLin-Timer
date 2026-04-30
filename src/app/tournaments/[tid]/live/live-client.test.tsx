@@ -15,10 +15,10 @@ vi.mock("@/lib/firebase/AuthProvider", () => ({
 vi.mock("@/lib/firebase/repositories/players", () => ({
   subscribePlayers: vi.fn(),
 }));
-vi.mock("@/lib/firebase/repositories/users", () => ({
-  deleteUserProfile: vi.fn(),
+// auth-actions / receipt は firebase client を import するため、必要な関数のみ軽量 mock する。
+vi.mock("@/lib/services/auth-actions", () => ({
+  attemptAnonymousSelfDelete: vi.fn().mockResolvedValue({ deleted: true }),
 }));
-// receipt.ts は firebase client を import するため、必要な関数のみ軽量 mock する。
 vi.mock("@/lib/services/receipt", () => ({
   joinAsCurrentUser: vi.fn().mockResolvedValue("created"),
 }));
@@ -40,8 +40,8 @@ vi.mock("@/lib/services/current-group", () => ({
 
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
-import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
+import { attemptAnonymousSelfDelete } from "@/lib/services/auth-actions";
 
 import { LiveClient } from "./live-client";
 
@@ -124,7 +124,9 @@ beforeEach(() => {
     lastOnNext = onNext;
     return () => {};
   });
-  vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
+  vi.mocked(attemptAnonymousSelfDelete)
+    .mockReset()
+    .mockResolvedValue({ deleted: true });
 });
 
 afterEach(() => {
@@ -240,15 +242,15 @@ describe("LiveClient — Winner banner", () => {
 });
 
 describe("LiveClient — anonymous self-delete on finish", () => {
-  it("deletes user profile and auth when anonymous participant sees finished state", async () => {
-    const userDelete = vi.fn().mockResolvedValue(undefined);
+  it("delegates to attemptAnonymousSelfDelete when anonymous participant sees finished state", async () => {
+    const anonUser = {
+      uid: "guest-1",
+      isAnonymous: true,
+      delete: vi.fn().mockResolvedValue(undefined),
+    } as unknown as import("firebase/auth").User & { uid: string };
     setMocks({
       tournament: makeTournament({ state: "finished", finishedAt: ts }),
-      user: {
-        uid: "guest-1",
-        isAnonymous: true,
-        delete: userDelete,
-      } as unknown as import("firebase/auth").User & { uid: string },
+      user: anonUser,
     });
     render(<LiveClient tid="t1" />);
 
@@ -257,19 +259,17 @@ describe("LiveClient — anonymous self-delete on finish", () => {
     });
 
     await waitFor(() => {
-      expect(deleteUserProfile).toHaveBeenCalledWith("guest-1");
+      expect(attemptAnonymousSelfDelete).toHaveBeenCalledWith(anonUser, "finish");
     });
-    expect(userDelete).toHaveBeenCalled();
   });
 
-  it("does not self-delete non-anonymous users", async () => {
-    const userDelete = vi.fn().mockResolvedValue(undefined);
+  it("does not delegate self-delete for non-anonymous users", async () => {
     setMocks({
       tournament: makeTournament({ state: "finished", finishedAt: ts }),
       user: {
         uid: "u1",
         isAnonymous: false,
-        delete: userDelete,
+        delete: vi.fn(),
       } as unknown as import("firebase/auth").User & { uid: string },
     });
     render(<LiveClient tid="t1" />);
@@ -280,18 +280,16 @@ describe("LiveClient — anonymous self-delete on finish", () => {
 
     // ちょっと待って副作用が走らないことを確認
     await new Promise((r) => setTimeout(r, 20));
-    expect(deleteUserProfile).not.toHaveBeenCalled();
-    expect(userDelete).not.toHaveBeenCalled();
+    expect(attemptAnonymousSelfDelete).not.toHaveBeenCalled();
   });
 
-  it("does not self-delete when not a participant", async () => {
-    const userDelete = vi.fn().mockResolvedValue(undefined);
+  it("does not delegate self-delete when not a participant", async () => {
     setMocks({
       tournament: makeTournament({ state: "finished", finishedAt: ts }),
       user: {
         uid: "guest-1",
         isAnonymous: true,
-        delete: userDelete,
+        delete: vi.fn(),
       } as unknown as import("firebase/auth").User & { uid: string },
     });
     render(<LiveClient tid="t1" />);
@@ -301,21 +299,20 @@ describe("LiveClient — anonymous self-delete on finish", () => {
     });
 
     await new Promise((r) => setTimeout(r, 20));
-    expect(deleteUserProfile).not.toHaveBeenCalled();
-    expect(userDelete).not.toHaveBeenCalled();
+    expect(attemptAnonymousSelfDelete).not.toHaveBeenCalled();
   });
 
-  it("swallows delete errors (best-effort)", async () => {
-    const userDelete = vi.fn().mockRejectedValue(new Error("requires-recent-login"));
+  it("propagates helper rejection swallowing (best-effort contract)", async () => {
+    // helper の契約: 失敗時も throw せず resolve する。caller は no-crash。
+    vi.mocked(attemptAnonymousSelfDelete).mockResolvedValueOnce({ deleted: false });
     setMocks({
       tournament: makeTournament({ state: "finished", finishedAt: ts }),
       user: {
         uid: "guest-1",
         isAnonymous: true,
-        delete: userDelete,
+        delete: vi.fn(),
       } as unknown as import("firebase/auth").User & { uid: string },
     });
-    vi.mocked(deleteUserProfile).mockRejectedValueOnce(new Error("boom"));
     render(<LiveClient tid="t1" />);
 
     act(() => {
@@ -323,8 +320,8 @@ describe("LiveClient — anonymous self-delete on finish", () => {
     });
 
     await waitFor(() => {
-      expect(deleteUserProfile).toHaveBeenCalled();
+      expect(attemptAnonymousSelfDelete).toHaveBeenCalled();
     });
-    // no crash; test passes if the rejected promise is swallowed
+    // no crash; helper が rejected を内部で握ると caller は問題なく続行する。
   });
 });

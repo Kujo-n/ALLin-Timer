@@ -451,14 +451,16 @@ describe("logout", () => {
     await expect(logout()).rejects.toMatchObject({ code: "auth/logout-failed" });
   });
 
-  it("deletes user profile and auth account for anonymous user", async () => {
+  it("deletes user profile and auth account for anonymous user (skips signOut on success)", async () => {
     const user = makeUser({ isAnonymous: true });
     mockAuthState.currentUser = user;
 
     await logout();
 
+    // attemptAnonymousSelfDelete は内部で deleteUserProfile + user.delete を呼ぶ。
     expect(deleteUserProfile).toHaveBeenCalledWith("u1");
     expect(user.delete).toHaveBeenCalled();
+    // self-delete が { deleted: true } を返すと logout は signOut を skip する。
     expect(signOut).not.toHaveBeenCalled();
   });
 

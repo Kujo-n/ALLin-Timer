@@ -13,15 +13,15 @@ import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshot
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { Button } from "@/components/ui/button";
-import { AppError, getErrorCode } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
-import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
 import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
+import { attemptAnonymousSelfDelete } from "@/lib/services/auth-actions";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 
@@ -84,18 +84,7 @@ export function LiveClient({ tid }: { tid: string }) {
     if (selfDeleteInflightRef.current) return;
     selfDeleteInflightRef.current = true;
 
-    void (async () => {
-      try {
-        await deleteUserProfile(user.uid);
-        await user.delete();
-        logger.info("anonymous self-delete ok", { uid: user.uid, tid });
-      } catch (e) {
-        logger.warn("anonymous self-delete failed", {
-          code: getErrorCode(e),
-          uid: user.uid,
-        });
-      }
-    })();
+    void attemptAnonymousSelfDelete(user, "finish");
   }, [user, tournament, me, tid]);
 
   if (error) {

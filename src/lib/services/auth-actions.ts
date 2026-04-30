@@ -290,28 +290,59 @@ export async function updateDisplayName(newName: string): Promise<void> {
   }
 }
 
+export interface AnonymousSelfDeleteResult {
+  /** delete が成功したか。false は「匿名でない / delete に失敗」のいずれか。 */
+  deleted: boolean;
+}
+
+/**
+ * 匿名ユーザーの users/{uid} と Firebase Auth 自体を best-effort で削除する共通 helper。
+ *
+ * Phase 4 architect-refactor (P6-2) で `logout` / `cancelOwnEntry` / `live-client`
+ * (finished 検知) の 3 か所に重複していた同形コードを集約。
+ *
+ * - 失敗は warn ログのみで throw しない（呼出側の主処理を妨げない）。
+ * - `contextLabel` を info / warn の `context` フィールドに付与し、3 経路を運用時に区別する。
+ * - 匿名アカウントは recent-login 猶予内のため通常 `user.delete()` は成功する。
+ * - 戻り値の `deleted` で「実際に削除が完了したか」を呼出側に伝える。logout が
+ *   self-delete 成功時に signOut を skip する判断材料になる。
+ */
+export async function attemptAnonymousSelfDelete(
+  user: User,
+  contextLabel: "logout" | "cancel" | "finish",
+): Promise<AnonymousSelfDeleteResult> {
+  if (!user.isAnonymous) return { deleted: false };
+  try {
+    await deleteUserProfile(user.uid);
+    await user.delete();
+    logger.info("anonymous self-delete ok", { uid: user.uid, context: contextLabel });
+    return { deleted: true };
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "auth/anon-delete-failed",
+      "匿名アカウントの削除に失敗しました",
+    );
+    logger.warn(wrapped.message, {
+      code: wrapped.code,
+      uid: user.uid,
+      context: contextLabel,
+    });
+    return { deleted: false };
+  }
+}
+
 /**
  * ログアウト。匿名ユーザーの場合は users/{uid} と auth 自体を best-effort で削除し、
  * ゴミアカウントの蓄積を防ぐ。削除失敗時は通常の signOut にフォールバックする。
- * （匿名アカウントは recent-login 猶予内なので通常は user.delete() が成功する。）
  */
 export async function logout(): Promise<void> {
   const user = firebaseAuth.currentUser;
   if (user?.isAnonymous) {
-    try {
-      await deleteUserProfile(user.uid);
-      await user.delete();
-      logger.info("anonymous logout (self-delete) ok", { uid: user.uid });
-      return;
-    } catch (e) {
-      const wrapped = AppError.from(
-        e,
-        "auth/anon-delete-failed",
-        "匿名アカウントの削除に失敗しました",
-      );
-      logger.warn(wrapped.message, { code: wrapped.code });
-      // fallthrough: 通常の signOut を試みる（データ残留は許容）
-    }
+    const result = await attemptAnonymousSelfDelete(user, "logout");
+    // self-delete が成功していれば既にサインアウト済みのため signOut を skip。
+    // 失敗していれば signOut にフォールバックする。
+    if (result.deleted) return;
   }
   try {
     await signOut(firebaseAuth);

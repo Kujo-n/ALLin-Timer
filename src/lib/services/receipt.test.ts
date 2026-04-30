@@ -26,9 +26,9 @@ vi.mock("@/lib/firebase/repositories/players", () => ({
 vi.mock("@/lib/firebase/repositories/users", () => ({
   upsertUserProfile: vi.fn(),
   getUserProfile: vi.fn(),
-  deleteUserProfile: vi.fn(),
 }));
 vi.mock("@/lib/services/auth-actions", () => ({
+  attemptAnonymousSelfDelete: vi.fn(),
   signInAsGuest: vi.fn(),
   loginWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
@@ -36,12 +36,13 @@ vi.mock("@/lib/services/auth-actions", () => ({
 
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import { getPlayer, upsertPlayer, deletePlayer } from "@/lib/firebase/repositories/players";
+import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
 import {
-  deleteUserProfile,
-  getUserProfile,
-  upsertUserProfile,
-} from "@/lib/firebase/repositories/users";
-import { loginWithEmail, signInAsGuest, signInWithGoogle } from "@/lib/services/auth-actions";
+  attemptAnonymousSelfDelete,
+  loginWithEmail,
+  signInAsGuest,
+  signInWithGoogle,
+} from "@/lib/services/auth-actions";
 
 import {
   cancelOwnEntry,
@@ -244,7 +245,9 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
 describe("cancelOwnEntry", () => {
   beforeEach(() => {
     vi.mocked(deletePlayer).mockReset().mockResolvedValue(undefined);
-    vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(attemptAnonymousSelfDelete)
+      .mockReset()
+      .mockResolvedValue({ deleted: false });
     mockAuthState.currentUser = null;
   });
 
@@ -254,65 +257,57 @@ describe("cancelOwnEntry", () => {
       code: "auth/not-authenticated",
     });
     expect(deletePlayer).not.toHaveBeenCalled();
+    expect(attemptAnonymousSelfDelete).not.toHaveBeenCalled();
   });
 
-  it("deletes only player for non-anonymous user", async () => {
-    mockAuthState.currentUser = {
+  it("deletes player and delegates anonymous cleanup to helper for non-anonymous user", async () => {
+    const user = {
       uid: "u1",
       email: "alice@example.com",
       displayName: "Alice",
       isAnonymous: false,
       delete: vi.fn().mockResolvedValue(undefined),
     };
+    mockAuthState.currentUser = user;
 
     await cancelOwnEntry("t1");
 
     expect(deletePlayer).toHaveBeenCalledWith("t1", "u1");
-    expect(deleteUserProfile).not.toHaveBeenCalled();
+    // helper は呼ばれるが内部で isAnonymous=false → no-op の契約。
+    expect(attemptAnonymousSelfDelete).toHaveBeenCalledWith(user, "cancel");
   });
 
-  it("also deletes user profile and auth for anonymous user", async () => {
-    const userDelete = vi.fn().mockResolvedValue(undefined);
-    mockAuthState.currentUser = {
+  it("delegates anonymous cleanup to helper for anonymous user", async () => {
+    const user = {
       uid: "guest-1",
       email: null,
       displayName: "Alice",
       isAnonymous: true,
-      delete: userDelete,
+      delete: vi.fn().mockResolvedValue(undefined),
     };
+    mockAuthState.currentUser = user;
 
     await cancelOwnEntry("t1");
 
     expect(deletePlayer).toHaveBeenCalledWith("t1", "guest-1");
-    expect(deleteUserProfile).toHaveBeenCalledWith("guest-1");
-    expect(userDelete).toHaveBeenCalled();
+    expect(attemptAnonymousSelfDelete).toHaveBeenCalledWith(user, "cancel");
   });
 
-  it("tolerates anonymous delete failures (best-effort)", async () => {
-    const userDelete = vi.fn().mockRejectedValue(new Error("requires-recent-login"));
-    mockAuthState.currentUser = {
+  it("does not throw when helper is best-effort (rejection is swallowed inside helper)", async () => {
+    const user = {
       uid: "guest-1",
       email: null,
       displayName: "Alice",
       isAnonymous: true,
-      delete: userDelete,
+      delete: vi.fn().mockRejectedValue(new Error("requires-recent-login")),
     };
+    mockAuthState.currentUser = user;
+    // helper の契約: 失敗時も throw せず { deleted: false } で resolve する。
+    vi.mocked(attemptAnonymousSelfDelete).mockResolvedValue({ deleted: false });
 
     await expect(cancelOwnEntry("t1")).resolves.toBeUndefined();
     expect(deletePlayer).toHaveBeenCalledWith("t1", "guest-1");
-  });
-
-  it("swallows delete failures with non-standard error (no code property)", async () => {
-    const userDelete = vi.fn().mockRejectedValue("string-error");
-    mockAuthState.currentUser = {
-      uid: "guest-1",
-      email: null,
-      displayName: "Alice",
-      isAnonymous: true,
-      delete: userDelete,
-    };
-
-    await expect(cancelOwnEntry("t1")).resolves.toBeUndefined();
+    expect(attemptAnonymousSelfDelete).toHaveBeenCalledWith(user, "cancel");
   });
 });
 
