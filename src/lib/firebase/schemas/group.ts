@@ -1,6 +1,8 @@
 import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
+import { DEFAULT_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
+
 /**
  * サークル内表示名の最大文字数。
  *
@@ -81,7 +83,12 @@ export const groupBodySchema = z
     //   `seatsPerTable.min(2).max(10)` と完全一致させる（DRIFT WARNING: tournaments の
     //   seatsPerTable / players seatNum 上限 10 と連動。同時に変更）。
     //   旧 doc（Phase 4.16 以前）は default(9) で受容され、未明示なら 9 として hydrate される。
-    defaultSeatsPerTable: z.number().int().min(2).max(10).default(9),
+    defaultSeatsPerTable: z
+      .number()
+      .int()
+      .min(MIN_SEATS_PER_TABLE)
+      .max(MAX_SEATS_PER_TABLE)
+      .default(DEFAULT_SEATS_PER_TABLE),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

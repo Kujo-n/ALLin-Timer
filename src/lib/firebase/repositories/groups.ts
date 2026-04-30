@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
+import { DEFAULT_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
@@ -50,8 +51,8 @@ export async function createGroup(
       memberDisplayNames,
       audioSettings: DEFAULT_AUDIO_SETTINGS,
       finishedTournamentCount: 0,
-      // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる（9）。
-      defaultSeatsPerTable: 9,
+      // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる。
+      defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
       createdAt: serverTimestamp(),
       joinCodeId: null,
     });
@@ -280,9 +281,13 @@ export async function updateDefaultSeatsPerTable(
   gid: string,
   value: number,
 ): Promise<void> {
-  if (!Number.isInteger(value) || value < 2 || value > 10) {
+  if (
+    !Number.isInteger(value) ||
+    value < MIN_SEATS_PER_TABLE ||
+    value > MAX_SEATS_PER_TABLE
+  ) {
     throw new AppError(
-      "デフォルト席数は 2 以上 10 以下の整数で指定してください",
+      `デフォルト席数は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
       "validation/default-seats-invalid",
     );
   }

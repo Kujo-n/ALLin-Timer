@@ -5,17 +5,17 @@
 // MVP の明示的な近似: TDA の「BB 次プレイヤー」はディーラーボタン位置に基づくが、
 // 本アプリはボタン位置を追跡しないため「席番号最小」を tie-break として代替する。
 
+import { MAX_TABLES } from "@/lib/limits";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 
 import { shuffle } from "./prng";
 
 /**
- * 最大テーブル数。TDA 2015 のバランシング許容差（6 卓以下: 1 / 7 卓以上: 2）の境界。
- *
- * ⚠ DRIFT WARNING: この値は firestore.rules の `tableNum <= 6` チェックと**同期**している。
- * 値を変更する場合は firestore.rules の M1 fix セクション（`match /players/{pid}`）も同時更新すること。
+ * 最大テーブル数を `@/lib/limits` から再 export。既存テスト
+ * (`engine.test.ts` 等) が `import { MAX_TABLES } from "./engine"` 経由で参照している
+ * ため、この re-export を維持して移行コストを抑える。
  */
-export const MAX_TABLES = 6;
+export { MAX_TABLES };
 
 /**
  * 卓数が MAX_TABLES を超える計画になった場合に投げる。

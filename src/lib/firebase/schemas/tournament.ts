@@ -1,6 +1,8 @@
 import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
+import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
+
 import { levelSchema } from "./structure";
 
 export const tournamentStateSchema = z.enum(["setup", "seating", "running", "paused", "finished"]);
@@ -41,7 +43,7 @@ export const tournamentBodySchema = z.object({
   // Phase 4: 1 テーブルあたりの最大席数。default 9。setup 中のみ変更可。範囲 2〜10。
   // M2 fix: input schema と body schema の制約を一致させる（DB 直書きでも 2 未満を弾く）。
   // ⚠ DRIFT WARNING (L3): 上限 10 は firestore.rules の `seatNum <= 10` と同期。変更時は同時更新すること。
-  seatsPerTable: z.number().int().min(2).max(10),
+  seatsPerTable: z.number().int().min(MIN_SEATS_PER_TABLE).max(MAX_SEATS_PER_TABLE),
   // Phase 4.9 follow-up: 直近の level 遷移が auto-advance（タイマー満了）か manual（運営者ボタン）かの記録。
   //   - useAudioPlayer がこれを見て「manual のとき音を鳴らさない」分岐に使う
   //   - schema は additive。既存 doc は missing field（undefined）を許容（破壊的 migration 不要）
@@ -61,13 +63,13 @@ export const createTournamentInputSchema = z.object({
   name: z.string().min(1, "名前を入力してください"),
   structureSnapshot: structureSnapshotSchema,
   // Phase 4: UI で 2〜10 を指定（default 9）。
-  seatsPerTable: z.number().int().min(2).max(10),
+  seatsPerTable: z.number().int().min(MIN_SEATS_PER_TABLE).max(MAX_SEATS_PER_TABLE),
 });
 export type CreateTournamentInput = z.infer<typeof createTournamentInputSchema>;
 
 export const updateTournamentInputSchema = z.object({
   name: z.string().min(1).optional(),
   structureSnapshot: structureSnapshotSchema.optional(),
-  seatsPerTable: z.number().int().min(2).max(10).optional(),
+  seatsPerTable: z.number().int().min(MIN_SEATS_PER_TABLE).max(MAX_SEATS_PER_TABLE).optional(),
 });
 export type UpdateTournamentInput = z.infer<typeof updateTournamentInputSchema>;

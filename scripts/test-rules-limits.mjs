@@ -8,17 +8,14 @@
  *   npm run test:rules-limits
  *
  * 検査内容:
- *   - players.tableNum: >= 1 / <= MAX_TABLES (6)
- *   - players.seatNum:  >= 1 / <= MAX_SEATS_PER_TABLE (10)
- *   - groups.defaultSeatsPerTable: >= MIN_SEATS_PER_TABLE (2) / <= MAX_SEATS_PER_TABLE (10)
+ *   - players.tableNum: >= 1 / <= MAX_TABLES
+ *   - players.seatNum:  >= 1 / <= MAX_SEATS_PER_TABLE
+ *   - groups.defaultSeatsPerTable: >= MIN_SEATS_PER_TABLE / <= MAX_SEATS_PER_TABLE
  *
  * Cloud Firestore Security Rules には const 機構がないため、上記の数値は
- * `firestore.rules` 内に直接書かれる。本スクリプトはそれらを正規表現で抽出し
- * 期待値と突き合わせる。drift（rules 側だけ更新／schema 側だけ更新）を CI で検出する。
- *
- * P2-1 で `src/lib/limits.ts` に集約された後は、本スクリプトの EXPECTED を
- * limits.ts 由来に切替える（同じ数値の二重宣言を排除）。本 commit 時点では
- * limits.ts がまだ存在しないため、EXPECTED をハードコードして先行投入する。
+ * `firestore.rules` 内に直接書かれる。本スクリプトはそれらを正規表現で抽出し、
+ * `src/lib/limits.ts` の `export const NAME = N;` 宣言から取った期待値と突き合わせる。
+ * drift（rules 側だけ更新／limits.ts 側だけ更新）を CI で検出する。
  *
  * Firestore emulator を起動しない静的パース検査のため、軽量で CI に組込みやすい
  * （emulator REST 検査は scripts/test-rules-default-seats.mjs / -finished-count.mjs を参照）。
@@ -32,12 +29,29 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const rulesPath = resolve(repoRoot, "firestore.rules");
 const rulesText = readFileSync(rulesPath, "utf8");
+const limitsPath = resolve(repoRoot, "src/lib/limits.ts");
+const limitsText = readFileSync(limitsPath, "utf8");
 
-// P2-1 で limits.ts を集約したらこれを置換する。
+/**
+ * `src/lib/limits.ts` の `export const NAME = NUMBER;` 形式の宣言を抽出する。
+ * 本スクリプトは TS を実行できないため、シンプルな正規表現で値だけ取り出す。
+ * limits.ts のフォーマットが変わった場合は本関数も合わせて更新する。
+ */
+function parseLimitsConst(name) {
+  const re = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*(\\d+)\\s*;`);
+  const m = limitsText.match(re);
+  if (!m) {
+    throw new Error(
+      `parseLimitsConst: '${name}' を src/lib/limits.ts から抽出できません`,
+    );
+  }
+  return Number(m[1]);
+}
+
 const EXPECTED = {
-  MIN_SEATS_PER_TABLE: 2,
-  MAX_SEATS_PER_TABLE: 10,
-  MAX_TABLES: 6,
+  MIN_SEATS_PER_TABLE: parseLimitsConst("MIN_SEATS_PER_TABLE"),
+  MAX_SEATS_PER_TABLE: parseLimitsConst("MAX_SEATS_PER_TABLE"),
+  MAX_TABLES: parseLimitsConst("MAX_TABLES"),
 };
 
 const checks = [

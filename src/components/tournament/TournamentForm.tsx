@@ -16,6 +16,12 @@ import { AppError } from "@/lib/errors";
 import { listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
+import {
+  DEFAULT_SEATS_PER_TABLE,
+  MAX_SEATS_PER_TABLE,
+  MAX_TABLES,
+  MIN_SEATS_PER_TABLE,
+} from "@/lib/limits";
 import { logger } from "@/lib/logger";
 
 interface Props {
@@ -31,8 +37,6 @@ interface Props {
   }) => Promise<void>;
   onCancel?: () => void;
 }
-
-const DEFAULT_SEATS_PER_TABLE = 9;
 
 function snapshotFromStructure(s: StructureDoc): StructureSnapshot {
   return {
@@ -107,8 +111,14 @@ export function TournamentForm({
       setError("validation/structure: ストラクチャを選択してください");
       return;
     }
-    if (!Number.isInteger(seatsPerTable) || seatsPerTable < 2 || seatsPerTable > 10) {
-      setError("validation/seats: 1 Table あたりの席数は 2〜10 で入力してください");
+    if (
+      !Number.isInteger(seatsPerTable) ||
+      seatsPerTable < MIN_SEATS_PER_TABLE ||
+      seatsPerTable > MAX_SEATS_PER_TABLE
+    ) {
+      setError(
+        `validation/seats: 1 Table あたりの席数は ${MIN_SEATS_PER_TABLE}〜${MAX_SEATS_PER_TABLE} で入力してください`,
+      );
       return;
     }
     setSubmitting(true);
@@ -163,14 +173,15 @@ export function TournamentForm({
         <Input
           id="t-seats"
           type="number"
-          min={2}
-          max={10}
+          min={MIN_SEATS_PER_TABLE}
+          max={MAX_SEATS_PER_TABLE}
           value={seatsPerTable}
           onChange={(e) => setSeatsPerTable(Number(e.target.value))}
           required
         />
         <p className="text-xs text-muted-foreground">
-          NLH 標準は 9 席。最大 6 Tables × {seatsPerTable} 席 = {6 * seatsPerTable} 人まで対応します。
+          NLH 標準は {DEFAULT_SEATS_PER_TABLE} 席。最大 {MAX_TABLES} Tables × {seatsPerTable} 席 ={" "}
+          {MAX_TABLES * seatsPerTable} 人まで対応します。
         </p>
       </div>
       {error ? (

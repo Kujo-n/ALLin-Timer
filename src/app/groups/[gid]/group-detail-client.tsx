@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 import { getGroup, setMemberDisplayName } from "@/lib/firebase/repositories/groups";
 import {
   deriveRole,
@@ -297,9 +298,13 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     e.preventDefault();
     if (!user || !group) return;
     const parsed = Number(seatsValue);
-    if (!Number.isInteger(parsed) || parsed < 2 || parsed > 10) {
+    if (
+      !Number.isInteger(parsed) ||
+      parsed < MIN_SEATS_PER_TABLE ||
+      parsed > MAX_SEATS_PER_TABLE
+    ) {
       setError(
-        "validation/default-seats-invalid: デフォルト席数は 2 以上 10 以下の整数で指定してください",
+        `validation/default-seats-invalid: デフォルト席数は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
       );
       return;
     }
@@ -535,8 +540,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
               <Input
                 ref={seatsInputRef}
                 type="number"
-                min={2}
-                max={10}
+                min={MIN_SEATS_PER_TABLE}
+                max={MAX_SEATS_PER_TABLE}
                 step={1}
                 value={seatsValue}
                 onChange={(e) => setSeatsValue(e.target.value)}

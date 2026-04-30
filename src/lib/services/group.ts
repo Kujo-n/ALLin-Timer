@@ -1,6 +1,7 @@
 import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
+import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import {
   createGroup,
@@ -325,9 +326,13 @@ export async function setDefaultSeatsPerTable({
   uid: string;
   value: number;
 }): Promise<void> {
-  if (!Number.isInteger(value) || value < 2 || value > 10) {
+  if (
+    !Number.isInteger(value) ||
+    value < MIN_SEATS_PER_TABLE ||
+    value > MAX_SEATS_PER_TABLE
+  ) {
     throw new AppError(
-      "デフォルト席数は 2 以上 10 以下の整数で指定してください",
+      `デフォルト席数は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
       "validation/default-seats-invalid",
     );
   }
