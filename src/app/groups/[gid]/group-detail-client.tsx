@@ -336,6 +336,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
           onIssue={() => void onIssueCode()}
           working={working}
           origin={originSafe()}
+          onCopyError={setError}
         />
       ) : null}
 

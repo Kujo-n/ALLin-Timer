@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { logger } from "@/lib/logger";
 
 interface InviteCodeCardProps {
   /** 発行済みの招待コード文字列。null なら未発行（Input 非表示）。 */
@@ -13,6 +16,8 @@ interface InviteCodeCardProps {
   working: boolean;
   /** 招待 URL の origin。SSR 時は `""`（呼出側で `window.location.origin` を渡す）。 */
   origin: string;
+  /** クリップボードコピー失敗時に親へエラー文字列を伝搬する callback。 */
+  onCopyError?: (message: string) => void;
 }
 
 /**
@@ -26,8 +31,30 @@ export function InviteCodeCard({
   onIssue,
   working,
   origin,
+  onCopyError,
 }: InviteCodeCardProps) {
   const inviteUrl = issuedCode ? `${origin}/groups/join/${issuedCode}` : null;
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [issuedCode]);
+
+  async function onCopy() {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      logger.warn("clipboard copy failed", {
+        code: "clipboard/unavailable",
+        message: e instanceof Error ? e.message : String(e),
+      });
+      onCopyError?.("clipboard/unavailable: クリップボードにコピーできませんでした");
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -46,7 +73,18 @@ export function InviteCodeCard({
             <p className="text-xs text-muted-foreground">
               以下のリンクを共有してください（7 日有効）
             </p>
-            <Input readOnly value={inviteUrl} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Input readOnly value={inviteUrl} className="flex-1 min-w-0" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void onCopy()}
+                aria-label="招待 URL をコピー"
+              >
+                {copied ? "コピーしました" : "URL をコピー"}
+              </Button>
+            </div>
           </div>
         ) : null}
       </CardContent>
