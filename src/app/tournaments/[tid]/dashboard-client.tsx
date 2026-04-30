@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
@@ -31,16 +31,15 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
-import {
-  deleteTournament,
-  finishTournament,
-} from "@/lib/firebase/repositories/tournaments";
+import { deleteTournament } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
+import { useAutoFinish } from "@/lib/hooks/useAutoFinish";
+import { useFullscreen } from "@/lib/hooks/useFullscreen";
+import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
-import { deriveRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
@@ -51,12 +50,10 @@ import {
   showSeatingBoard as showSeatingBoardForState,
 } from "@/lib/services/tournament-state";
 
-const AUTO_FINISH_DELAY_MS = 2000;
-
 export function DashboardClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
-  const { groupIds, groups, loading: groupsLoading, refreshGroups } = useCurrentGroup();
+  const { groupIds, loading: groupsLoading, refreshGroups } = useCurrentGroup();
 
   // 認証済みユーザー全員に autoAdvance opts を渡す。実際の per-tournament group
   // メンバーシップ check は useTournamentTimer 内（および orchestrator 内 tx）で
@@ -76,47 +73,14 @@ export function DashboardClient({ tid }: { tid: string }) {
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDoc[]>([]);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Phase 4.14 追加要望: トーナメント名を AppRoot のグローバルヘッダ（「ALLin-PokerTimer」
   // と同じ行）の中央 slot に出す。data ロード前は null（slot 非表示）。
   // 早期 return より前に呼び、hook 呼び出し順を一定に保つ。
   usePageTitle(data?.name ?? null);
 
-  // Phase 4.14: Fullscreen API でブラウザ chrome を非表示にして同 dashboard を全画面化する。
-  //   - `fullscreenchange` を購読して Esc 解除も含めてアイコン状態を同期。
-  //   - Safari 系の `webkit*` も保険で OR 登録（PC 想定だが負担が小さいため）。
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const handler = () => {
-      const fsEl =
-        document.fullscreenElement ??
-        (document as Document & { webkitFullscreenElement?: Element | null })
-          .webkitFullscreenElement ??
-        null;
-      setIsFullscreen(!!fsEl);
-    };
-    handler(); // 初期同期（既に他経路で fullscreen 化されている場合の保険）
-    document.addEventListener("fullscreenchange", handler);
-    document.addEventListener("webkitfullscreenchange", handler);
-    return () => {
-      document.removeEventListener("fullscreenchange", handler);
-      document.removeEventListener("webkitfullscreenchange", handler);
-    };
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
-      }
-    } catch (e) {
-      const wrapped = AppError.from(e, "ui/fullscreen-failed", "全画面化に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code });
-    }
-  }, []);
+  // Phase 4.14: Fullscreen API でブラウザ chrome を非表示にして同 dashboard を全画面化。
+  const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
 
   // Phase 4: dashboard で players と tables を 1 度だけ subscribe し、
   // PlayerList / SeatingBoard / BalancingInstructionCard / TimerControls に伝搬。
@@ -155,71 +119,42 @@ export function DashboardClient({ tid }: { tid: string }) {
   });
 
   // Phase 4.5: 残り 1 人になった時点で 2 秒後に自動で finishTournament を呼ぶ。
-  // 参加者端末（非 group メンバー）では rule 違反になるため dashboard（運営者側）のみで trigger。
+  // 参加者端末（非 group メンバー）では rule 違反になるため dashboard（運営者側）のみ。
   // 冪等性は finishTournament 内部で担保（state === "finished" なら no-op）。
-  //
-  // 依存は primitive (winner?.id / data?.state 等) に絞り、Firestore snapshot の
-  // 再発行で deps オブジェクト参照が変わっても不要な再装填を起こさないようにする。
   const winner = useMemo(
     () => (data ? resolveWinner(data, players) : null),
     [data, players],
   );
-  const winnerId = winner?.id ?? null;
-  const dataId = data?.id;
-  const dataState = data?.state;
-  const dataGroupId = data?.groupId;
-  const userUid = user?.uid;
+  useAutoFinish({
+    tournament: data,
+    winnerId: winner?.id ?? null,
+    uid: user?.uid,
+    groupIds,
+  });
 
-  const autoFinishInflightRef = useRef(false);
-  useEffect(() => {
-    if (!userUid || !dataId || !dataGroupId) return;
-    if (!groupIds.includes(dataGroupId)) return;
-    if (dataState !== "running" && dataState !== "paused") return;
-    if (!winnerId) return;
-    if (autoFinishInflightRef.current) return;
-
-    autoFinishInflightRef.current = true;
-    const capturedGroupIds = groupIds;
-    const timer = setTimeout(() => {
-      void finishTournament(dataId, userUid, capturedGroupIds).catch((e) => {
-        const code = e instanceof AppError ? e.code : "unknown";
-        logger.warn("auto finish failed", { code, tid: dataId });
-        autoFinishInflightRef.current = false;
-      });
-    }, AUTO_FINISH_DELAY_MS);
-    return () => {
-      clearTimeout(timer);
-      autoFinishInflightRef.current = false;
-    };
-  }, [winnerId, dataId, dataState, dataGroupId, userUid, groupIds]);
+  // tournament の groupId に紐づく group ドキュメントとロールを 1 回で導出。
+  //   - 早期 return 前に確定する（useAudioPlayer / role gate で参照）。
+  //   - 命名は `tournamentGroup` で統一（`useCurrentGroup().currentGroup` とは別物）。
+  const { group: tournamentGroup, role: myRole } = useGroupRole(data?.groupId);
 
   // Phase 4.6: 一般メンバー（または非メンバー）は dashboard を閲覧できないため /live にリダイレクト。
   // data.groupId が判明し、groups ロード完了後に判定する（判定前の flash 防止のため render 側で loading 表示）。
-  const tournamentGroupId = data?.groupId;
   useEffect(() => {
     if (!user) return;
     if (groupsLoading) return;
-    if (!tournamentGroupId) return;
-    const g = groups.find((x) => x.id === tournamentGroupId);
-    const role = g ? deriveRole(g, user.uid) : null;
-    if (role !== "owner" && role !== "organizer") {
+    if (!data?.groupId) return;
+    if (myRole !== "owner" && myRole !== "organizer") {
       router.replace(`/tournaments/${tid}/live`);
     }
-  }, [user, groupsLoading, groups, tournamentGroupId, router, tid]);
-
-  // tournament の groupId に紐づく group ドキュメント。
-  //   - 早期 return 前に確定する（後段の useAudioPlayer / role gate で使う）。
-  //   - 命名は `tournamentGroup` で統一する（`useCurrentGroup().currentGroup` とは別物）。
-  const tournamentGroup = data ? groups.find((x) => x.id === data.groupId) ?? null : null;
+  }, [user, groupsLoading, data?.groupId, myRole, router, tid]);
 
   // Phase 4.9: 音声通知。早期 return 前に呼ぶことで hooks の呼び出し順を一定に保つ。
   // 引数は null 許容で、role が owner/organizer 以外なら hook 内部で no-op になる。
-  const audioRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
   const audioPlayer = useAudioPlayer({
     tournament: data,
     group: tournamentGroup,
     players,
-    role: audioRole,
+    role: myRole,
   });
 
   async function onDelete() {
@@ -250,7 +185,6 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   // role 判定前 or 非 organizer の場合はローディング表示（useEffect で /live へ redirect 中）。
-  const myRole = tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
   const isOrganizer = myRole === "owner" || myRole === "organizer";
   if (groupsLoading || !isOrganizer) {
     return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;

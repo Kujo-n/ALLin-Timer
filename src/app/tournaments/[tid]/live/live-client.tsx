@@ -18,11 +18,10 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { deleteUserProfile } from "@/lib/firebase/repositories/users";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
-import { deriveRole } from "@/lib/firebase/schemas/group";
 import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
+import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
-import { useCurrentGroup } from "@/lib/services/current-group";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 
@@ -32,7 +31,6 @@ export function LiveClient({ tid }: { tid: string }) {
   // /live は read-only。autoAdvance / auto-seat は渡さない（参加者端末は rule で書込不可）。
   const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
   const { user } = useAuthUser();
-  const { groups } = useCurrentGroup();
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   // 購読が 1 回以上 fire したかで「読込中」と「参加者ではない」を区別する。
   // これがないとリロード直後の一瞬、参加者でありながら「レイトエントリー超過」等の
@@ -58,12 +56,9 @@ export function LiveClient({ tid }: { tid: string }) {
   const me = user ? (players.find((p) => p.uid === user.uid) ?? null) : null;
 
   // Phase 4.9: 運営者ロール（owner/organizer）が /live を会場ディスプレイに投影しているケース。
-  //   tournament の groupId に対応する group を current group リストから探す。
+  //   useGroupRole が tournament.groupId に対応する group + role をまとめて返す。
   //   member / 非メンバー / 匿名は role が member or null になり、useAudioPlayer 内で no-op。
-  const tournamentGroup = tournament
-    ? groups.find((g) => g.id === tournament.groupId) ?? null
-    : null;
-  const audioRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
+  const { group: tournamentGroup, role: audioRole } = useGroupRole(tournament?.groupId);
   const isAudioOperator = audioRole === "owner" || audioRole === "organizer";
   const audioPlayer = useAudioPlayer({
     tournament,
