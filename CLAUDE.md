@@ -59,6 +59,7 @@ Phase 1 で確立した規約を以下に分離。
 | エラー / ログ                       | [.claude/rules/error-logging.md](.claude/rules/error-logging.md)         | `AppError` ラップ、ドメインコード付与、`logger` 経由出力                                                                                                 |
 | セキュリティ / 機密情報             | [.claude/rules/security.md](.claude/rules/security.md)                   | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則                                                         |
 | Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md)   | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 完了済み・Phase 3 以降はここを参照                                                             |
+| テスト（UT/E2E）                    | [.claude/rules/testing.md](.claude/rules/testing.md)                     | 観測可能な振る舞いを検証する原則、mock の境界、characterization test ファースト、fixture factory。開発思想ステップ 2 の品質基準                         |
 
 ### ルール参照の義務
 
@@ -72,6 +73,8 @@ Phase 1 で確立した規約を以下に分離。
   → [security.md](.claude/rules/security.md)
 - `groups/` / `groupJoinCodes/` コレクション、`groupId` / `memberUids` / `createdByUid` フィールド、group コンテキスト hook の追加・編集（Phase 2.5 以降）
   → [group-membership.md](.claude/rules/group-membership.md)
+- `*.test.ts` / `*.test.tsx` / `tests/e2e/**.spec.ts` の追加・編集、または mock の境界・テスト fixture を扱う場合
+  → [testing.md](.claude/rules/testing.md)
 - 上記に該当するかユーザーから指定のルールを参照するよう指示があった場合
 
 複数領域にまたがる変更は該当するすべてのルールを読むこと。ルールと PRD の実装方針が矛盾する場合は作業を止めてユーザーに確認する。
