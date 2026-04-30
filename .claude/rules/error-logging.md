@@ -1,6 +1,26 @@
+---
+applyAlways: false
+applyOnPaths:
+  - "src/**/*.{ts,tsx}"
+applyOnPathsExclude:
+  - "**/*.test.{ts,tsx}"
+  - "src/lib/firebase/schemas/*.ts"
+---
+
 # エラー / ログ規約
 
 Phase 1 で確立。Phase 4 architect-refactor で helper を 3 種類に拡張。例外処理・ログ出力は以下に統一する。
+
+## 適用範囲
+
+- **対象**: `src/**/*.{ts,tsx}`（アプリ実装コード全般）
+- **除外**:
+  - `**/*.test.{ts,tsx}` — UT は `vi.spyOn(logger, ...)` 経由の検証や、意図的な throw 注入を行うため本規約の `console.*` 禁止 / `AppError` ラップ義務は適用しない
+  - `src/lib/firebase/schemas/*.ts` — 純粋な zod schema 定義のみで、try/catch / logger 呼出を持たない
+- **対象外（include に含まれない）**:
+  - `scripts/**` — CLI スクリプトは `console.*` と素の `throw new Error` を許容（logger.ts パイプラインを通さない）
+  - `tests/e2e/**` — Playwright spec は本規約の対象外
+  - `next.config.*` / `playwright.config.ts` / その他 root 直下の config — 例外処理を持たない
 
 ## エラー
 

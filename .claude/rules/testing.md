@@ -1,6 +1,23 @@
+---
+applyAlways: false
+applyOnPaths:
+  - "**/*.test.{ts,tsx}"
+  - "tests/e2e/**/*.spec.ts"
+  - "tests/e2e/fixtures/**"
+  - "vitest.config.ts"
+  - "playwright.config.ts"
+---
+
 # テスト規約
 
 開発思想の **ステップ 2「要件を満たすテストケースを充実させる」**を成立させ、**ステップ 3「厳密なリファクタリング」**を安全に行うための規約。テストは要件の真実源であり、リファクタの安全網であり、回帰の防壁。
+
+## 適用範囲
+
+- **対象**: `**/*.test.{ts,tsx}`, `tests/e2e/**/*.spec.ts`, `tests/e2e/fixtures/**`, `vitest.config.ts`, `playwright.config.ts`
+- **対象外（include に含まれない）**:
+  - 実装コード本体 — テストと**同じ commit にペアで含める**規約は本ファイルだが、実装側を編集するときに本ファイルを毎回 Read する必要はない（テスト追加・編集・skip 復旧の局面でのみ参照する）
+  - `scripts/test-rules-*.mjs` — Firestore Rules emulator validator は本規約の対象外（手動で `firebase emulators:exec` から起動する Node.js script。Playwright / vitest のフレームワーク規約は適用されない）
 
 ## 開発思想との対応
 

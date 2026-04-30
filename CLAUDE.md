@@ -51,31 +51,16 @@
 
 ## 実装規約
 
-Phase 1 で確立した規約を以下に分離。
+各ルールファイル先頭の YAML frontmatter（`applyAlways` / `applyOnPaths` / `applyOnPathsExclude`）が適用範囲の**真実源**。コード変更・新規作成を行う前に、該当するファイルを必ず Read してから作業を開始する（記憶に頼らず毎回読む）。
 
-| 対象領域                            | ルールファイル                                                           | 内容                                                                                                                                                     |
-| ----------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Firebase / Firestore                | [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) | 初期化 singleton、`useAuthUser` 経由の認証購読、`zodConverter` による runtime validation、repositories 層経由の CRUD、deny-by-default セキュリティルール |
-| エラー / ログ                       | [.claude/rules/error-logging.md](.claude/rules/error-logging.md)         | `AppError` ラップ、ドメインコード付与、`logger` 経由出力                                                                                                 |
-| セキュリティ / 機密情報             | [.claude/rules/security.md](.claude/rules/security.md)                   | `.env.local` 管理、サークル固有情報の Firestore 限定保存、公開リポジトリ運用、招待コード設計原則                                                         |
-| Group メンバーシップ（Phase 2.5〜） | [.claude/rules/group-membership.md](.claude/rules/group-membership.md)   | group ベース所有権モデル、招待コード、権限設計。Phase 2.5 完了済み・Phase 3 以降はここを参照                                                             |
-| テスト（UT/E2E）                    | [.claude/rules/testing.md](.claude/rules/testing.md)                     | 観測可能な振る舞いを検証する原則、mock の境界、characterization test ファースト、fixture factory。開発思想ステップ 2 の品質基準                         |
-
-### ルール参照の義務
-
-以下のトリガに該当するコード変更・新規作成を行う前に、**該当するルールファイルを必ず Read してから作業を開始すること**（記憶に頼らず毎回読む）:
-
-- `src/lib/firebase/**` / Firestore 関連ファイル / `firestore.rules` / `firestore.indexes.json` の編集
-  → [firebase-patterns.md](.claude/rules/firebase-patterns.md)
-- `try`/`catch`・エラークラス・ログ出力を含むコードの追加・編集
-  → [error-logging.md](.claude/rules/error-logging.md)
-- `.env*` / 環境変数参照 / 認証情報 / Firebase 設定値 / 招待コード関連の追加・編集
-  → [security.md](.claude/rules/security.md)
-- `groups/` / `groupJoinCodes/` コレクション、`groupId` / `memberUids` / `createdByUid` フィールド、group コンテキスト hook の追加・編集（Phase 2.5 以降）
-  → [group-membership.md](.claude/rules/group-membership.md)
-- `*.test.ts` / `*.test.tsx` / `tests/e2e/**.spec.ts` の追加・編集、または mock の境界・テスト fixture を扱う場合
-  → [testing.md](.claude/rules/testing.md)
-- 上記に該当するかユーザーから指定のルールを参照するよう指示があった場合
+| ルールファイル                                             | 適用形態    | 主な対象（要約・詳細は frontmatter）                                                           |
+| ---------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| [security-base.md](.claude/rules/security-base.md)         | 常時適用    | 公開リポジトリ運用、サークル固有情報の Firestore 限定保存、依存追加 ask モード                 |
+| [security-env.md](.claude/rules/security-env.md)           | path-scoped | `.env*` / `next.config.*` / `vercel.json` / `src/lib/firebase/client.ts` 編集時                |
+| [error-logging.md](.claude/rules/error-logging.md)         | path-scoped | `src/**/*.{ts,tsx}` 編集時（test / schema 除く）                                               |
+| [firebase-patterns.md](.claude/rules/firebase-patterns.md) | path-scoped | `src/lib/firebase/**` / `firestore.rules` / 関連 script 編集時。Structure Templates 運用も含む |
+| [group-membership.md](.claude/rules/group-membership.md)   | path-scoped | group モデル定義層・招待コード設計編集時。Phase 2.5 完了・Phase 3 以降はここを参照             |
+| [testing.md](.claude/rules/testing.md)                     | path-scoped | `*.test.{ts,tsx}` / `tests/e2e/**` / `vitest.config.ts` / `playwright.config.ts` 編集時        |
 
 複数領域にまたがる変更は該当するすべてのルールを読むこと。ルールと PRD の実装方針が矛盾する場合は作業を止めてユーザーに確認する。
 

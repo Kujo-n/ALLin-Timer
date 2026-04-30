@@ -1,6 +1,40 @@
+---
+applyAlways: false
+applyOnPaths:
+  - "firestore.rules"
+  - "src/lib/firebase/schemas/group.ts"
+  - "src/lib/firebase/schemas/groupJoinCode.ts"
+  - "src/lib/firebase/repositories/groups.ts"
+  - "src/lib/firebase/repositories/groupJoinCodes.ts"
+  - "src/lib/services/current-group.tsx"
+  - "src/lib/services/group.ts"
+  - "src/lib/hooks/useGroupRole.ts"
+  - "src/app/groups/**"
+  - "scripts/migrate-phase-*-roles*.ts"
+  - "scripts/test-rules-*.mjs"
+applyOnPathsExclude:
+  - "**/*.test.{ts,tsx}"
+---
+
 # Group（サークル）メンバーシップ規約
 
 Phase 2.5 で確立した group ベース所有権・権限モデル。**Phase 4.6 で 3 階層ロール（owner / organizer / member）に拡張**。Phase 3 以降はここを参照する。
+
+## 適用範囲
+
+- **対象（モデル定義層）**:
+  - `firestore.rules` — group ブランチの書込条件
+  - `src/lib/firebase/schemas/group.ts` / `groupJoinCode.ts` — zod schema・invariant・`deriveRole`
+  - `src/lib/firebase/repositories/groups.ts` / `groupJoinCodes.ts` — write 経路
+  - `src/lib/services/current-group.tsx` / `group.ts` — `GroupProvider` / role 操作 service
+  - `src/lib/hooks/useGroupRole.ts` — 任意 gid のロール導出
+  - `src/app/groups/**` — group 設定 UI（rename / 招待 / role 管理 / audio settings）
+  - `scripts/migrate-phase-*-roles*.ts` / `scripts/test-rules-*.mjs`
+- **除外**: `**/*.test.{ts,tsx}` — テスト編集時は [testing.md](testing.md) の mock 境界規約を適用
+- **対象外（include に含まれない・消費側）**:
+  - `src/app/tournaments/**` / `src/app/structures/**` — `useCurrentGroup` / `useGroupRole` を**読むだけ**の消費側。group 設計を変更する場合は本ファイルを Read する
+  - `src/components/**` — 同上
+  - `src/lib/firebase/repositories/tournaments.ts` / `structures.ts` — `groupId` を保持するが group 設計には立ち入らない
 
 ## スコープ
 
@@ -158,9 +192,20 @@ Phase 4.16 で 3 分岐すべてに `request.resource.data.diff(resource.data).a
 
 これにより、今後 `groups/{gid}` に新フィールドが追加されても、明示的に許可しない限り self-* 経路から改竄できない設計となる。エミュレータ検証は [scripts/test-rules-finished-count.mjs](../../scripts/test-rules-finished-count.mjs) を `firebase emulators:exec` から起動して実施する（`firebase` CLI が必要）。
 
+## 招待コード設計原則（Phase 2.5 以降）
+
+`groupJoinCodes/{code}` による group 加入フローで遵守すること（旧 `security.md` から移管）:
+
+- **推測困難性**: code は **Web Crypto API で生成した 128bit 以上のランダム値**を base36 / base62 等で短縮。連番・時刻ベース・UUID v1 など予測可能な方式禁止。現行実装は base36 × 25 文字 ≈ 129bit（[repositories/groupJoinCodes.ts](../../src/lib/firebase/repositories/groupJoinCodes.ts) の `CODE_LENGTH`）
+- **有効期限**: `expiresAt` 必須。default 7 日・最大 30 日。期限切れコードは rule で read 拒否
+- **使用回数制限**: `maxUses` / `usedCount` を持ち、`usedCount >= maxUses` のコードは rule で加入拒否
+- **失効操作**: group オーナーは任意時点でコードを削除（失効）できること
+- **ログ**: 加入成功・失敗イベントは `logger.info` / `logger.warn` で記録（[error-logging.md](error-logging.md) 準拠）
+- **rule 側の保護**: 加入書込は `groupJoinCodes/{code}` の有効性チェックを rule に必ず含める（クライアント検証のみに依存しない）。詳細は本ファイル前半の「招待コードの rule 側検証（Phase 4.6.1）」を参照
+
 ## 参照
 
 - PRD: [.claude/PRPs/prds/allin-timer.prd.md](../PRPs/prds/allin-timer.prd.md) — Implementation Phases / Phase 2.5 / Phase 4.6 / Technical Risks
 - Phase 4.6 実装計画: [.claude/PRPs/plans/completed/phase-4.6-member-role-split.plan.md](../PRPs/plans/completed/phase-4.6-member-role-split.plan.md)
 - Phase 2.5 ローカルレビュー記録: [.claude/PRPs/reviews/local-phase-2.5-review.md](../PRPs/reviews/local-phase-2.5-review.md) — M2 finding
-- 関連ルール: [firebase-patterns.md](firebase-patterns.md) / [security.md](security.md)
+- 関連ルール: [firebase-patterns.md](firebase-patterns.md) / [security-base.md](security-base.md) / [security-env.md](security-env.md)

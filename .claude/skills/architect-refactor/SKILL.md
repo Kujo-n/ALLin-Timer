@@ -60,7 +60,7 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 2. **新機能は追加しない。** バグ修正・性能改善・セキュリティ修正以外の振る舞い変更はしない。観測可能な動作変更が必要なら別タスクとして相談
 3. **公開 API / 外部契約（URL / Firestore スキーマ / 環境変数 / 永続化フォーマット）の破壊的変更は事前承認制**
 4. **1 コミット = 1 リファクタの atomic 性。** revert 1 つで安全に戻せる粒度を維持
-5. **プロジェクト固有ルール（`.claude/rules/`）を最優先。** 本スキルの一般論より `firebase-patterns.md` / `error-logging.md` / `security.md` / `group-membership.md` の規約が常に優先する。Firebase / `try`/`catch` / `.env*` / `groups/` を触る前に該当ルールを Read する
+5. **プロジェクト固有ルール（`.claude/rules/`）を最優先。** 本スキルの一般論より `firebase-patterns.md` / `error-logging.md` / `security-base.md` / `security-env.md` / `group-membership.md` / `testing.md` の規約が常に優先する。Firebase / `try`/`catch` / `.env*` / `groups/` を触る前に該当ルールを Read する
 6. **CLAUDE.md の言語設定に従う。** 日本語でやり取りし、コミットメッセージも日本語（type prefix のみ英語）
 
 ## ワークフロー（5 フェーズ）
@@ -170,5 +170,7 @@ ALLin-PokerTimer 固有の規約。`.claude/rules/` の各ファイルが正本�
 
 - [`firebase-patterns.md`](../../rules/firebase-patterns.md) — Firestore / repositories 経由 / zodConverter / Security Rules deny-by-default / 複合 index 回避
 - [`error-logging.md`](../../rules/error-logging.md) — `AppError` ラップ・ドメインコード prefix・`logger` 経由のみ・`console.*` 残置の掃除好機
-- [`security.md`](../../rules/security.md) — `.env*` 混入・`NEXT_PUBLIC_*` のサーバ秘密混入・招待コード設計原則
+- [`security-base.md`](../../rules/security-base.md) — 公開リポジトリ運用・サークル固有データの非コミット（常時適用）
+- [`security-env.md`](../../rules/security-env.md) — `.env*` 混入・`NEXT_PUBLIC_*` のサーバ秘密混入（`.env*` / `next.config.*` / `firebase/client.ts` 編集時）
+- 招待コード設計原則は [`group-membership.md`](../../rules/group-membership.md) に、Structure Templates / templateAdmins 運用は [`firebase-patterns.md`](../../rules/firebase-patterns.md) に集約済み
 - [`group-membership.md`](../../rules/group-membership.md) — `groupId` / `memberUids` / `ownerUids` / `organizerUids` の不変条件、`affectedKeys` 漏れの再発防止、`get()` rule read コスト

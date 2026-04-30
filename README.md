@@ -349,7 +349,8 @@ tests/
 
 - [.claude/rules/firebase-patterns.md](.claude/rules/firebase-patterns.md) — Firebase 初期化、認証購読、Firestore converter、セキュリティルール
 - [.claude/rules/error-logging.md](.claude/rules/error-logging.md) — `AppError` ラップ、`logger` 経由のログ
-- [.claude/rules/security.md](.claude/rules/security.md) — `.env.local` 管理、サークル固有情報の Firestore 限定保存、招待コード設計原則
+- [.claude/rules/security-base.md](.claude/rules/security-base.md) — 公開リポジトリ運用、サークル固有情報の Firestore 限定保存、依存追加 ask モード（常時適用）
+- [.claude/rules/security-env.md](.claude/rules/security-env.md) — `.env.local` 管理、`NEXT_PUBLIC_*` 扱い（`.env*` / `next.config.*` / `firebase/client.ts` 編集時）
 - [.claude/rules/group-membership.md](.claude/rules/group-membership.md) — group ベース所有権モデル（Phase 2.5）
 
 ## ライセンス
