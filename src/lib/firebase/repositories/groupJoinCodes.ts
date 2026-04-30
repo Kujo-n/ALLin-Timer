@@ -27,11 +27,14 @@ export function joinCodeDocRef(code: string) {
 }
 
 const CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
-const CODE_LENGTH = 16;
+// Phase 4 architect-refactor (P6-3): security.md の「128bit 以上のランダム値」要件を
+// 満たすため 16 → 25 文字に拡張（25 × log2(36) ≈ 129 bit）。既存の 16 文字コードは
+// 長さチェックなしで読込・消費可能なため互換維持。
+const CODE_LENGTH = 25;
 
 /**
  * URL-safe な招待コード文字列を生成する。
- * `crypto.getRandomValues` ベースで 16 文字 (=~ 82bit のランダム性)。
+ * `crypto.getRandomValues` ベースで 25 文字 (=~ 129bit のランダム性、base36)。
  * 衝突は 20 人 × 月 1〜2 回スケールではまず発生しないが、
  * setDoc 衝突回避のため呼び出し側で `getJoinCode` 確認＋リトライする。
  */

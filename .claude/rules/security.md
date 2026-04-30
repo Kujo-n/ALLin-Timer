@@ -30,7 +30,7 @@
 
 `groupJoinCodes/{code}` による group 加入フローで遵守すること:
 
-- **推測困難性**: code は **Web Crypto API で生成した 128bit 以上のランダム値**を base62 等で短縮。連番・時刻ベース・UUID v1 など予測可能な方式禁止
+- **推測困難性**: code は **Web Crypto API で生成した 128bit 以上のランダム値**を base36 / base62 等で短縮。連番・時刻ベース・UUID v1 など予測可能な方式禁止。現行実装は base36 × 25 文字 ≈ 129bit（[repositories/groupJoinCodes.ts](../../src/lib/firebase/repositories/groupJoinCodes.ts) の `CODE_LENGTH`）
 - **有効期限**: `expiresAt` 必須。default 7 日・最大 30 日。期限切れコードは rule で read 拒否
 - **使用回数制限**: `maxUses` / `usedCount` を持ち、`usedCount >= maxUses` のコードは rule で加入拒否
 - **失効操作**: group オーナーは任意時点でコードを削除（失効）できること
