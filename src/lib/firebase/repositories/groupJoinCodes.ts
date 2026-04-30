@@ -15,6 +15,7 @@ import {
   type CreateGroupJoinCodeInput,
   type GroupJoinCodeDoc,
 } from "@/lib/firebase/schemas/groupJoinCode";
+import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 const groupJoinCodesRef = collection(firestore, "groupJoinCodes").withConverter(
@@ -53,38 +54,41 @@ function generateCodeString(): string {
 export async function createJoinCode(input: CreateGroupJoinCodeInput): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = generateCodeString();
-    try {
-      const existing = await getDoc(joinCodeDocRef(code));
-      if (existing.exists()) continue;
-      await setDoc(joinCodeDocRef(code), {
-        gid: input.gid,
-        createdByUid: input.createdByUid,
-        expiresAt: input.expiresAt,
-        maxUses: input.maxUses,
-        usesCount: 0,
-        createdAt: serverTimestamp(),
-      });
-      logger.info("join code create ok", { gid: input.gid, code });
-      return code;
-    } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "招待コード作成に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code });
-      throw wrapped;
-    }
+    // wrap の戻り値が null = 衝突（retry）/ string = 成功。例外は wrap が AppError 化して throw。
+    const result = await wrapFirestoreWrite<string | null>(
+      "firestore/write_failed",
+      "招待コード作成に失敗しました",
+      async () => {
+        const existing = await getDoc(joinCodeDocRef(code));
+        if (existing.exists()) return null;
+        await setDoc(joinCodeDocRef(code), {
+          gid: input.gid,
+          createdByUid: input.createdByUid,
+          expiresAt: input.expiresAt,
+          maxUses: input.maxUses,
+          usesCount: 0,
+          createdAt: serverTimestamp(),
+        });
+        logger.info("join code create ok", { gid: input.gid, code });
+        return code;
+      },
+      { gid: input.gid },
+    );
+    if (result) return result;
   }
   throw new AppError("招待コードの生成に失敗しました（衝突が連続）", "firestore/write_failed");
 }
 
 export async function getJoinCode(code: string): Promise<GroupJoinCodeDoc | null> {
-  try {
-    const snap = await getDoc(joinCodeDocRef(code));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "招待コード取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code });
-    throw wrapped;
-  }
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "招待コード取得に失敗しました",
+    async () => {
+      const snap = await getDoc(joinCodeDocRef(code));
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() };
+    },
+  );
 }
 
 /**
