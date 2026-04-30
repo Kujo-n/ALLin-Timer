@@ -278,7 +278,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         editButtonLabel="修正"
         min={0}
         step={1}
-        displayValue={group.finishedTournamentCount ?? 0}
+        displayValue={group.finishedTournamentCount}
         canEdit={isOrganizer}
         editor={finishedCountEditor}
       />
@@ -293,7 +293,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         min={MIN_SEATS_PER_TABLE}
         max={MAX_SEATS_PER_TABLE}
         step={1}
-        displayValue={group.defaultSeatsPerTable ?? DEFAULT_SEATS_PER_TABLE}
+        displayValue={group.defaultSeatsPerTable}
         canEdit={isOrganizer}
         editor={defaultSeatsEditor}
       />
