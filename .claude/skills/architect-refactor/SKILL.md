@@ -45,6 +45,13 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 - **Lens B: Security Specialist** — [`references/security_specialist.md`](references/security_specialist.md)
   カバー領域: ゼロトラスト・最小権限・多層防御 / OWASP Top 10 / 認証認可 / データ保護 / インフラ・API / セキュアコーディング / 監視
 
+## 集約先（参照）
+
+監査で抽出した所見をどこに集約するかの基準。Phase 2 / Phase 3 で必ず Read:
+
+- **Refactor Conventions** — [`references/refactor-conventions.md`](references/refactor-conventions.md)
+  ファイル分割閾値 / `_components` co-location / hook 抽出基準 / primitive fingerprint パターン / 既存共通 hook と shared component の一覧 / tournament-state 純関数 / 数値リミット集約。**通常開発（ステップ 1）には強制せず、refactor 時の集約先**として使う
+
 ## 不変条件（Invariants）
 
 ワークフロー全体を通じて **絶対に守る** ルール。違反したら作業を停止してユーザーに報告する。
