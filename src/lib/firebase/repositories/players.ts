@@ -15,6 +15,7 @@ import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
+import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 function playersRef(tid: string) {
@@ -24,15 +25,16 @@ function playersRef(tid: string) {
 }
 
 export async function getPlayer(tid: string, uid: string): Promise<PlayerDoc | null> {
-  try {
-    const snap = await getDoc(doc(playersRef(tid), uid));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "参加者取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, uid });
-    throw wrapped;
-  }
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "参加者取得に失敗しました",
+    async () => {
+      const snap = await getDoc(doc(playersRef(tid), uid));
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() };
+    },
+    { tid, uid },
+  );
 }
 
 /**
@@ -69,29 +71,30 @@ export async function upsertPlayer(
   uid: string,
   input: { displayName: string },
 ): Promise<void> {
-  try {
-    const existing = await getPlayer(tid, uid);
-    if (existing) {
-      await setDoc(doc(playersRef(tid), uid), { displayName: input.displayName }, { merge: true });
-      logger.info("player merge ok", { tid, uid });
-      return;
-    }
-    await setDoc(doc(playersRef(tid), uid), {
-      displayName: input.displayName,
-      uid,
-      entryAt: serverTimestamp(),
-      isBusted: false,
-      bustedAt: null,
-      tableNum: null,
-      seatNum: null,
-      lastMovedAt: null,
-    });
-    logger.info("player create ok", { tid, uid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "参加者登録に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, uid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "参加者登録に失敗しました",
+    async () => {
+      const existing = await getPlayer(tid, uid);
+      if (existing) {
+        await setDoc(doc(playersRef(tid), uid), { displayName: input.displayName }, { merge: true });
+        logger.info("player merge ok", { tid, uid });
+        return;
+      }
+      await setDoc(doc(playersRef(tid), uid), {
+        displayName: input.displayName,
+        uid,
+        entryAt: serverTimestamp(),
+        isBusted: false,
+        bustedAt: null,
+        tableNum: null,
+        seatNum: null,
+        lastMovedAt: null,
+      });
+      logger.info("player create ok", { tid, uid });
+    },
+    { tid, uid },
+  );
 }
 
 /**
@@ -99,14 +102,15 @@ export async function upsertPlayer(
  * Firestore rules で自己削除（`pid == auth.uid`）と運営者削除の両方を許可する前提。
  */
 export async function deletePlayer(tid: string, pid: string): Promise<void> {
-  try {
-    await deleteDoc(doc(playersRef(tid), pid));
-    logger.info("player delete ok", { tid, pid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "参加者の取消に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "参加者の取消に失敗しました",
+    async () => {
+      await deleteDoc(doc(playersRef(tid), pid));
+    },
+    { tid, pid },
+  );
+  logger.info("player delete ok", { tid, pid });
 }
 
 /**
@@ -115,38 +119,40 @@ export async function deletePlayer(tid: string, pid: string): Promise<void> {
  * group チェックは呼び出し元（component / orchestrator）で行う前提。
  */
 export async function bustPlayer(tid: string, pid: string): Promise<void> {
-  try {
-    await updateDoc(doc(playersRef(tid), pid), {
-      isBusted: true,
-      bustedAt: serverTimestamp(),
-      tableNum: null,
-      seatNum: null,
-      lastMovedAt: serverTimestamp(),
-    });
-    logger.info("player bust ok", { tid, pid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "バスト処理に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "バスト処理に失敗しました",
+    async () => {
+      await updateDoc(doc(playersRef(tid), pid), {
+        isBusted: true,
+        bustedAt: serverTimestamp(),
+        tableNum: null,
+        seatNum: null,
+        lastMovedAt: serverTimestamp(),
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("player bust ok", { tid, pid });
 }
 
 /**
  * Phase 4: バスト誤操作のリカバリ。席は復旧しない（再度の手動 join 相当）。
  */
 export async function unbustPlayer(tid: string, pid: string): Promise<void> {
-  try {
-    await updateDoc(doc(playersRef(tid), pid), {
-      isBusted: false,
-      bustedAt: null,
-      lastMovedAt: serverTimestamp(),
-    });
-    logger.info("player unbust ok", { tid, pid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "バスト取消に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "バスト取消に失敗しました",
+    async () => {
+      await updateDoc(doc(playersRef(tid), pid), {
+        isBusted: false,
+        bustedAt: null,
+        lastMovedAt: serverTimestamp(),
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("player unbust ok", { tid, pid });
 }
 
 /**
@@ -159,18 +165,19 @@ export async function assignSeat(
   tableNum: number,
   seatNum: number,
 ): Promise<void> {
-  try {
-    await updateDoc(doc(playersRef(tid), pid), {
-      tableNum,
-      seatNum,
-      lastMovedAt: serverTimestamp(),
-    });
-    logger.info("player seat assign ok", { tid, pid, tableNum, seatNum });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "席割当に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "席割当に失敗しました",
+    async () => {
+      await updateDoc(doc(playersRef(tid), pid), {
+        tableNum,
+        seatNum,
+        lastMovedAt: serverTimestamp(),
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("player seat assign ok", { tid, pid, tableNum, seatNum });
 }
 
 /**
@@ -178,16 +185,17 @@ export async function assignSeat(
  * 現状は呼び出し元なし。将来「卓閉鎖の中間状態を表現したい」等のために置いておく。
  */
 export async function clearSeat(tid: string, pid: string): Promise<void> {
-  try {
-    await updateDoc(doc(playersRef(tid), pid), {
-      tableNum: null,
-      seatNum: null,
-      lastMovedAt: serverTimestamp(),
-    });
-    logger.info("player seat clear ok", { tid, pid });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "席クリアに失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "席クリアに失敗しました",
+    async () => {
+      await updateDoc(doc(playersRef(tid), pid), {
+        tableNum: null,
+        seatNum: null,
+        lastMovedAt: serverTimestamp(),
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("player seat clear ok", { tid, pid });
 }

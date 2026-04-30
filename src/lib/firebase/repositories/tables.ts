@@ -15,6 +15,7 @@ import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
+import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 function tablesRef(tid: string) {
@@ -24,15 +25,16 @@ function tablesRef(tid: string) {
 }
 
 export async function listTables(tid: string): Promise<TableDoc[]> {
-  try {
-    const q = query(tablesRef(tid), orderBy("tableNum", "asc"));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/read_failed", "テーブル一覧取得に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "テーブル一覧取得に失敗しました",
+    async () => {
+      const q = query(tablesRef(tid), orderBy("tableNum", "asc"));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+    { tid },
+  );
 }
 
 export function subscribeTables(
@@ -59,30 +61,32 @@ export function subscribeTables(
  * 初回席決め時のみ呼ばれるため再 upsert は事故ケース。
  */
 export async function upsertTables(tid: string, tableNums: number[]): Promise<void> {
-  try {
-    const batch = writeBatch(firestore);
-    for (const n of tableNums) {
-      const ref = doc(tablesRef(tid), String(n));
-      batch.set(ref, { tableNum: n, isBroken: false, createdAt: serverTimestamp() });
-    }
-    await batch.commit();
-    logger.info("tables upsert ok", { tid, count: tableNums.length });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "テーブル登録に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル登録に失敗しました",
+    async () => {
+      const batch = writeBatch(firestore);
+      for (const n of tableNums) {
+        const ref = doc(tablesRef(tid), String(n));
+        batch.set(ref, { tableNum: n, isBroken: false, createdAt: serverTimestamp() });
+      }
+      await batch.commit();
+    },
+    { tid },
+  );
+  logger.info("tables upsert ok", { tid, count: tableNums.length });
 }
 
 export async function markTableBroken(tid: string, tableNum: number): Promise<void> {
-  try {
-    await updateDoc(doc(tablesRef(tid), String(tableNum)), { isBroken: true });
-    logger.info("table broken ok", { tid, tableNum });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "テーブル閉鎖に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, tableNum });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル閉鎖に失敗しました",
+    async () => {
+      await updateDoc(doc(tablesRef(tid), String(tableNum)), { isBroken: true });
+    },
+    { tid, tableNum },
+  );
+  logger.info("table broken ok", { tid, tableNum });
 }
 
 /**
@@ -90,16 +94,17 @@ export async function markTableBroken(tid: string, tableNum: number): Promise<vo
  * 将来「席が足りなくなったら卓を増やす」運用が出た場合の足場。
  */
 export async function upsertTable(tid: string, tableNum: number): Promise<void> {
-  try {
-    await setDoc(doc(tablesRef(tid), String(tableNum)), {
-      tableNum,
-      isBroken: false,
-      createdAt: serverTimestamp(),
-    });
-    logger.info("table upsert ok", { tid, tableNum });
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "テーブル登録に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, tableNum });
-    throw wrapped;
-  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル登録に失敗しました",
+    async () => {
+      await setDoc(doc(tablesRef(tid), String(tableNum)), {
+        tableNum,
+        isBroken: false,
+        createdAt: serverTimestamp(),
+      });
+    },
+    { tid, tableNum },
+  );
+  logger.info("table upsert ok", { tid, tableNum });
 }
