@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppError } from "@/lib/errors";
 import { advanceLevel, subscribeTournament } from "@/lib/firebase/repositories/tournaments";
@@ -97,6 +97,16 @@ export function useTournamentTimer(
 
   const remainingMs = tournament ? getRemainingMs(tournament, Date.now()) : null;
 
+  // options.autoAdvance を deps に直接入れると、呼出側が inline で
+  // `{ uid, userGroupIds: groupIds }` を渡したとき毎レンダで新参照になり
+  // effect が無駄に re-fire する。primitive な fingerprint に分解して安定化する
+  // （useSeatingAutoOrchestrator の groupIdsKey と同パターン）。
+  const autoUid = options.autoAdvance?.uid ?? null;
+  const autoGroupIdsKey = useMemo(
+    () => options.autoAdvance?.userGroupIds.join(",") ?? null,
+    [options.autoAdvance?.userGroupIds],
+  );
+
   useEffect(() => {
     const auto = options.autoAdvance;
     if (!auto) return;
@@ -118,7 +128,9 @@ export function useTournamentTimer(
         advanceInflightRef.current = false;
       });
     // remainingMs を依存に含めることで毎 tick で再評価される。
-  }, [tournament, tid, remainingMs, options.autoAdvance]);
+    // autoUid / autoGroupIdsKey で options.autoAdvance object 参照の不安定性を吸収。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint で参照不安定性を吸収
+  }, [tournament, tid, remainingMs, autoUid, autoGroupIdsKey]);
 
   return {
     tournament,
