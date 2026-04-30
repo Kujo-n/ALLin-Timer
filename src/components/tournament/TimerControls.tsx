@@ -28,6 +28,7 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { commitInitialSeating } from "@/lib/services/seating/orchestrator";
+import { canAdvanceLevel, canRevertLevel } from "@/lib/services/tournament-state";
 
 interface Props {
   tid: string;
@@ -106,8 +107,8 @@ export function TimerControls({
     }
   }
 
-  const isLast = tournament.currentLevel >= tournament.structureSnapshot.levels.length;
-  const isFirst = tournament.currentLevel <= 1;
+  const isLast = !canAdvanceLevel(tournament);
+  const isFirst = !canRevertLevel(tournament);
 
   // 共通: 全画面表示トグル（アイコンのみ）。
   //   各 state のボタン群の先頭に置くことで、running/paused のサウンドアイコン左に

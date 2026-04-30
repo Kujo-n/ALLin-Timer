@@ -44,6 +44,12 @@ import { deriveRole } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
+import {
+  canDelete as canDeleteTournament,
+  canEdit as canEditTournament,
+  isInProgress,
+  showSeatingBoard as showSeatingBoardForState,
+} from "@/lib/services/tournament-state";
 
 const AUTO_FINISH_DELAY_MS = 2000;
 
@@ -251,14 +257,11 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   const isMember = groupIds.includes(data.groupId);
-  const canEdit = isMember && data.state === "setup";
+  const canEdit = isMember && canEditTournament(data);
   // 上の guard で isOrganizer (= isMember) が確定しているため state のみで判定。
-  const canDelete = data.state === "setup" || data.state === "finished";
-  const showSeatingBoard =
-    data.state === "seating" ||
-    data.state === "running" ||
-    data.state === "paused";
-  const showBalancing = isMember && (data.state === "running" || data.state === "paused");
+  const canDelete = canDeleteTournament(data);
+  const showSeatingBoard = showSeatingBoardForState(data);
+  const showBalancing = isMember && isInProgress(data);
   const levelInfo = getLevelInfo(data);
   // Phase 4.14: state 遷移で grid 列数を跳ねさせない。常に 3 列固定で、各カード内部で
   // 開始前 / 受付中 / 進行中 の表示分岐を持つ。
