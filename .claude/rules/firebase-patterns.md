@@ -69,6 +69,10 @@ rule: `isOrganizer(gid) + affectedKeys().hasOnly(['defaultSeatsPerTable']) + is 
 
 ⚠ DRIFT WARNING: 上限 10 は `firestore.rules` の `players seatNum <= 10` および [tournament.ts](../../src/lib/firebase/schemas/tournament.ts) の `seatsPerTable.max(10)` と連動。同時に変更すること。
 
+### 数値リテラルの drift 検出（Phase 4 architect-refactor 以降）
+
+`firestore.rules` 内のハードコード数値（`tableNum <= 6` / `seatNum <= 10` / `defaultSeatsPerTable >= 2` / `<= 10`）は Cloud Firestore Security Rules の言語仕様上 const 化できない。drift を機械検出するため [scripts/test-rules-limits.mjs](../../scripts/test-rules-limits.mjs) を `npm run test:rules-limits` で走らせる。新規に値域制約を追加する場合は同スクリプトに check ケースを追加し、CI / pre-commit で必ず実行する。
+
 ## Phase 2.5 以降の注意: `get()` による参照は rule read を消費
 
 - Security rule 内の `get(/documents/...)` は **1 回の評価につき Firestore の読取クォータを 1 件消費**する
