@@ -1,6 +1,6 @@
 import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/firestore";
 
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import {
@@ -160,16 +160,11 @@ export async function propagateDisplayNameToGroups(
     if (r.status !== "rejected") return;
     failed += 1;
     const gid = groupIds[i];
-    const reason = r.reason;
-    const code =
-      reason && typeof reason === "object" && "code" in reason
-        ? ((reason as { code?: unknown }).code as string | undefined) ?? "unknown"
-        : "unknown";
     logger.warn("propagate displayName per-group fail", {
       code: "group/propagate-per-group-fail",
       gid,
       uid,
-      reasonCode: code,
+      reasonCode: getErrorCode(r.reason),
     });
   });
   if (failed > 0) {

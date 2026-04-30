@@ -13,7 +13,7 @@ import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshot
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { deleteUserProfile } from "@/lib/firebase/repositories/users";
@@ -95,11 +95,10 @@ export function LiveClient({ tid }: { tid: string }) {
         await user.delete();
         logger.info("anonymous self-delete ok", { uid: user.uid, tid });
       } catch (e) {
-        const code =
-          e instanceof Error && "code" in e
-            ? String((e as { code: unknown }).code)
-            : "unknown";
-        logger.warn("anonymous self-delete failed", { code, uid: user.uid });
+        logger.warn("anonymous self-delete failed", {
+          code: getErrorCode(e),
+          uid: user.uid,
+        });
       }
     })();
   }, [user, tournament, me, tid]);

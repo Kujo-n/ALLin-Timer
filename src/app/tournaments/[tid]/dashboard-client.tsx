@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError } from "@/lib/errors";
+import { AppError, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
@@ -352,11 +352,13 @@ export function DashboardClient({ tid }: { tid: string }) {
                           });
                         } catch (e) {
                           // updateAudioSettings 内で既に AppError wrap + logger.warn 済み。
-                          // 二重ログを避けるため、ここでは UI 表示のみ。
-                          const err =
-                            e instanceof AppError
-                              ? e
-                              : AppError.from(e, "firestore/write_failed", "サウンド設定の更新に失敗しました");
+                          // 二重ログを避けるため unwrapOrFrom で既存 wrap を尊重しつつ
+                          // 未 wrap の場合のみ補完して UI 表示する。
+                          const err = unwrapOrFrom(
+                            e,
+                            "firestore/write_failed",
+                            "サウンド設定の更新に失敗しました",
+                          );
                           setError(`${err.code}: ${err.message}`);
                           return;
                         }

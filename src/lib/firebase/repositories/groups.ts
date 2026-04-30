@@ -10,7 +10,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { DEFAULT_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
@@ -101,12 +101,7 @@ export async function listMyGroups(groupIds: string[]): Promise<{
       groups.push(r.value);
     } else {
       failedGids.push(gid);
-      const reason = r.reason;
-      const code =
-        reason && typeof reason === "object" && "code" in reason
-          ? (reason as { code: string }).code
-          : "unknown";
-      logger.warn("listMyGroups skipped gid", { gid, code });
+      logger.warn("listMyGroups skipped gid", { gid, code: getErrorCode(r.reason) });
     }
   });
   groups.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());

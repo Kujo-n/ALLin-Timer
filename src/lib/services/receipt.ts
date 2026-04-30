@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
@@ -167,11 +167,10 @@ export async function cancelOwnEntry(tid: string): Promise<void> {
       await user.delete();
       logger.info("anonymous self-delete after cancel", { uid: user.uid, tid });
     } catch (e) {
-      const code =
-        e instanceof Error && "code" in e
-          ? String((e as { code: unknown }).code)
-          : "unknown";
-      logger.warn("anonymous self-delete failed", { code, uid: user.uid });
+      logger.warn("anonymous self-delete failed", {
+        code: getErrorCode(e),
+        uid: user.uid,
+      });
       // best-effort: 残留は許容
     }
   }

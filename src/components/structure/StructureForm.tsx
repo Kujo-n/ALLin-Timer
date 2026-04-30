@@ -6,6 +6,7 @@ import { LevelTable } from "@/components/structure/LevelTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getErrorCode } from "@/lib/errors";
 import {
   createStructureInputSchema,
   type Level,
@@ -161,9 +162,8 @@ export function StructureForm(props: Props) {
       await onSubmit(payload);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      const code =
-        e && typeof e === "object" && "code" in e ? (e as { code: string }).code : "error/unknown";
-      setError(`${code}: ${message}`);
+      const code = getErrorCode(e);
+      setError(`${code === "unknown" ? "error/unknown" : code}: ${message}`);
     } finally {
       setSubmitting(false);
     }
