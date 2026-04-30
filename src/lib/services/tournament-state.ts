@@ -1,0 +1,120 @@
+import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+
+/**
+ * Tournament state-machine の許可判定を集約する純関数群。
+ *
+ * Phase 4 architect-refactor (P4) で `dashboard-client.tsx` / `TimerControls.tsx` /
+ * `repositories/tournaments.ts` に分散していた `tournament.state` 条件式の単一
+ * 真実源として導入する。
+ *
+ * 本ファイルの関数は以下の方針で並べる:
+ *   - state 述語 (isSetup / isSeating / ...): UI の hook 順制御や条件分岐の
+ *     primitive として再利用する
+ *   - 操作許可関数 (canX): 各 UI ボタンの visibility / disabled の表現と
+ *     repository 内の guard を同一定義に揃える
+ *   - 表示判定 (showX): dashboard 上のカード / バナーの visibility 判定
+ *
+ * 副作用なし。引数を mutate しない。membership / role の判定は呼び出し側で別途
+ * 行う（本ファイルは state のみを扱う）。
+ */
+export function isSetup(t: TournamentDoc): boolean {
+  return t.state === "setup";
+}
+
+export function isSeating(t: TournamentDoc): boolean {
+  return t.state === "seating";
+}
+
+export function isRunning(t: TournamentDoc): boolean {
+  return t.state === "running";
+}
+
+export function isPaused(t: TournamentDoc): boolean {
+  return t.state === "paused";
+}
+
+export function isFinished(t: TournamentDoc): boolean {
+  return t.state === "finished";
+}
+
+/** running または paused（タイマー駆動中）。 */
+export function isInProgress(t: TournamentDoc): boolean {
+  return isRunning(t) || isPaused(t);
+}
+
+/**
+ * トーナメント編集が可能か（dashboard の「編集」ボタン visibility）。
+ * 開始前の setup 中のみ。membership は呼出側で別途判定する。
+ */
+export function canEdit(t: TournamentDoc): boolean {
+  return isSetup(t);
+}
+
+/**
+ * トーナメント削除が可能か。setup（開始前）または finished（終了済み）のみ。
+ * `repositories/tournaments.ts:deleteTournament` の guard と一致させる。
+ */
+export function canDelete(t: TournamentDoc): boolean {
+  return isSetup(t) || isFinished(t);
+}
+
+/** setup → seating 遷移（`beginSeating`）が可能か。 */
+export function canBeginSeating(t: TournamentDoc): boolean {
+  return isSetup(t);
+}
+
+/** seating → running 遷移（`confirmSeating`）が可能か。 */
+export function canConfirmSeating(t: TournamentDoc): boolean {
+  return isSeating(t);
+}
+
+/**
+ * 初回席決め (`commitInitialSeating`) が可能か。
+ * `seating/orchestrator.ts` の guard と一致 — setup（初回）または seating（再配席）。
+ */
+export function canCommitInitialSeating(t: TournamentDoc): boolean {
+  return isSetup(t) || isSeating(t);
+}
+
+/** running → paused 遷移（`pauseTournament`）が可能か。 */
+export function canPause(t: TournamentDoc): boolean {
+  return isRunning(t);
+}
+
+/** paused → running 遷移（`resumeTournament`）が可能か。 */
+export function canResume(t: TournamentDoc): boolean {
+  return isPaused(t);
+}
+
+/**
+ * 「次レベル」操作（`advanceLevel`）が可能か。最終レベル超過を防ぐ。
+ * UI 側の visibility は `isInProgress(t) && canAdvanceLevel(t)` の合成で判定する。
+ */
+export function canAdvanceLevel(t: TournamentDoc): boolean {
+  return t.currentLevel < t.structureSnapshot.levels.length;
+}
+
+/**
+ * 「前レベル」操作（`revertLevel`）が可能か。currentLevel が 1 以下なら不可。
+ */
+export function canRevertLevel(t: TournamentDoc): boolean {
+  return t.currentLevel > 1;
+}
+
+/**
+ * 「終了」操作（`finishTournament`）の UI button visibility。
+ * TimerControls は running / paused の branch でのみ「終了」ボタンを描画する。
+ * `finishTournament` 自身は finished への二重呼出に対して idempotent (no-op) なので、
+ * UI 表示判定とは別に repository は `isFinished(t)` で early return する。
+ */
+export function canFinish(t: TournamentDoc): boolean {
+  return isInProgress(t);
+}
+
+/**
+ * dashboard 上で SeatingBoard カードを表示するか。
+ * 席が確定している seating / running / paused の 3 state で表示。
+ */
+export function showSeatingBoard(t: TournamentDoc): boolean {
+  return isSeating(t) || isInProgress(t);
+}
