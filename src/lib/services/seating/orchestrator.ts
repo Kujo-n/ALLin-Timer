@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 
 import {
   InvalidSeatsPerTableError,
+  TooManyPlayingDealersError,
   TooManyTablesError,
   planBalancingMove,
   planInitialSeating,
@@ -26,6 +27,7 @@ import {
   planTableBreak,
   type BalancingMove,
 } from "./engine";
+import { planPlayingDealerShift } from "./pd";
 
 /**
  * Phase 4: 席決め副作用層。engine の pure 関数を呼び出し Firestore に反映する。
@@ -109,7 +111,13 @@ export async function commitInitialSeating(
         liveActive.push(fresh);
       }
 
-      const plan = planInitialSeating(liveActive, sp, seed);
+      // Phase 5.1: PD（プレイングディーラー）指定 player を engine に伝達。
+      // tx 内で再 read した liveActive から `isPlayingDealer=true && !isBusted` を抽出。
+      const pdPlayerIds = liveActive
+        .filter((p) => p.isPlayingDealer && !p.isBusted)
+        .map((p) => p.id);
+
+      const plan = planInitialSeating(liveActive, sp, seed, pdPlayerIds);
 
       const ts = serverTimestamp();
       for (const a of plan.assignments) {
@@ -161,6 +169,15 @@ export async function commitInitialSeating(
       logger.warn(wrapped.message, { code: wrapped.code, tid });
       throw wrapped;
     }
+    if (e instanceof TooManyPlayingDealersError) {
+      const wrapped = new AppError(
+        `PD は ${e.maxAllowed} 名以下に絞ってください（現在 ${e.requested} 名）`,
+        "seating/pd-too-many",
+        e,
+      );
+      logger.warn(wrapped.message, { code: wrapped.code, tid });
+      throw wrapped;
+    }
     const wrapped = AppError.from(e, "firestore/write_failed", "初回席決めに失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
     throw wrapped;
@@ -190,7 +207,12 @@ export async function autoSeatLateEntry(
   seatsPerTable: number,
 ): Promise<{ applied: boolean; reason?: string }> {
   try {
-    const seat = planLateEntrySeat(seatedPlayers, brokenTableNums, seatsPerTable);
+    // Phase 5.1: 連番抑制のため seed-driven random seat 抽選。
+    // Date.now() ^ playerId hash で実用十分な multi-tournament uniqueness を確保。
+    const seed =
+      Date.now() ^
+      Array.from(playerId).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 0);
+    const seat = planLateEntrySeat(seatedPlayers, brokenTableNums, seatsPerTable, seed);
     if (!seat) {
       logger.info("late entry no available seat", { tid, playerId });
       return { applied: false, reason: "no-seat" };
@@ -214,7 +236,13 @@ export async function autoSeatLateEntry(
       if (!userGroupIds.includes(t.groupId)) {
         throw new AppError("not allowed", "firestore/permission-denied");
       }
-      if (t.state !== "running" && t.state !== "paused") {
+      // Phase 5.1: 座席確定後 (seating) のレイトエントリーも即時配席するため
+      // tx 内 state guard を seating/running/paused に緩和。setup / finished のみ skip。
+      if (
+        t.state !== "seating" &&
+        t.state !== "running" &&
+        t.state !== "paused"
+      ) {
         skipReason = "state";
         return;
       }
@@ -497,10 +525,13 @@ async function applyTableBreak(
 
       const ts = serverTimestamp();
       for (const m of plan.moves) {
+        // Phase 5.1: 閉鎖卓 player は移動先で PD 衝突を起こさないよう isPlayingDealer=false に倒す。
+        // 移動先で別の PD が立っていた場合も、移動してきた元 PD は false で上書きされ unique 維持。
         tx.update(doc(playersRef(tid), m.playerId), {
           tableNum: m.to.tableNum,
           seatNum: m.to.seatNum,
           lastMovedAt: ts,
+          isPlayingDealer: false,
         });
       }
       // H1 fix: 同一 tx 内で tables/{brokenTableNum}.isBroken=true も書く。
@@ -525,12 +556,157 @@ async function applyTableBreak(
 }
 
 /**
+ * Phase 5.1: PD（プレイングディーラー）フラグを ON/OFF する。
+ *
+ * - value=false: フラグだけ降ろし、席は変えない（OFF 操作）
+ * - value=true: 同 table の他 PD 不在を tx 内で再確認（race guard）し、当該 player を
+ *   席 1 へ rotation する。元 1..元PD席-1 の player は 1 つずつ後ろへ shift。
+ *   元 PD 席より後ろの player は影響なし。
+ *
+ * 制約:
+ *   - 当該 player が busted → `seating/pd-busted` AppError
+ *   - tableNum=null（未配席）→ `seating/pd-no-seat` AppError
+ *   - 同 table に既 PD あり → `seating/pd-already-set` AppError
+ *
+ * `tablePlayerIds` は呼出側で同 table の player ID（自身を除く）をあらかじめ抽出して渡す。
+ * tx 内で全 tournament players を tx.get するのを避けるため。
+ *
+ * ⚠ 残存 race window: 呼出側 snapshot 取得後・本 tx の tx.get 開始前に同卓へ別 player が
+ *   新規追加されると、新 player の `isPlayingDealer` を確認できない（`tablePlayerIds` に
+ *   含まれないため）。そのまま PD ON が通り「同卓 PD 2 名」を一時的に成立させる可能性が
+ *   ある。完全防止には `players` を tournament 全件 tx.get（read 量大）または where 句が
+ *   tx 内で使えない Firestore の制約を Cloud Functions で補完する必要がある。
+ *   現状（20 人 / 月 1〜2 回スケール / PD ON は organizer 操作 / 同卓追加と PD ON が
+ *   同時刻にぶつかる頻度は実質ゼロ）では許容し、運用で吸収する。発生時は `applyBalancingOnce`
+ *   の planBalancingMove は PD 除外で動くため致命的ではないが、`commitInitialSeating` 再実行
+ *   時に `TooManyPlayingDealersError` を経由して気付ける設計。
+ */
+export async function setIsPlayingDealer(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  pid: string,
+  value: boolean,
+  tablePlayerIds: string[],
+): Promise<void> {
+  try {
+    await runTransaction(firestore, async (tx) => {
+      const tRef = tournamentRef(tid);
+      const tSnap = await tx.get(tRef);
+      if (!tSnap.exists()) {
+        throw new AppError("not found", "firestore/not-found");
+      }
+      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
+      if (!userGroupIds.includes(t.groupId)) {
+        throw new AppError("not allowed", "firestore/permission-denied");
+      }
+
+      const pRef = doc(playersRef(tid), pid);
+      const pSnap = await tx.get(pRef);
+      if (!pSnap.exists()) {
+        throw new AppError("not found", "firestore/not-found");
+      }
+      const p: PlayerDoc = { id: pSnap.id, ...pSnap.data() };
+      if (p.isBusted) {
+        throw new AppError(
+          "バスト済みプレイヤーは PD 指定できません",
+          "seating/pd-busted",
+        );
+      }
+
+      if (value === false) {
+        // OFF: フラグだけ降ろす。席は変えない。setup 中（tableNum=null）でも OK。
+        tx.update(pRef, { isPlayingDealer: false });
+        return;
+      }
+
+      // ON: setup 中なら tableNum=null で同卓検証は不要（フラグだけ立てる）。
+      if (p.tableNum === null) {
+        tx.update(pRef, { isPlayingDealer: true });
+        return;
+      }
+
+      // ON（席決め後）: 同 table の他 PD がいないか tx 内で再確認。
+      const tableSnaps = await Promise.all(
+        tablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
+      );
+      const tablePlayers: PlayerDoc[] = [p];
+      for (const snap of tableSnaps) {
+        if (!snap.exists()) continue;
+        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        // 別卓に動いていたら無視（fixture 不一致の防御）。
+        if (fresh.tableNum !== p.tableNum) continue;
+        tablePlayers.push(fresh);
+      }
+      const otherPd = tablePlayers.find(
+        (q) => q.id !== pid && q.isPlayingDealer && !q.isBusted,
+      );
+      if (otherPd) {
+        throw new AppError(
+          `Table ${p.tableNum} には既に PD がいます`,
+          "seating/pd-already-set",
+        );
+      }
+
+      // rotation: 元 1..元PD席-1 を 1 つずつ後ろへ + PD を席 1 へ。
+      const moves = planPlayingDealerShift(
+        tablePlayers.filter((q) => !q.isBusted),
+        pid,
+        t.seatsPerTable,
+      );
+      const ts = serverTimestamp();
+      // PD 自身の rotation move（席 1 へ）は moves に含まれているため、
+      // フラグ ON は move の update に統合する。pid 以外の rotation を先に書き、
+      // pid は最後に rotation + isPlayingDealer の単一 update で書く。
+      let pdMoveApplied = false;
+      for (const m of moves) {
+        if (m.playerId === pid) {
+          tx.update(pRef, {
+            tableNum: m.to.tableNum,
+            seatNum: m.to.seatNum,
+            lastMovedAt: ts,
+            isPlayingDealer: true,
+          });
+          pdMoveApplied = true;
+        } else {
+          tx.update(doc(playersRef(tid), m.playerId), {
+            tableNum: m.to.tableNum,
+            seatNum: m.to.seatNum,
+            lastMovedAt: ts,
+          });
+        }
+      }
+      if (!pdMoveApplied) {
+        // 既に席 1 に居る場合は rotation 不要、フラグだけ立てる。
+        tx.update(pRef, { isPlayingDealer: true });
+      }
+    });
+    logger.info("set pd ok", { tid, uid, pid, value });
+  } catch (e) {
+    if (e instanceof AppError) {
+      logger.warn(e.message, { code: e.code, tid, pid });
+      throw e;
+    }
+    const wrapped = AppError.from(e, "firestore/write_failed", "PD 設定に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+    throw wrapped;
+  }
+}
+
+/**
  * 運営者の bust ボタン → players.bustPlayer の薄いラッパ。permission の最終防衛は rules。
  * orchestrator 側で一括実行することで「バスト → 自動バランシング呼出し」の責務分離が
  * 容易になる（component 側は orchestrator API のみ使えば良い）。
+ *
+ * Phase 5.1: 同卓 player の `isPlayingDealer=false` も同時に書く（writeBatch 経由）。
+ * 呼出側は同 table の他 player ID 配列を渡す（subscribe snapshot 経由）。
  */
-export async function bustPlayer(tid: string, pid: string): Promise<void> {
-  await bustPlayerWrite(tid, pid);
+export async function bustPlayer(
+  tid: string,
+  pid: string,
+  sameTablePlayerIds: string[] = [],
+): Promise<void> {
+  await bustPlayerWrite(tid, pid, sameTablePlayerIds);
 }
 
 export async function unbustPlayer(tid: string, pid: string): Promise<void> {

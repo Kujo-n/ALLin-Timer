@@ -56,6 +56,7 @@ function player(p: Partial<PlayerDoc> & { id: string }): PlayerDoc {
     tableNum: p.tableNum ?? null,
     seatNum: p.seatNum ?? null,
     lastMovedAt: p.lastMovedAt ?? null,
+    isPlayingDealer: p.isPlayingDealer ?? false,
   };
 }
 
@@ -118,12 +119,12 @@ describe("useSeatingAutoOrchestrator — early returns", () => {
     expect(autoSeatLateEntry).not.toHaveBeenCalled();
   });
 
-  it("does nothing when state is seating (運営者の commit 待ち)", () => {
+  it("Phase 5.1: invokes autoSeatLateEntry when state is seating (座席確定後 late entry の即時配席)", () => {
     renderWith({
-      tournament: makeTournament({ state: "seating" }),
+      tournament: makeTournament({ state: "seating", currentLevel: 0 }),
       players: [player({ id: "p1" })],
     });
-    expect(autoSeatLateEntry).not.toHaveBeenCalled();
+    expect(autoSeatLateEntry).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing when state is finished", () => {

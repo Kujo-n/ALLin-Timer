@@ -8,6 +8,7 @@ import type { TableDoc } from "@/lib/firebase/schemas/table";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { autoSeatLateEntry } from "@/lib/services/seating/orchestrator";
+import { isAcceptingLateSeats, isInProgress } from "@/lib/services/tournament-state";
 
 interface Options {
   tid: string;
@@ -61,10 +62,16 @@ export function useSeatingAutoOrchestrator(opts: Options): void {
 
   useEffect(() => {
     if (!uid || !tournament) return;
-    if (tournament.state !== "running" && tournament.state !== "paused") return;
+    // Phase 5.1: 座席確定後 (seating) も自動配席発火対象に含める。
+    if (!isAcceptingLateSeats(tournament)) return;
     if (!userGroupIds.includes(tournament.groupId)) return;
     // 締切超過は orchestrator 側でも no-op できるが、ここで弾けば transaction を発火しない。
-    if (tournament.currentLevel > tournament.lateEntryDeadlineLevel) return;
+    // running/paused のみ deadline 判定が意味を持つ（seating 中は currentLevel=0）。
+    if (
+      isInProgress(tournament) &&
+      tournament.currentLevel > tournament.lateEntryDeadlineLevel
+    )
+      return;
 
     const seated = players.filter((p) => !p.isBusted);
     const brokenTableNums = tables.filter((t) => t.isBroken).map((t) => t.tableNum);

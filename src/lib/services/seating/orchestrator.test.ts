@@ -104,6 +104,7 @@ function player(p: Partial<PlayerDoc> & { id: string }): PlayerDoc {
     tableNum: p.tableNum ?? null,
     seatNum: p.seatNum ?? null,
     lastMovedAt: p.lastMovedAt ?? null,
+    isPlayingDealer: p.isPlayingDealer ?? false,
   };
 }
 
@@ -288,7 +289,7 @@ describe("autoSeatLateEntry", () => {
     expect(result.reason).toBe("race");
   });
 
-  it("commits seat when all guards pass", async () => {
+  it("commits seat when all guards pass (Phase 5.1: seat is random in [2..9])", async () => {
     const t = makeTournament({ state: "running", currentLevel: 1 });
     const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
     const captured: unknown[] = [];
@@ -323,14 +324,26 @@ describe("autoSeatLateEntry", () => {
     expect(captured).toHaveLength(1);
     const patch = captured[0] as Record<string, unknown>;
     expect(patch.tableNum).toBe(1);
-    expect(patch.seatNum).toBe(2);
+    // Phase 5.1: planLateEntrySeat は空席 [2..9] からランダム選択。具体的な seat は seed 依存。
+    expect(typeof patch.seatNum).toBe("number");
+    expect(patch.seatNum as number).toBeGreaterThanOrEqual(2);
+    expect(patch.seatNum as number).toBeLessThanOrEqual(9);
   });
 
   it("skips with reason=seat-taken when target seat is occupied at tx (H2 fix)", async () => {
-    // seatedPlayers では seat 1-1 だけ埋まり 1-2 は空に見える。
-    // しかし tx 内で再 read すると別端末が seat 1-2 を新規プレイヤーへ割当て済み。
+    // Phase 5.1: 卓 1 に 8 人 (seat 1, 3..9) 配席 → 空席 = {2} のみ → plan は必ず seat 2。
+    // tx 内で別 player (a) が seat 2 を取っていれば race を検出する（deterministic）。
     const t = makeTournament({ state: "running", currentLevel: 1 });
-    const seated = [player({ id: "a", tableNum: 1, seatNum: 1 })];
+    const seatedFull = [
+      player({ id: "a", tableNum: 1, seatNum: 1 }),
+      player({ id: "c", tableNum: 1, seatNum: 3 }),
+      player({ id: "d", tableNum: 1, seatNum: 4 }),
+      player({ id: "e", tableNum: 1, seatNum: 5 }),
+      player({ id: "f", tableNum: 1, seatNum: 6 }),
+      player({ id: "g", tableNum: 1, seatNum: 7 }),
+      player({ id: "h", tableNum: 1, seatNum: 8 }),
+      player({ id: "i", tableNum: 1, seatNum: 9 }),
+    ];
     mockTransaction([
       () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
       () => ({
@@ -338,12 +351,17 @@ describe("autoSeatLateEntry", () => {
         id: "new",
         data: () => stripId(player({ id: "new", lastMovedAt: null })),
       }),
-      // 再 read で "a" が seat 2 を取っていることを返す（race 結果）。
+      // 再 read: "a" が seat 1 → 2 へ動いた race 結果（seat 2 を別 player が占有）。
       () => ({
         exists: () => true,
         id: "a",
         data: () => stripId(player({ id: "a", tableNum: 1, seatNum: 2 })),
       }),
+      ...["c", "d", "e", "f", "g", "h", "i"].map((id, idx) => () => ({
+        exists: () => true,
+        id,
+        data: () => stripId(player({ id, tableNum: 1, seatNum: idx + 3 })),
+      })),
     ]);
     const result = await autoSeatLateEntry(
       "t1",
@@ -351,7 +369,7 @@ describe("autoSeatLateEntry", () => {
       ["g1"],
       "new",
       null,
-      seated,
+      seatedFull,
       [],
       9,
     );
@@ -931,9 +949,14 @@ describe("commitInitialSeating — additional branches", () => {
 });
 
 describe("bustPlayer / unbustPlayer wrappers", () => {
-  it("bustPlayer delegates to players.bustPlayer", async () => {
+  it("bustPlayer delegates to players.bustPlayer with default empty same-table list", async () => {
     await bustPlayer("t1", "p1");
-    expect(bustPlayerWrite).toHaveBeenCalledWith("t1", "p1");
+    expect(bustPlayerWrite).toHaveBeenCalledWith("t1", "p1", []);
+  });
+
+  it("bustPlayer forwards same-table player IDs (Phase 5.1)", async () => {
+    await bustPlayer("t1", "p1", ["p2", "p3"]);
+    expect(bustPlayerWrite).toHaveBeenCalledWith("t1", "p1", ["p2", "p3"]);
   });
 
   it("unbustPlayer delegates to players.unbustPlayer", async () => {
