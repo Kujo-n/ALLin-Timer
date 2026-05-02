@@ -320,12 +320,18 @@ service cloud.firestore {
       // Phase 4.6: organizer 経路は isOrganizer に強化（一般メンバーは他人を bust/seat できない）。
       match /players/{pid} {
         allow read: if isSignedIn();
+        // Phase 5.1: isPlayingDealer は create 時 false 固定（self-stamp PD 防止）。
+        //   self-update 分岐で immutable 強制されているため、create を抜け道にされると
+        //   組織者の同卓 1 PD 制約 (orchestrator.setIsPlayingDealer の tx) を bypass され
+        //   `commitInitialSeating` が `TooManyPlayingDealersError` で詰まる DoS を許してしまう。
+        //   `.get(..., false)` で field 未送信の legacy client も互換に通す。
         allow create: if isSignedIn()
                       && pid == request.auth.uid
                       && request.resource.data.uid == request.auth.uid
                       && request.resource.data.isBusted == false
                       && request.resource.data.tableNum == null
-                      && request.resource.data.seatNum == null;
+                      && request.resource.data.seatNum == null
+                      && request.resource.data.get('isPlayingDealer', false) == false;
         // self-update: displayName のみ変更可。残りフィールドは immutable。
         // organizer-update: organizer なら bust/seat/lastMovedAt 変更可。uid と entryAt は immutable。
         // Phase 4 (M1 fix): organizer 経路でも tableNum / seatNum の型・範囲・整合性を rule で検証する。
@@ -348,6 +354,10 @@ service cloud.firestore {
                           && request.resource.data.tableNum == resource.data.tableNum
                           && request.resource.data.seatNum == resource.data.seatNum
                           && request.resource.data.lastMovedAt == resource.data.lastMovedAt
+                          // Phase 5.1: self 経路では isPlayingDealer も immutable に固定。
+                          //   旧 doc（フィールド未保有）でも .get(..., false) で legacy 互換。
+                          && request.resource.data.get('isPlayingDealer', false)
+                              == resource.data.get('isPlayingDealer', false)
                         )
                         ||
                         (
@@ -372,6 +382,9 @@ service cloud.firestore {
                             (request.resource.data.tableNum == null && request.resource.data.seatNum == null)
                             || (request.resource.data.tableNum != null && request.resource.data.seatNum != null)
                           )
+                          // Phase 5.1: organizer 経路は isPlayingDealer を bool 型に限定
+                          //   (additive: 旧 doc が field 未保有でも default false で hydrate 済み前提)。
+                          && request.resource.data.get('isPlayingDealer', false) is bool
                         )
                       );
         // self-delete（自己取消）と organizer による owner-delete を許容。
@@ -392,6 +405,18 @@ service cloud.firestore {
                      && exists(/databases/$(database)/documents/tournaments/$(tid))
                      && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
       }
+    }
+
+    // Phase 5.1 追加: collectionGroup("players") query を許可するための path-wildcard rule。
+    //   Firestore の collectionGroup query は path-specific rule
+    //   （match /tournaments/{tid}/players/{pid}）では deny 扱いになるため、
+    //   `match /{path=**}/players/{pid}` で recursive wildcard 経路を明示する。
+    //   これがないと `subscribePlayersByUid`（JoinedTournamentsNav）が silent に
+    //   空集合を返し、サイドバーの「参加中のトーナメント」が永遠に出ない。
+    //   write は path-specific rule 側に集約しており、ここでは read だけを開ける。
+    //   `players` collection-id は tournaments 配下にしか存在しないため副作用なし。
+    match /{path=**}/players/{pid} {
+      allow read: if isSignedIn();
     }
   }
 }
