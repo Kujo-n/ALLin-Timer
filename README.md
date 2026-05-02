@@ -113,16 +113,18 @@ Firebase の既定設定（One account per email）では、メール+PW 登録�
 
 > displayName なしで登録された既存アカウントが join で `validation/display-name-required` を踏んだ場合は、`/settings` から表示名を設定して再度参加してください。
 
-### 5. Firestore セキュリティルールのデプロイ
+### 5. Firestore セキュリティルール / インデックスのデプロイ
 
 ```bash
 npm install -g firebase-tools  # 初回のみ
 firebase login
 # .firebaserc の projectId を自分の Firebase プロジェクト ID に書き換えてから:
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
 > **Phase 2.5 で `firestore.rules` を全面刷新**。`groups/{gid}` / `groupJoinCodes/{code}` を新規追加し、`structures` / `tournaments` の所有モデルが `ownerUid` 個人所有から **`groupId` ＋ group メンバーシップ共有所有** に変更されている。ルール再デプロイ後は **旧 `ownerUid` ベースのドキュメントは読めなくなる**ので、Firebase Console から旧 collection をクリーンアップすること（後述）。
+
+> **Phase 5.1 で `firestore.indexes.json` に collection-group index を追加**。サイドバー「参加中のトーナメント」section（`subscribePlayersByUid`）が `collectionGroup("players").where("uid", "==", uid)` を発行するため、`players.uid` の collection-group scope index が必要。`firestore:indexes` を含めずに `firestore:rules` だけデプロイすると、本番でクエリが `failed-precondition` で reject されサイドバーが silent failure（空表示）になる。本番反映は Firebase Console → Firestore → Indexes で「Building → Enabled」を確認する。
 
 ### サークル（group）運用
 
@@ -220,6 +222,18 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 - **設定画面**: `/groups/[gid]/audio-settings` で on/off・音量・試聴を切替（owner / organizer のみアクセス可）。group 詳細画面のボタンから遷移
 - **autoplay unlock**: ブラウザ仕様により最初のユーザー操作が必要。画面上部の `SoundUnlockBanner` で「サウンドを有効化」を 1 回タップすれば以降同一タブで自動再生される
 - **データ**: `groups/{gid}.audioSettings`（zod additive 拡張）に保持。Firestore Rules で organizer 以上のみ書換可
+
+### 5.7. Phase 5.1: PD（プレイングディーラー）モデル
+
+ディーラー兼任プレイヤー（PD = Playing Dealer）を 1 卓 1 名まで指定できるモデルを導入した。受付（setup）中に PlayerList のチェックボックス、席決め後（seating / running / paused）に SeatingBoard の各席チェックボックスから ON/OFF できる。
+
+- **席 1 固定**: PD 指定者は所属卓の席 1 に強制配置（初回席決め時の事前配分 + 後付け ON 時の rotation）。元の席 1〜PD 席 -1 の player は 1 つずつ後ろへシフト、PD 席より後ろは不変
+- **同卓 1 PD**: UI 側で他席の checkbox を disabled、service tx 内でも同卓に既 PD があれば `seating/pd-already-set` AppError で拒否（二重防御）
+- **バランシング除外**: `planBalancingMove` は PD を移動候補から除外する。過剰卓が PD だけだとバランシング不能 (null) になるが、1 卓 1 PD 制約下で実質発生しない
+- **bust 自動 OFF**: バスト記録時、当該 player + 同卓 PD（最大 1 名）の `isPlayingDealer=false` を batch で書込む
+- **卓閉鎖自動 OFF（要注意）**: `applyTableBreak` は閉鎖卓 player の `isPlayingDealer=false` を強制リセット。**閉鎖前に PD だった player は移動先で PD のまま残らない**ので、必要なら移動先で再度 ON にする（同卓 PD と衝突しないようにする設計上の選択）
+- **データ**: `tournaments/{tid}/players/{pid}.isPlayingDealer: boolean`（zod additive、default false）。Firestore Rules で self は immutable / organizer は bool 型のみ書込可（同卓 1 PD 制約は rule では表現困難なため service tx で担保）
+- **rule 検証**: [scripts/test-rules-pd.mjs](scripts/test-rules-pd.mjs) を `firebase emulators:exec --only auth,firestore "node scripts/test-rules-pd.mjs"` で実行（手動・CI 対象外）
 
 ### 6. Vercel にデプロイ
 

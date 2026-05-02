@@ -133,6 +133,22 @@ rule: `isOrganizer(gid) + affectedKeys().hasOnly(['defaultSeatsPerTable']) + is 
 
 ⚠ DRIFT WARNING: 上限 10 は `firestore.rules` の `players seatNum <= 10` および [tournament.ts](../../src/lib/firebase/schemas/tournament.ts) の `seatsPerTable.max(10)` と連動。同時に変更すること。drift 検出方法は前述の「数値リミット定数の単一真実源」セクション参照。
 
+### `players.isPlayingDealer`（PD フラグ、Phase 5.1）
+
+`tournaments/{tid}/players/{pid}` 上の単独 bool フィールド。1 卓 1 PD 制約は service tx + UI disabled の二重防御（rule 側では bool 型のみ enforce、卓内ユニーク性は rule で表現困難）。
+
+更新経路は**以下 3 系統に限定**する:
+
+- 手動 ON/OFF — `setIsPlayingDealer(tid, uid, gids, pid, value, tablePlayerIds)`（[orchestrator.ts](../../src/lib/services/seating/orchestrator.ts)）の runTransaction。同卓内 rotation を atomic に commit
+- 自動 OFF（bust 時） — `bustPlayer(tid, pid, sameTablePlayerIds)`（[repositories/players.ts](../../src/lib/firebase/repositories/players.ts)）の writeBatch で当該 player + 同卓全員の isPlayingDealer を false に倒す
+- 自動 OFF（テーブル閉鎖時） — `applyTableBreak`（orchestrator）の tx 内で閉鎖卓 player の isPlayingDealer を false に倒す（移動先での PD 衝突予防）
+
+rule: `players/{pid}` update branches に additive 拡張のみ:
+- self 経路: `request.resource.data.get('isPlayingDealer', false) == resource.data.get('isPlayingDealer', false)`（self は immutable）
+- organizer 経路: `request.resource.data.get('isPlayingDealer', false) is bool`（型のみ強制）
+
+⚠ DRIFT WARNING: `players` への新フィールド追加は schema (`schemas/player.ts`) / rule (`firestore.rules` players update branches) / service (`orchestrator.ts` setIsPlayingDealer 等) / UI (SeatingBoard / PlayerList の PD checkbox) の 4 点同時更新が必要。emulator validation script は [scripts/test-rules-pd.mjs](../../scripts/test-rules-pd.mjs)。
+
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
 `firestore.rules` の `groups/{gid}` `allow update` は 6 ブランチに分かれており、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
