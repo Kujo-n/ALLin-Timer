@@ -21,6 +21,19 @@ test.describe("匿名ユーザ自己削除", () => {
     request,
     tournamentDashboardPage,
   }) => {
+    // Phase 5.1: 匿名ゲストは `/live` を閲覧できない設計（live-client が `/` に redirect）。
+    //   旧経路は「ゲストが /live を開いたまま tournament finished 検知 →
+    //   `attemptAnonymousSelfDelete('finish')`」だったが、redirect により live-client の
+    //   self-delete useEffect が実質発火しなくなった（参照: phase-5.1 plan / 追加方針 2）。
+    //   現状、匿名ゲストの auth/users 自動削除は「参加を取り消す」操作経由のみで、
+    //   tournament finish では削除されない。これは Phase 5.1 で受け入れた設計トレードオフ。
+    //   将来 finish 連動の削除を復活させる場合（receipt 完了画面で tournament を subscribe する等）に
+    //   このテストを再有効化する。
+    test.fixme(
+      true,
+      "Phase 5.1 で匿名ゲストの /live アクセスが redirect されるようになり、" +
+        "finish 連動 self-delete が動作しない（設計上のトレードオフ）",
+    );
     const organizer = randomOrganizer("finish");
     const { tid } = await seedOrganizerTournament(page, { organizer });
 

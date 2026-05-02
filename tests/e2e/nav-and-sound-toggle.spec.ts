@@ -255,10 +255,13 @@ test.describe("Phase 4.13: SoundToggleButton in-place toggle", () => {
       .toBe(true);
 
     // Phase 4.14: refreshGroups() を toggle 成功後に呼ぶようになったため、
-    // reload なしで UI が「サウンドを有効化」CTA に切替わる。
+    // reload なしで UI が CTA に切替わる。
+    // Phase 5.1: useImplicitAudioUnlock により最初のユーザー操作で audio が unlock 済みに
+    // なっているため、enable 後の状態は「サウンドを有効化」(amber) ではなく
+    // 「サウンドON（クリックでOFF）」(green) になる。
     await expect(dash.stateBadge).toHaveText("進行中", { timeout: 15_000 });
     await expect(
-      page.getByRole("button", { name: /^サウンドを有効化$/ }),
+      page.getByRole("button", { name: /^サウンドON/ }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /^サウンドOFF/ })).toHaveCount(0);
   });
@@ -282,9 +285,13 @@ test.describe("Phase 4.14: 開催中トーナメントのサイドバーサブ�
     await expect(page.getByText(/参加者 \(1\)/)).toBeVisible({ timeout: 15_000 });
     await dash.startTournament();
 
-    // サイドバー内に当該 tournament 名のサブリンクが realtime で現れる
+    // サイドバー内に当該 tournament 名のサブリンクが realtime で現れる。
+    // Phase 5.1: owner 自己参加で `JoinedTournamentsNav` も同名のリンク（href は /live）
+    // を出すため、href 完全一致でフィルタして PrimaryNav 側のサブリンクだけを掴む。
     const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
-    const subLink = sidebar.getByRole("link", { name: /Nav Subnav Tournament/ });
+    const subLink = sidebar.locator(`a[href="/tournaments/${tid}"]`).filter({
+      hasText: /Nav Subnav Tournament/,
+    });
     await expect(subLink).toBeVisible({ timeout: 15_000 });
     await expect(subLink).toHaveAttribute("href", `/tournaments/${tid}`);
 

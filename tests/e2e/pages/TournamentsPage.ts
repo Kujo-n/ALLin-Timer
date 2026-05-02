@@ -52,6 +52,16 @@ export class TournamentDashboardPage extends BasePage {
   readonly commitSeatingButton: Locator = this.page.getByRole("button", { name: /席を決定/ });
   readonly selfJoinButton: Locator = this.page.getByRole("button", { name: /自分も参加する/ });
   readonly startButton: Locator = this.page.getByRole("button", { name: /トーナメント開始/ });
+  // Phase 5.1: PD（プレイングディーラー）チェックボックス。PlayerList / SeatingBoard
+  // 双方で `aria-label="pd-${displayName}"` を共通付与しているため accessible name で参照する。
+  pdCheckbox(displayName: string): Locator {
+    return this.page.getByLabel(`pd-${displayName}`);
+  }
+  // SeatingBoard の各テーブルカード（aria-label="table-${tableNum}"）。
+  // shadcn の Card は <div> のため role=region を持たない → 属性 selector で直接参照。
+  tableCard(tableNum: number): Locator {
+    return this.page.locator(`[aria-label="table-${tableNum}"]`);
+  }
   // Phase 4.11: TimerControls がアイコン化された後の running/paused 操作ボタン。
   // accessible name は aria-label と一致するため `^...$` で完全一致させる。
   readonly pauseButton: Locator = this.page.getByRole("button", { name: /^一時停止$/ });
@@ -102,6 +112,15 @@ export class TournamentDashboardPage extends BasePage {
     await expect(this.startButton).toBeVisible({ timeout: 15_000 });
     await this.startButton.click();
     await expect(this.stateBadge).toHaveText("進行中", { timeout: 15_000 });
+  }
+
+  /**
+   * Phase 5.1: 席決めだけ commit して seating 状態で止める helper。
+   * PD 配置検証など、開始前の SeatingBoard を読みたいテスト用。
+   */
+  async commitSeatingOnly() {
+    await this.commitSeatingButton.click();
+    await expect(this.startButton).toBeVisible({ timeout: 15_000 });
   }
 
   async bustPlayer(displayName: string) {

@@ -199,9 +199,10 @@ test.describe("Phase 4.9: audio settings", () => {
     await dash.startTournament();
     await expect(dash.stateBadge).toHaveText("進行中");
 
-    // 初期状態（enabled=true && !unlocked）では「サウンドを有効化」ボタンが見える。
+    // 初期状態: enabled=true。Phase 5.1: useImplicitAudioUnlock で実際の操作（dashboard
+    // 内のクリック）を経て audio が unlock 済み → 「サウンドON（クリックでOFF）」アイコン。
     await expect(
-      page.getByRole("button", { name: /^サウンドを有効化$/ }),
+      page.getByRole("button", { name: /^サウンドON/ }),
     ).toBeVisible({ timeout: 15_000 });
 
     // 設定ページで enabled を off にして保存。
@@ -225,11 +226,11 @@ test.describe("Phase 4.9: audio settings", () => {
     await dash.goto();
     // running 状態は維持されている（state 遷移していない）。
     await expect(dash.stateBadge).toHaveText("進行中");
-    // 「サウンドを有効化」ボタンは消え、OFF アイコンに切り替わる。
+    // 「サウンドON」ボタンは消え、OFF アイコンに切り替わる。
     // Phase 4.13: settingsHref を廃止して `<Link>` → `<Button>` に変更し、
     // クリックで group の audioSettings.enabled を反転書込みする方式に変わった。
     await expect(
-      page.getByRole("button", { name: /^サウンドを有効化$/ }),
+      page.getByRole("button", { name: /^サウンドON/ }),
     ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: /^サウンドOFF/ }),
