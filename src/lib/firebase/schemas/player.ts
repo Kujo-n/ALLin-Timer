@@ -14,6 +14,9 @@ export const playerBodySchema = z.object({
   seatNum: z.number().int().positive().nullable(),
   // Phase 4: 直近の席移動時刻。/live で「席が移動しました」バナー判定に使う。
   lastMovedAt: z.instanceof(Timestamp).nullable(),
+  // Phase 5.1: PD（プレイングディーラー）フラグ。1 卓 1 PD（service tx + rule で防御）。
+  // additive: 旧 doc は default(false) で hydrate（破壊的 migration 不要）。
+  isPlayingDealer: z.boolean().default(false),
 });
 export type PlayerBody = z.infer<typeof playerBodySchema>;
 

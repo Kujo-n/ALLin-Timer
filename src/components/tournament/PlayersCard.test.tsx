@@ -19,6 +19,7 @@ function makePlayer(id: string, isBusted = false): PlayerDoc {
     tableNum: null,
     seatNum: null,
     lastMovedAt: null,
+    isPlayingDealer: false,
   };
 }
 

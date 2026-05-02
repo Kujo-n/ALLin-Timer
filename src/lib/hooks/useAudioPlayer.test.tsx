@@ -128,6 +128,7 @@ function makePlayer(overrides: Partial<PlayerDoc> & { id: string; uid: string })
     tableNum: null,
     seatNum: null,
     lastMovedAt: null,
+    isPlayingDealer: false,
     ...overrides,
   };
 }
