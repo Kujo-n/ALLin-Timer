@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
@@ -90,6 +91,7 @@ export async function upsertPlayer(
         tableNum: null,
         seatNum: null,
         lastMovedAt: null,
+        isPlayingDealer: false,
       });
       logger.info("player create ok", { tid, uid });
     },
@@ -115,25 +117,49 @@ export async function deletePlayer(tid: string, pid: string): Promise<void> {
 
 /**
  * Phase 4: 運営者がバストを記録する。席はクリアする。
+ *
+ * Phase 5.1: 同卓 PD player の `isPlayingDealer=false` を同時に batch 更新する。
+ *
+ * `sameTablePlayerIds` は「同卓で PD フラグを降ろすべき player の ID」のみを呼出側で
+ * pre-filter して渡す（同卓 1 PD 制約のため最大 1 件）。歴史的経緯で配列引数のままだが
+ * 全員渡しても冪等に動く（loop 内で個別 update を発行する）。9 席満卓で全員を渡すと
+ * 不要な write が 7〜8 件増えるため呼出側で絞ること。
+ *
  * 権限の最終防衛は Firestore rules（group メンバーのみ書込可）。client 側の
  * group チェックは呼び出し元（component / orchestrator）で行う前提。
  */
-export async function bustPlayer(tid: string, pid: string): Promise<void> {
+export async function bustPlayer(
+  tid: string,
+  pid: string,
+  sameTablePlayerIds: string[] = [],
+): Promise<void> {
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "バスト処理に失敗しました",
     async () => {
-      await updateDoc(doc(playersRef(tid), pid), {
+      const batch = writeBatch(firestore);
+      const ts = serverTimestamp();
+      // 当該 player: bust + seat 解放 + PD フラグ降ろし
+      batch.update(doc(playersRef(tid), pid), {
         isBusted: true,
-        bustedAt: serverTimestamp(),
+        bustedAt: ts,
         tableNum: null,
         seatNum: null,
-        lastMovedAt: serverTimestamp(),
+        lastMovedAt: ts,
+        isPlayingDealer: false,
       });
+      // 同卓 PD（呼出側で絞られている）の PD フラグを降ろす。冪等（false → false の no-op write OK）。
+      for (const otherId of sameTablePlayerIds) {
+        if (otherId === pid) continue;
+        batch.update(doc(playersRef(tid), otherId), {
+          isPlayingDealer: false,
+        });
+      }
+      await batch.commit();
     },
     { tid, pid },
   );
-  logger.info("player bust ok", { tid, pid });
+  logger.info("player bust ok", { tid, pid, sameTableCount: sameTablePlayerIds.length });
 }
 
 /**

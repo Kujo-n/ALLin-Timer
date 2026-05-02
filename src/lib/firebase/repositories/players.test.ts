@@ -27,6 +27,7 @@ vi.mock("firebase/firestore", async () => {
     deleteDoc: vi.fn(),
     onSnapshot: vi.fn(),
     serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
+    writeBatch: vi.fn(),
   };
 });
 
@@ -41,6 +42,7 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 
 import {
@@ -60,6 +62,7 @@ beforeEach(() => {
   vi.mocked(updateDoc).mockReset().mockResolvedValue(undefined);
   vi.mocked(deleteDoc).mockReset().mockResolvedValue(undefined);
   vi.mocked(serverTimestamp).mockReturnValue({ __op: "serverTimestamp" } as never);
+  vi.mocked(writeBatch).mockReset();
 });
 
 describe("upsertPlayer", () => {
@@ -97,18 +100,53 @@ describe("upsertPlayer", () => {
 });
 
 describe("bustPlayer", () => {
-  it("writes isBusted=true and clears seat", async () => {
+  function setupBatch() {
+    const batchUpdate = vi.fn();
+    const batchCommit = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(writeBatch).mockReturnValueOnce({
+      update: batchUpdate,
+      commit: batchCommit,
+    } as never);
+    return { batchUpdate, batchCommit };
+  }
+
+  it("writes isBusted=true, clears seat, and bumps PD off", async () => {
+    const { batchUpdate, batchCommit } = setupBatch();
     await bustPlayer("t1", "u1");
-    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(batchCommit).toHaveBeenCalled();
+    const payload = batchUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(payload.isBusted).toBe(true);
     expect(payload.tableNum).toBeNull();
     expect(payload.seatNum).toBeNull();
     expect(payload.bustedAt).toEqual({ __op: "serverTimestamp" });
     expect(payload.lastMovedAt).toEqual({ __op: "serverTimestamp" });
+    expect(payload.isPlayingDealer).toBe(false);
+  });
+
+  it("also unsets PD on same-table players", async () => {
+    const { batchUpdate, batchCommit } = setupBatch();
+    await bustPlayer("t1", "u1", ["other-1", "other-2"]);
+    expect(batchCommit).toHaveBeenCalled();
+    // 当該 player + 同卓 2 人 = 3 update 呼出
+    expect(batchUpdate).toHaveBeenCalledTimes(3);
+    const otherPayload = batchUpdate.mock.calls[1][1] as Record<string, unknown>;
+    expect(otherPayload).toEqual({ isPlayingDealer: false });
+  });
+
+  it("self id duplicates are skipped from same-table list", async () => {
+    const { batchUpdate } = setupBatch();
+    await bustPlayer("t1", "u1", ["u1", "other-1"]);
+    // 当該 + other-1 = 2（"u1" は self なので skip）
+    expect(batchUpdate).toHaveBeenCalledTimes(2);
   });
 
   it("wraps errors as firestore/write_failed", async () => {
-    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    const batchUpdate = vi.fn();
+    const batchCommit = vi.fn().mockRejectedValueOnce(new Error("perm"));
+    vi.mocked(writeBatch).mockReturnValueOnce({
+      update: batchUpdate,
+      commit: batchCommit,
+    } as never);
     await expect(bustPlayer("t1", "u1")).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
