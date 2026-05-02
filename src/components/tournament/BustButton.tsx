@@ -11,6 +11,12 @@ interface Props {
   tid: string;
   pid: string;
   isBusted: boolean;
+  /**
+   * Phase 5.1: 同卓 player の ID 配列（自身を除く）。bust 時に同卓全員の
+   * `isPlayingDealer=false` を batch で書き込むために使用。
+   * 渡されなければ PD フラグの伝播は当該 player のみ。
+   */
+  sameTablePlayerIds?: string[];
   onError?: (message: string) => void;
 }
 
@@ -22,7 +28,7 @@ interface Props {
  *
  * M5 fix: unmount 後の setState 警告を防ぐため `mounted` ref で guard。
  */
-export function BustButton({ tid, pid, isBusted, onError }: Props) {
+export function BustButton({ tid, pid, isBusted, sameTablePlayerIds, onError }: Props) {
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
 
@@ -40,7 +46,7 @@ export function BustButton({ tid, pid, isBusted, onError }: Props) {
       if (isBusted) {
         await unbustPlayer(tid, pid);
       } else {
-        await bustPlayer(tid, pid);
+        await bustPlayer(tid, pid, sameTablePlayerIds ?? []);
       }
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "バスト処理に失敗しました");

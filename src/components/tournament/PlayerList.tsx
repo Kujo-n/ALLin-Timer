@@ -30,6 +30,12 @@ interface Props {
   canManage?: boolean;
   /** バストボタン表示判定用。running / paused のみで出す。 */
   tournamentState: TournamentState;
+  /**
+   * Phase 5.1: setup 時のみ表示する PD（プレイングディーラー）チェックボックス。
+   * canManage=true かつ tournamentState="setup" のときのみ render する。
+   * 値変化時にトグル処理を呼ぶ。
+   */
+  onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
 }
 
 export function PlayerList({
@@ -38,6 +44,7 @@ export function PlayerList({
   subscribeError,
   canManage = false,
   tournamentState,
+  onTogglePd,
 }: Props) {
   // M3 fix: subscribeError を useEffect 経由で local state にコピーしない。
   // 取消エラーのみ local state で持ち、subscribe error は render 時に合成。
@@ -63,6 +70,10 @@ export function PlayerList({
 
   const showBustButton =
     canManage && (tournamentState === "running" || tournamentState === "paused");
+  // Phase 5.1: setup 中のみ PD チェックボックスを PlayerList に表示。
+  // seating 以降は SeatingBoard 側を真実源にして checkbox 重複表示を防ぐ。
+  const showPdCheckbox =
+    canManage && tournamentState === "setup" && !!onTogglePd;
 
   return (
     <Card>
@@ -92,11 +103,52 @@ export function PlayerList({
                         ? `Table:${p.tableNum}, No.${p.seatNum}`
                         : "エントリー中"}
                   </span>
+                  {showPdCheckbox && !p.isBusted ? (
+                    <label className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={p.isPlayingDealer}
+                        onChange={(e) => {
+                          void onTogglePd!(p, e.target.checked).catch((err) => {
+                            const wrapped = AppError.from(
+                              err,
+                              "firestore/write_failed",
+                              "PD 設定に失敗しました",
+                            );
+                            logger.warn(wrapped.message, {
+                              code: wrapped.code,
+                              tid,
+                              pid: p.id,
+                            });
+                            setLocalError(`${wrapped.code}: ${wrapped.message}`);
+                          });
+                        }}
+                        aria-label={`pd-${p.displayName}`}
+                      />
+                      <span>PD</span>
+                    </label>
+                  ) : null}
                   {showBustButton ? (
                     <BustButton
                       tid={tid}
                       pid={p.id}
                       isBusted={p.isBusted}
+                      sameTablePlayerIds={
+                        p.tableNum !== null
+                          ? // 同卓 1 PD 制約のため、bust 時に OFF を伝播すべき相手は同卓 PD だけ。
+                            // 全員に書込んでも冪等だが、9 席満卓で 8 件の余計な write が出るので
+                            // 最大 1 件に絞る（同卓 PD 不在なら自身のみ）。
+                            players
+                              .filter(
+                                (q) =>
+                                  q.id !== p.id &&
+                                  !q.isBusted &&
+                                  q.tableNum === p.tableNum &&
+                                  q.isPlayingDealer,
+                              )
+                              .map((q) => q.id)
+                          : []
+                      }
                       onError={setLocalError}
                     />
                   ) : null}
