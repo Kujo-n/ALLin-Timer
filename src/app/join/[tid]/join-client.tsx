@@ -164,9 +164,13 @@ export function JoinClient({ tid }: { tid: string }) {
           ? "既に参加済みです"
           : "受付完了"
         : "参加を取り消しました";
+    // Phase 5.1: 匿名ゲストには `/live` への遷移ボタンを出さない設計（動線完結）。
+    const isAnon = !!user?.isAnonymous;
     const description =
       status.kind === "joined"
-        ? "運営者が席決めするまでお待ちください。"
+        ? isAnon
+          ? "受付が完了しました。会場の運営 PC / 大画面でブラインドや席表をご確認ください。"
+          : "運営者が席決めするまでお待ちください。"
         : "再度参加したい場合は、下のボタンから受付画面に戻ってください。";
     return (
       <main className="mx-auto max-w-md space-y-4 p-8">
@@ -184,11 +188,13 @@ export function JoinClient({ tid }: { tid: string }) {
             ) : null}
             {status.kind === "joined" ? (
               <div className="flex flex-col gap-2">
-                <Link href={`/tournaments/${tid}/live`}>
-                  <Button size="sm" className="w-full">
-                    タイマー画面へ
-                  </Button>
-                </Link>
+                {!isAnon ? (
+                  <Link href={`/tournaments/${tid}/live`}>
+                    <Button size="sm" className="w-full">
+                      タイマー画面へ
+                    </Button>
+                  </Link>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

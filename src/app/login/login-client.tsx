@@ -79,9 +79,9 @@ export function LoginClient() {
     setError(null);
     setSubmitting(true);
     try {
-      const { isNewUser } = await signInWithGoogle();
-      if (isNewUser) {
-        // Phase 4.7: 新規ユーザーは displayName 設定ダイアログを必須表示。
+      const { needsDisplayNameSetup } = await signInWithGoogle();
+      if (needsDisplayNameSetup) {
+        // Phase 5.1: 新規ユーザー OR users/{uid} 不在 OR displayName 空 のいずれかで dialog 表示。
         // redirect は dialog の onDone で行う。
         setDisplayNameDialogOpen(true);
         return;

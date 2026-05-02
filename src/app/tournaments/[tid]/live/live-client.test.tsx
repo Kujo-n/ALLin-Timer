@@ -6,6 +6,13 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
 // hooks / firebase module mocks — import 前に宣言する必要がある。
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(() => ({
+    replace: vi.fn(),
+    push: vi.fn(),
+    back: vi.fn(),
+  })),
+}));
 vi.mock("@/lib/hooks/useTournamentTimer", () => ({
   useTournamentTimer: vi.fn(),
 }));
@@ -92,6 +99,7 @@ function player(p: Partial<PlayerDoc> & { id: string }): PlayerDoc {
     tableNum: p.tableNum ?? null,
     seatNum: p.seatNum ?? null,
     lastMovedAt: p.lastMovedAt ?? null,
+    isPlayingDealer: p.isPlayingDealer ?? false,
   };
 }
 

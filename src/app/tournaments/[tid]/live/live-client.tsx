@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { SoundUnlockBanner } from "@/components/audio/SoundUnlockBanner";
@@ -30,7 +31,8 @@ const MOVED_BANNER_MS = 30_000;
 export function LiveClient({ tid }: { tid: string }) {
   // /live は read-only。autoAdvance / auto-seat は渡さない（参加者端末は rule で書込不可）。
   const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
-  const { user } = useAuthUser();
+  const { user, loading: authLoading } = useAuthUser();
+  const router = useRouter();
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   // 購読が 1 回以上 fire したかで「読込中」と「参加者ではない」を区別する。
   // これがないとリロード直後の一瞬、参加者でありながら「レイトエントリー超過」等の
@@ -40,8 +42,18 @@ export function LiveClient({ tid }: { tid: string }) {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
 
+  // Phase 5.1: 匿名ゲストは `/live` を閲覧できない設計（受付完了画面で動線完結）。
+  // 直接アクセス時はホームへ redirect。loading 中は何もせず、確定後に判定。
+  useEffect(() => {
+    if (authLoading) return;
+    if (user?.isAnonymous) router.replace("/");
+  }, [authLoading, user, router]);
+
   useEffect(() => {
     if (!user) return;
+    // Phase 5.1: 匿名ユーザーは別 useEffect で `/` に redirect 中。subscribePlayers は
+    // best-effort で動かしておく（self-delete useEffect が participant マッチ時に
+    // attemptAnonymousSelfDelete を発火するため、player 一覧が必要）。
     const unsub = subscribePlayers(
       tid,
       (list) => {
@@ -86,6 +98,14 @@ export function LiveClient({ tid }: { tid: string }) {
 
     void attemptAnonymousSelfDelete(user, "finish");
   }, [user, tournament, me, tid]);
+
+  if (user?.isAnonymous) {
+    return (
+      <main className="mx-auto max-w-md p-6 text-sm text-muted-foreground">
+        受付完了画面に戻ります…
+      </main>
+    );
+  }
 
   if (error) {
     return (
