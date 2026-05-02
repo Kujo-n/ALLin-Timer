@@ -140,6 +140,13 @@ export class AccountLinkRequired extends AppError {
 export interface GoogleSignInResult {
   user: User;
   isNewUser: boolean;
+  /**
+   * Phase 5.1: DisplayName Dialog を強制表示すべきかの最終判定。
+   *   isNewUser ∨ users/{uid} 不存在 ∨ profile.displayName 空 ∨ auth.displayName 空
+   * のいずれか 1 つでも該当すれば true。`isNewUser` だけでは「Auth に存在するが
+   * `users/{uid}` が無い再ログイン」のケースを取り逃すため新設。
+   */
+  needsDisplayNameSetup: boolean;
 }
 
 /**
@@ -168,8 +175,31 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
     //   - 新規ユーザー: `users/{uid}` は DisplayNameDialog → updateDisplayName が作成する。
     //   - 既存ユーザー: サークル用 displayName を保護するため Google プロフィールで上書きしない。
     // いずれの場合も本関数では users/{uid} に書き込まない。
-    logger.info("google sign-in ok", { uid: cred.user.uid, isNewUser });
-    return { user: cred.user, isNewUser };
+    //
+    // Phase 5.1: DisplayName Dialog の強制表示判定。
+    //   `isNewUser=false` でも `users/{uid}` が無い／空のケース（既存 Auth ユーザーが
+    //   別端末から初回ログインなど）を捕まえる。getUserProfile は best-effort で
+    //   失敗しても needsDisplayNameSetup を true に倒す（fail-safe）。
+    let profileDisplayName: string | null = null;
+    try {
+      const profile = await getUserProfile(cred.user.uid);
+      profileDisplayName = profile?.displayName ?? null;
+    } catch (e) {
+      const wrapped = AppError.from(e, "firestore/read_failed", "users/{uid} 取得失敗");
+      logger.warn(wrapped.message, { code: wrapped.code, uid: cred.user.uid });
+    }
+    const needsDisplayNameSetup =
+      isNewUser ||
+      !profileDisplayName ||
+      !profileDisplayName.trim() ||
+      !cred.user.displayName ||
+      !cred.user.displayName.trim();
+    logger.info("google sign-in ok", {
+      uid: cred.user.uid,
+      isNewUser,
+      needsDisplayNameSetup,
+    });
+    return { user: cred.user, isNewUser, needsDisplayNameSetup };
   } catch (e) {
     if (e instanceof FirebaseError && e.code === "auth/account-exists-with-different-credential") {
       const pending = GoogleAuthProvider.credentialFromError(e);

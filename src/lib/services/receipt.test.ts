@@ -151,6 +151,7 @@ describe("joinAsGuest", () => {
       tableNum: null,
       seatNum: null,
       lastMovedAt: null,
+      isPlayingDealer: false,
     });
     vi.mocked(upsertUserProfile).mockResolvedValue(undefined);
     vi.mocked(upsertPlayer).mockResolvedValue(undefined);
@@ -375,6 +376,7 @@ describe("joinAsExistingUser", () => {
       tableNum: null,
       seatNum: null,
       lastMovedAt: null,
+      isPlayingDealer: false,
     });
 
     const result = await joinAsExistingUser({
@@ -415,6 +417,7 @@ describe("joinViaGoogle", () => {
         displayName: "Alice",
       } as unknown as Awaited<ReturnType<typeof signInWithGoogle>>["user"],
       isNewUser: false,
+      needsDisplayNameSetup: false,
     });
 
     const result = await joinViaGoogle({ tid: "t1" });

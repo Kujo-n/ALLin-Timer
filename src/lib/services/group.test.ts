@@ -93,7 +93,7 @@ import {
 } from "./group";
 
 const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
-const future = Timestamp.fromDate(new Date("2026-05-01T00:00:00Z"));
+const future = Timestamp.fromDate(new Date("2030-05-01T00:00:00Z"));
 const past = Timestamp.fromDate(new Date("2026-04-01T00:00:00Z"));
 
 function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {

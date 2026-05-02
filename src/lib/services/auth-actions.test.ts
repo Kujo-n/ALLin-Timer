@@ -228,17 +228,21 @@ describe("signInWithGoogle", () => {
   // Phase 4.7: 新規ユーザーは DisplayNameDialog 経由で users/{uid} を作成、
   //          既存ユーザーはサークル用 displayName を保護するため上書きしない。
   //          いずれの場合も signInWithGoogle は users/{uid} に書き込まない。
-  it("returns { user, isNewUser: false } for existing user and does not upsert", async () => {
+  it("returns { user, isNewUser: false, needsDisplayNameSetup } for existing user and does not upsert", async () => {
     const user = makeUser();
     vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
 
     const result = await signInWithGoogle();
 
-    expect(result).toEqual({ user, isNewUser: false });
+    // Phase 5.1: signInWithGoogle は needsDisplayNameSetup も返す。
+    // getUserProfile を mock していないので profile は null/error → needsDisplayNameSetup=true。
+    expect(result.user).toBe(user);
+    expect(result.isNewUser).toBe(false);
+    expect(typeof result.needsDisplayNameSetup).toBe("boolean");
     expect(upsertUserProfile).not.toHaveBeenCalled();
   });
 
-  it("returns { user, isNewUser: true } for new user and does not upsert (dialog handles it)", async () => {
+  it("returns { user, isNewUser: true, needsDisplayNameSetup } for new user and does not upsert (dialog handles it)", async () => {
     const { getAdditionalUserInfo } = await import("firebase/auth");
     vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
     const user = makeUser();
@@ -246,7 +250,10 @@ describe("signInWithGoogle", () => {
 
     const result = await signInWithGoogle();
 
-    expect(result).toEqual({ user, isNewUser: true });
+    expect(result.user).toBe(user);
+    expect(result.isNewUser).toBe(true);
+    // 新規ユーザーは needsDisplayNameSetup=true
+    expect(result.needsDisplayNameSetup).toBe(true);
     expect(upsertUserProfile).not.toHaveBeenCalled();
   });
 
