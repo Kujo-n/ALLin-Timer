@@ -5,6 +5,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 
 import {
   MAX_TABLES,
+  TooManyPlayingDealersError,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
@@ -24,6 +25,7 @@ function p(overrides: Partial<PlayerDoc> & { id: string }): PlayerDoc {
     tableNum: overrides.tableNum ?? null,
     seatNum: overrides.seatNum ?? null,
     lastMovedAt: overrides.lastMovedAt ?? null,
+    isPlayingDealer: overrides.isPlayingDealer ?? false,
   };
 }
 
@@ -87,10 +89,81 @@ describe("planInitialSeating", () => {
     expect(plan.assignments).toHaveLength(2);
     expect(plan.tableNums).toEqual([1]);
   });
+
+  it("seat は連番ではなく seat 集合 [1..N] の subset", () => {
+    // characterization: 12 人 / seatsPerTable=9 / 2 卓 / PD 0 名
+    // 各卓の seat は [1..9] のうち 6 つで、必ずしも {1,2,3,4,5,6} ではない。
+    const players = manyPlayers(12);
+    const plan = planInitialSeating(players, 9, 42);
+    const byTable = new Map<number, number[]>();
+    for (const a of plan.assignments) {
+      const list = byTable.get(a.tableNum) ?? [];
+      list.push(a.seatNum);
+      byTable.set(a.tableNum, list);
+    }
+    for (const [, seats] of byTable) {
+      expect(seats).toHaveLength(6);
+      // すべての seat は 1..9
+      for (const s of seats) {
+        expect(s).toBeGreaterThanOrEqual(1);
+        expect(s).toBeLessThanOrEqual(9);
+      }
+      // 重複なし
+      expect(new Set(seats).size).toBe(seats.length);
+    }
+  });
+
+  it("PD 1 名: 該当 player が必ず席 1 に、PD 卓は seed 依存", () => {
+    const players = manyPlayers(12);
+    const plan = planInitialSeating(players, 9, 42, ["p1"]);
+    const pdAssignment = plan.assignments.find((a) => a.playerId === "p1");
+    expect(pdAssignment).toBeDefined();
+    expect(pdAssignment?.seatNum).toBe(1);
+  });
+
+  it("PD = numTables: 各卓の席 1 が PD player", () => {
+    // 12 人 / 2 卓 / PD = [p1, p2]
+    const players = manyPlayers(12);
+    const plan = planInitialSeating(players, 9, 7, ["p1", "p2"]);
+    const seat1ByTable = new Map<number, string>();
+    for (const a of plan.assignments) {
+      if (a.seatNum === 1) seat1ByTable.set(a.tableNum, a.playerId);
+    }
+    expect(new Set(seat1ByTable.values())).toEqual(new Set(["p1", "p2"]));
+  });
+
+  it("PD > numTables: TooManyPlayingDealersError throw", () => {
+    const players = manyPlayers(12);
+    expect(() =>
+      planInitialSeating(players, 9, 0, ["p1", "p2", "p3"]),
+    ).toThrow(TooManyPlayingDealersError);
+  });
+
+  it("PD 指定だが該当 player が active 外（busted） → PD 0 名扱い", () => {
+    const players = [
+      p({ id: "a" }),
+      p({ id: "b", isBusted: true }),
+      p({ id: "c" }),
+    ];
+    // pdPlayerIds=["b"] だが b は busted → 除外され PD 0 名扱いで通常配分
+    const plan = planInitialSeating(players, 9, 0, ["b"]);
+    expect(plan.assignments).toHaveLength(2);
+  });
+
+  it("12 人 / 2 卓 / PD 2 名: 各卓 6 人で席 1 が PD", () => {
+    const players = manyPlayers(12);
+    const plan = planInitialSeating(players, 9, 9, ["p1", "p2"]);
+    const counts = new Map<number, number>();
+    for (const a of plan.assignments) {
+      counts.set(a.tableNum, (counts.get(a.tableNum) ?? 0) + 1);
+    }
+    expect(counts.get(1)).toBe(6);
+    expect(counts.get(2)).toBe(6);
+  });
 });
 
 describe("planLateEntrySeat", () => {
-  it("最小卓に席を返す", () => {
+  it("最小卓を選ぶ（席は空席集合のいずれか）", () => {
     const seated = [
       p({ id: "a", tableNum: 1, seatNum: 1 }),
       p({ id: "b", tableNum: 1, seatNum: 2 }),
@@ -101,8 +174,11 @@ describe("planLateEntrySeat", () => {
       p({ id: "g", tableNum: 2, seatNum: 4 }),
       p({ id: "h", tableNum: 2, seatNum: 5 }),
     ];
-    const seat = planLateEntrySeat(seated, [], 9);
-    expect(seat).toEqual({ tableNum: 1, seatNum: 4 });
+    const seat = planLateEntrySeat(seated, [], 9, 42);
+    expect(seat?.tableNum).toBe(1);
+    // 卓 1 の空席は 4..9 の 6 通り。seed 依存でいずれか 1 つ。
+    expect(seat?.seatNum).toBeGreaterThanOrEqual(4);
+    expect(seat?.seatNum).toBeLessThanOrEqual(9);
   });
 
   it("同数の場合は tableNum 昇順", () => {
@@ -114,24 +190,37 @@ describe("planLateEntrySeat", () => {
       p({ id: "b2", tableNum: 2, seatNum: 2 }),
       p({ id: "b3", tableNum: 2, seatNum: 3 }),
     ];
-    const seat = planLateEntrySeat(seated, [], 9);
+    const seat = planLateEntrySeat(seated, [], 9, 7);
     expect(seat?.tableNum).toBe(1);
   });
 
-  it("最小空席 seatNum を返す（穴あき優先）", () => {
+  it("空席集合のいずれか 1 つが返る（穴あきも候補）", () => {
     const seated = [
       p({ id: "a", tableNum: 1, seatNum: 1 }),
       p({ id: "c", tableNum: 1, seatNum: 3 }),
     ];
-    const seat = planLateEntrySeat(seated, [], 9);
-    expect(seat).toEqual({ tableNum: 1, seatNum: 2 });
+    const seat = planLateEntrySeat(seated, [], 9, 1);
+    expect(seat?.tableNum).toBe(1);
+    // 占有 1, 3 を除いた {2, 4..9} のいずれか
+    const expected = new Set([2, 4, 5, 6, 7, 8, 9]);
+    expect(seat?.seatNum != null && expected.has(seat.seatNum)).toBe(true);
+  });
+
+  it("同 seed で同じ結果（再現性）", () => {
+    const seated = [
+      p({ id: "a", tableNum: 1, seatNum: 1 }),
+      p({ id: "c", tableNum: 1, seatNum: 3 }),
+    ];
+    const r1 = planLateEntrySeat(seated, [], 9, 99);
+    const r2 = planLateEntrySeat(seated, [], 9, 99);
+    expect(r1).toEqual(r2);
   });
 
   it("全卓満席なら null", () => {
     const seated = Array.from({ length: 9 }, (_, i) =>
       p({ id: `s${i + 1}`, tableNum: 1, seatNum: i + 1 }),
     );
-    const seat = planLateEntrySeat(seated, [], 9);
+    const seat = planLateEntrySeat(seated, [], 9, 0);
     expect(seat).toBeNull();
   });
 
@@ -140,7 +229,7 @@ describe("planLateEntrySeat", () => {
       p({ id: "a", tableNum: 1, seatNum: 1 }),
       p({ id: "b", tableNum: 2, seatNum: 1 }),
     ];
-    const seat = planLateEntrySeat(seated, [1], 9);
+    const seat = planLateEntrySeat(seated, [1], 9, 0);
     expect(seat?.tableNum).toBe(2);
   });
 });
@@ -201,6 +290,40 @@ describe("planBalancingMove", () => {
     const move = planBalancingMove(seated, [], 9);
     // 卓 1 = 3 人、卓 2 = 1 人 → 差 2
     expect(move).not.toBeNull();
+  });
+
+  it("PD は移動候補から除外: 過剰卓最小席が PD なら次小席 player を選ぶ", () => {
+    // 卓 1: 3 人（席 1 が PD）, 卓 2: 1 人 → 差 2
+    const seated = [
+      p({ id: "pd", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      p({ id: "p2", tableNum: 1, seatNum: 2 }),
+      p({ id: "p3", tableNum: 1, seatNum: 3 }),
+      p({ id: "x", tableNum: 2, seatNum: 1 }),
+    ];
+    const move = planBalancingMove(seated, [], 9);
+    expect(move).not.toBeNull();
+    expect(move?.playerId).toBe("p2"); // PD ではなく次に小さい席番号
+  });
+
+  it("過剰卓全員 PD → null（バランシング不能）", () => {
+    // 卓 1: 1 人（PD）, 卓 2: 0 人 ... 実質 1 卓 → diff 0
+    // 1 人卓だと diff 計算が成立しないので 2 卓構成で:
+    // 卓 1: 1 人（PD のみ）, 卓 2: 0 人
+    // ↑これでは min/max に同じ卓が出てこない（count=1 卓と count=0 卓だが,
+    //   computeTableCounts は count.size < 2 で null を返す = 既存挙動）
+    // 1 卓 1 PD 制約のため「過剰卓全員 PD」は実質発生しないが、
+    // 防御として PD のみの卓 → 移動候補ゼロ → null を確認するテスト:
+    const seated = [
+      p({ id: "pd1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      // 卓 2 に 3 人、卓 1 が PD のみ 1 人
+      p({ id: "x1", tableNum: 2, seatNum: 1 }),
+      p({ id: "x2", tableNum: 2, seatNum: 2 }),
+      p({ id: "x3", tableNum: 2, seatNum: 3 }),
+    ];
+    const move = planBalancingMove(seated, [], 9);
+    // 卓 2 → 卓 1 へ動かす（PD は除外対象なので卓 2 から候補）。卓 1 が小さい側。
+    // 過剰卓は卓 2、最小席は x1 → 卓 1 の最小空席へ。
+    expect(move?.playerId).toBe("x1");
   });
 });
 

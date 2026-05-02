@@ -118,3 +118,18 @@ export function canFinish(t: TournamentDoc): boolean {
 export function showSeatingBoard(t: TournamentDoc): boolean {
   return isSeating(t) || isInProgress(t);
 }
+
+/**
+ * Phase 5.1: 自動配席の許可判定（座席確定後 (seating) 中・running・paused で受け入れる）。
+ *
+ * 座席確定後 (state="seating") のレイトエントリーが、運営者がトーナメント開始
+ * (state="running") に遷移するまで配席されないドライラン #1 issue を解消する。
+ * setup（席決め前）と finished では false を返す。
+ *
+ * lateEntryDeadlineLevel との突合は呼出側で行う（state=seating は currentLevel===0 で
+ * deadline チェックは常に false なので問題ないが、running/paused では deadline と
+ * 突合する必要がある）。
+ */
+export function isAcceptingLateSeats(t: TournamentDoc): boolean {
+  return isSeating(t) || isInProgress(t);
+}

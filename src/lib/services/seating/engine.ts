@@ -42,6 +42,20 @@ export class InvalidSeatsPerTableError extends Error {
   }
 }
 
+/**
+ * Phase 5.1: PD 数 > 卓数 で呼ばれたとき throw。
+ * orchestrator.ts は instanceof で判別して `seating/pd-too-many` AppError へラップする。
+ */
+export class TooManyPlayingDealersError extends Error {
+  constructor(
+    public readonly requested: number,
+    public readonly maxAllowed: number,
+  ) {
+    super(`PD count exceeds tables: ${requested} > ${maxAllowed}`);
+    this.name = "TooManyPlayingDealersError";
+  }
+}
+
 export interface Seat {
   tableNum: number;
   seatNum: number;
@@ -76,12 +90,19 @@ interface TableBreakPlan {
  * seed を渡すとテストで再現可能。
  *
  * 卓数 = ceil(activePlayers / seatsPerTable)。MAX_TABLES 超過は throw。
- * シャッフルしたプレイヤーを round-robin で各卓に詰めるため、最大の偏りは ±1。
+ *
+ * Phase 5.1:
+ *   - PD（プレイングディーラー）指定 player は各卓に 1 名ずつ事前配分し、各卓の席 1 に固定。
+ *   - PD 数 > 卓数 なら `TooManyPlayingDealersError` throw。
+ *   - 非 PD player は seed-driven shuffle 後に最少人数 bucket 優先で round-robin 配分。
+ *   - 各卓内で PD は席 1、その他は seat [2..seatsPerTable]（PD なし卓は [1..seatsPerTable]）から
+ *     seed-driven にランダム抽選（連番化を回避し BB ポジション再現の余地を残す）。
  */
 export function planInitialSeating(
   players: PlayerDoc[],
   seatsPerTable: number,
   seed: number,
+  pdPlayerIds: readonly string[] = [],
 ): InitialSeatingPlan {
   if (seatsPerTable < 1) {
     throw new InvalidSeatsPerTableError(seatsPerTable);
@@ -92,18 +113,55 @@ export function planInitialSeating(
   if (numTables > MAX_TABLES) {
     throw new TooManyTablesError(numTables, MAX_TABLES);
   }
-  const shuffled = shuffle(active, seed);
-  const buckets: PlayerDoc[][] = Array.from({ length: numTables }, () => []);
-  for (let i = 0; i < shuffled.length; i++) {
-    buckets[i % numTables].push(shuffled[i]);
+  // active player のうち実在する PD のみ（busted や未参加 ID は filter で落とす）。
+  const activeIds = new Set(active.map((p) => p.id));
+  const effectivePdIds = pdPlayerIds.filter((id) => activeIds.has(id));
+  if (effectivePdIds.length > numTables) {
+    throw new TooManyPlayingDealersError(effectivePdIds.length, numTables);
   }
+
+  const shuffled = shuffle(active, seed);
+  const pdSet = new Set(effectivePdIds);
+  const pdPlayers = shuffled.filter((p) => pdSet.has(p.id));
+  const nonPdPlayers = shuffled.filter((p) => !pdSet.has(p.id));
+
+  // PD を各 bucket（卓）の先頭に 1 名ずつ事前配分。
+  const buckets: PlayerDoc[][] = Array.from({ length: numTables }, () => []);
+  for (let i = 0; i < pdPlayers.length; i++) {
+    buckets[i].push(pdPlayers[i]);
+  }
+  // 非 PD を最少人数 bucket 優先で round-robin。同サイズなら左 (= tableNum 小) から詰める。
+  for (const p of nonPdPlayers) {
+    let target = 0;
+    let minSize = buckets[0].length;
+    for (let i = 1; i < numTables; i++) {
+      if (buckets[i].length < minSize) {
+        minSize = buckets[i].length;
+        target = i;
+      }
+    }
+    buckets[target].push(p);
+  }
+
   const assignments: SeatAssignment[] = [];
   for (let t = 0; t < numTables; t++) {
-    for (let s = 0; s < buckets[t].length; s++) {
+    const tableNum = t + 1;
+    const tablePlayers = buckets[t];
+    const pd = tablePlayers.find((p) => pdSet.has(p.id));
+    const nonPd = pd ? tablePlayers.filter((p) => p.id !== pd.id) : tablePlayers;
+    if (pd) {
+      assignments.push({ playerId: pd.id, tableNum, seatNum: 1 });
+    }
+    const seatPool = pd
+      ? Array.from({ length: seatsPerTable - 1 }, (_, i) => i + 2) // [2..N]
+      : Array.from({ length: seatsPerTable }, (_, i) => i + 1); // [1..N]
+    // 卓ごとに seed をずらして bucket 間の偏りを排除。
+    const shuffledSeats = shuffle(seatPool, seed + (t + 1) * 1000);
+    for (let s = 0; s < nonPd.length; s++) {
       assignments.push({
-        playerId: buckets[t][s].id,
-        tableNum: t + 1,
-        seatNum: s + 1,
+        playerId: nonPd[s].id,
+        tableNum,
+        seatNum: shuffledSeats[s],
       });
     }
   }
@@ -113,7 +171,11 @@ export function planInitialSeating(
 
 /**
  * 進行中レイトエントリーの自動配席。
- * ルール: 活動プレイヤー数が最小の卓（同数なら tableNum 昇順）の、空席最小 seatNum。
+ *
+ * Phase 5.1: 「最小空席 seatNum」を「空席集合の seed-driven shuffle 先頭」に変更。
+ * 連番（1..N）化を避けて BB ポジション再現の余地を残す。
+ *
+ * 卓選択: 活動プレイヤー数が最小の卓（同数なら tableNum 昇順）。
  * 全卓満席なら null（呼出し側で「締切超過」エラー扱い）。
  *
  * 注意: broken でない既存卓のみが配席対象。tables 一覧ではなく seatedPlayers の
@@ -123,6 +185,7 @@ export function planLateEntrySeat(
   seatedPlayers: PlayerDoc[],
   brokenTableNums: number[],
   seatsPerTable: number,
+  seed: number = 0,
 ): Seat | null {
   const tableCount = new Map<number, number>();
   const occupied = new Set<string>();
@@ -144,9 +207,14 @@ export function planLateEntrySeat(
   });
   for (const t of liveTables) {
     if ((tableCount.get(t) ?? 0) >= seatsPerTable) continue;
+    const empty: number[] = [];
     for (let s = 1; s <= seatsPerTable; s++) {
-      if (!occupied.has(`${t}-${s}`)) return { tableNum: t, seatNum: s };
+      if (!occupied.has(`${t}-${s}`)) empty.push(s);
     }
+    if (empty.length === 0) continue;
+    // 空席が複数なら seed-driven にランダム選択。empty.length === 1 なら shuffle は no-op。
+    const shuffled = shuffle(empty, seed + t * 1000);
+    return { tableNum: t, seatNum: shuffled[0] };
   }
   return null;
 }
@@ -166,10 +234,16 @@ export function planBalancingMove(
   const { maxTable, minTable, diff } = computeTableCounts(seatedPlayers, brokenTableNums);
   if (maxTable === null || minTable === null) return null;
   if (diff < 2) return null;
-  // maxTable の最小席番号プレイヤー（未バスト・席あり）。同席番号は zod 制約で発生しない。
+  // maxTable の最小席番号プレイヤー（未バスト・席あり、PD は移動候補から除外）。
+  // 同席番号は zod 制約で発生しない。過剰卓が PD だけで構成されているケース
+  // （1 卓 1 PD 制約下では 1 人卓でその 1 人が PD のときのみ発生）は null を返す。
   const movedPlayer = seatedPlayers
     .filter(
-      (p) => !p.isBusted && p.tableNum === maxTable && p.seatNum !== null,
+      (p) =>
+        !p.isBusted &&
+        p.tableNum === maxTable &&
+        p.seatNum !== null &&
+        !p.isPlayingDealer,
     )
     .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0))[0];
   if (!movedPlayer || movedPlayer.seatNum === null) return null;
