@@ -12,6 +12,7 @@ import { AppError } from "@/lib/errors";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+import { useImplicitAudioUnlock } from "@/lib/hooks/useImplicitAudioUnlock";
 import { logger } from "@/lib/logger";
 import { resolveWinner } from "@/lib/services/timer";
 
@@ -50,6 +51,10 @@ export function useAudioPlayer({
   players,
   role,
 }: UseAudioPlayerArgs): UseAudioPlayerState {
+  // Phase 5.1: 任意の pointerdown で AudioContext を 1 回 resume する
+  // （明示「サウンドを有効化」ボタンを押さない参加者でも音が鳴る経路を確保）。
+  useImplicitAudioUnlock();
+
   // AudioContext は 1 タブ singleton なので、複数の useAudioPlayer 呼び出し
   // （dashboard / live / audio-settings）で unlock 状態を共有する必要がある。
   // useSyncExternalStore で global な statechange イベントを購読し、どこで unlock しても

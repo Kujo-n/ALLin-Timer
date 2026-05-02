@@ -213,11 +213,13 @@ export function AudioSettingsClient({ gid }: { gid: string }) {
             />
           </label>
 
-          {!player.unlocked ? (
-            <p className="text-xs text-muted-foreground">
-              試聴ボタンを押すとブラウザのサウンド権限を有効にします。
-            </p>
-          ) : null}
+          {/*
+            Phase 5.1: useImplicitAudioUnlock により最初の pointerdown で audio が
+            自動 unlock されるため「試聴ボタンを押すと…」案内文は削除した。
+            旧実装は unlock 完了で `<p>` を消す conditional render により保存ボタンが
+            上に shift し、Playwright の click（mousedown と mouseup の間）が外れる
+            副作用があった。
+          */}
 
           {error ? (
             <p className="text-sm text-destructive" role="alert">
