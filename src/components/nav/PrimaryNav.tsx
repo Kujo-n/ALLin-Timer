@@ -14,6 +14,7 @@ import { logout } from "@/lib/services/auth-actions";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { cn } from "@/lib/utils";
 
+import { JoinedTournamentsNav } from "./JoinedTournamentsNav";
 import { NAV_ITEMS, resolveNavItems, type NavContext } from "./nav-items";
 
 /** 開催中とみなす state（受付準備中の `setup` は除外、`finished` は履歴扱い） */
@@ -181,6 +182,9 @@ export function PrimaryNav({
             </Fragment>
           );
         })}
+        {/* Phase 5.1: 一般メンバーが自分の参加中トーナメントへ 1 タップで戻れる導線。
+            owner / organizer のサークル別 (group 配下) 一覧と並列に表示。 */}
+        <JoinedTournamentsNav onNavigate={onNavigate} />
       </ul>
 
       {showSignedInFooter ? (
