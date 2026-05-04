@@ -258,6 +258,7 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run typecheck`                      | TypeScript 型チェックのみ (`tsc --noEmit`)                                          |
 | `npm test`                               | Vitest 実行（単発、`vitest run`）                                                   |
 | `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                                    |
+| `npm run test:rules-limits`              | `src/lib/limits.ts` と `firestore.rules` のリテラル一致を機械検査                   |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
 | `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
@@ -326,10 +327,14 @@ src/
 │  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
 │  │                              # groups / groupJoinCodes / structures / structureTemplates
 │  │                              # / templateAdmins / tournaments / players / tables / users
-│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator
-│  │                              # / useIsTemplateAdmin / useAudioPlayer（Phase 4.9）
+│  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator / useIsTemplateAdmin
+│  │                              # / useAudioPlayer（Phase 4.9）/ useGroupRole / useFullscreen
+│  │                              # / useAutoFinish / useImplicitAudioUnlock（Phase 5.1）
+│  │                              # / useInlineNumberEdit
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
-│     └─ seating/                 # engine（純粋関数の TDA バランシング）/ orchestrator（Firestore 副作用）/ prng
+│                                 # / tournament-state（state ガードの純関数集約、Phase 4 architect-refactor）
+│     └─ seating/                 # engine（純粋関数の TDA バランシング + cascade）/ orchestrator（Firestore 副作用）
+│                                 # / pd（PD rotation pure function、Phase 5.1）/ prng
 scripts/
 └─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
 tests/
