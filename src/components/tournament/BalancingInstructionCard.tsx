@@ -8,8 +8,14 @@ import { AppError } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
-import { planBalancingMove, planTableBreak } from "@/lib/services/seating/engine";
-import { applyBalancingOnce } from "@/lib/services/seating/orchestrator";
+import {
+  diagnoseBalancingNeed,
+  planTableBreak,
+} from "@/lib/services/seating/engine";
+import {
+  applyBalancingOnce,
+  applyManualBalancingMove,
+} from "@/lib/services/seating/orchestrator";
 
 interface Props {
   tid: string;
@@ -22,11 +28,16 @@ interface Props {
 }
 
 /**
- * Phase 4: バランシング指示カード。
- *  - engine.planTableBreak（優先）または planBalancingMove で 1 件分の指示を表示
- *  - 「指示完了」で orchestrator.applyBalancingOnce を呼び、subscribe 経由で players が
- *    更新されると plan が再計算され、次の指示が表示される（連鎖）
- *  - plan が null（バランス済み）ならカード自体非表示
+ * Phase 5.x: バランシング指示カード（TDA 準拠）。
+ *  - planTableBreak が成立すれば「指示完了」ボタンで自動適用（複数 player を bulk 移動）
+ *  - そうでなく diagnoseBalancingNeed が non-null なら、source/dest 卓と移動先席を提示し
+ *    PD と busted を除外した候補プレイヤーをボタン列で出す。運営者が dealer button 位置を
+ *    見て BB 次プレイヤーをクリック → applyManualBalancingMove で 1 件移動
+ *  - どちらも null（バランス済み）ならカード自体非表示
+ *
+ * 設計トレードオフ: engine の auto-pick（最小席番号）は TDA の「BB 次」を近似していたが、
+ * 実 dealer button 位置を追跡しないため不正確になる場面があった。本カードは「卓と席までは
+ * engine が決定、誰を動かすかは運営者の判断」のハイブリッド形にして TDA 準拠を担保する。
  */
 export function BalancingInstructionCard({
   tid,
@@ -47,30 +58,19 @@ export function BalancingInstructionCard({
     };
   }, []);
 
-  const { kind, description } = useMemo(() => {
+  const { breakPlan, diag } = useMemo(() => {
     const brokenTableNums = tables.filter((t) => t.isBroken).map((t) => t.tableNum);
-    const breakPlan = planTableBreak(players, brokenTableNums, seatsPerTable);
-    if (breakPlan) {
-      return {
-        kind: "break" as const,
-        description: `Table ${breakPlan.brokenTableNum} を閉鎖（${breakPlan.moves.length} 名移動）`,
-      };
+    const bp = planTableBreak(players, brokenTableNums, seatsPerTable);
+    if (bp) {
+      return { breakPlan: bp, diag: null };
     }
-    const move = planBalancingMove(players, brokenTableNums, seatsPerTable);
-    if (move) {
-      const player = players.find((p) => p.id === move.playerId);
-      const name = player?.displayName ?? "（不明）";
-      return {
-        kind: "move" as const,
-        description: `${name}（Table:${move.from.tableNum}, No.${move.from.seatNum}）を Table:${move.to.tableNum}, No.${move.to.seatNum} へ移動`,
-      };
-    }
-    return { kind: "none" as const, description: null };
+    const d = diagnoseBalancingNeed(players, brokenTableNums, seatsPerTable);
+    return { breakPlan: null, diag: d };
   }, [players, tables, seatsPerTable]);
 
-  if (kind === "none") return null;
+  if (!breakPlan && !diag) return null;
 
-  async function handleApply() {
+  async function handleBreak() {
     if (busy) return;
     setBusy(true);
     try {
@@ -87,8 +87,38 @@ export function BalancingInstructionCard({
         logger.info("balancing instruction skipped (race)", { tid });
       }
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "バランシング適用に失敗しました");
+      const wrapped = AppError.from(e, "firestore/write_failed", "テーブル閉鎖に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code, tid });
+      if (mounted.current) onError?.(`${wrapped.code}: ${wrapped.message}`);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function handleManualMove(playerId: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await applyManualBalancingMove(
+        tid,
+        uid,
+        userGroupIds,
+        playerId,
+        players,
+        tables,
+        seatsPerTable,
+      );
+      if (!result.applied) {
+        // race / 候補外: 次回 onSnapshot 反映までボタン押下が silent no-op になるのを防ぐため
+        // 運営者向けトーストを表示する（onError は本コンポーネントの汎用 feedback chan として流用）。
+        logger.info("manual balancing move skipped (race)", { tid, playerId });
+        if (mounted.current) {
+          onError?.("バランシング状態が更新されました。再度ご確認ください。");
+        }
+      }
+    } catch (e) {
+      const wrapped = AppError.from(e, "firestore/write_failed", "バランシング適用に失敗しました");
+      logger.warn(wrapped.message, { code: wrapped.code, tid, playerId });
       if (mounted.current) onError?.(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       if (mounted.current) setBusy(false);
@@ -100,11 +130,52 @@ export function BalancingInstructionCard({
       <CardHeader>
         <CardTitle className="text-base">⚠ 次のアクション</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm">{description}</p>
-        <Button size="sm" disabled={busy} onClick={() => void handleApply()}>
-          {busy ? "適用中…" : "指示完了"}
-        </Button>
+      <CardContent className="flex flex-col gap-3">
+        {breakPlan ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm">
+              {`Table ${breakPlan.brokenTableNum} を閉鎖（${breakPlan.moves.length} 名移動）`}
+            </p>
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => void handleBreak()}
+              aria-label="balancing-apply-break"
+            >
+              {busy ? "適用中…" : "指示完了"}
+            </Button>
+          </div>
+        ) : diag ? (
+          <>
+            <p className="text-sm">
+              {`Table ${diag.sourceTableNum} が ${diag.diff} 人多いです。`}
+              <strong>BB の次プレイヤー</strong>
+              {`を Table ${diag.destTableNum} / 席 ${diag.destSeatNum} へ移動してください。`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              移動するプレイヤーを選択（PD は移動できません）
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {diag.candidatePlayerIds.map((pid) => {
+                const p = players.find((q) => q.id === pid);
+                if (!p) return null;
+                const seatLabel = p.seatNum !== null ? `席 ${p.seatNum}` : "席?";
+                return (
+                  <Button
+                    key={pid}
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => void handleManualMove(pid)}
+                    aria-label={`balancing-candidate-${pid}`}
+                  >
+                    {`${p.displayName}（${seatLabel}）`}
+                  </Button>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
       </CardContent>
     </Card>
   );
