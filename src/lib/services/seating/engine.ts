@@ -86,6 +86,24 @@ interface TableBreakPlan {
 }
 
 /**
+ * Phase 5.x: TDA 準拠バランシングの「診断のみ」結果。
+ *
+ * engine が決めるのは「どの卓 → どの卓 / どの席へ動かすべきか」までで、
+ * 「誰を動かすか」は運営者の判断（実際の dealer button 位置を見て BB 次プレイヤーを選ぶ）に
+ * 委ねる。`candidatePlayerIds` は PD（プレイングディーラー）と busted を除外した
+ * source 卓の player を seatNum 昇順で並べたヒント。
+ */
+export interface BalancingDiagnosis {
+  sourceTableNum: number;
+  destTableNum: number;
+  destSeatNum: number;
+  /** 過剰卓と不足卓の人数差（>=2）。表示用。 */
+  diff: number;
+  /** PD / busted を除外した移動候補 player ID（seatNum 昇順）。 */
+  candidatePlayerIds: string[];
+}
+
+/**
  * 初回席決め: 未バストのプレイヤーを seatsPerTable で均等割り。
  * seed を渡すとテストで再現可能。
  *
@@ -220,24 +238,24 @@ export function planLateEntrySeat(
 }
 
 /**
- * 差分 ≥ 2 の場合のバランシング 1 件。差分が 4 以上でも 1 件のみ返し、
- * 呼出し側が反復して再評価する（運営者の「指示完了」ボタンが re-trigger）。
+ * 差分 ≥ 2 の場合のバランシング診断。
  *
- * 過剰卓から「席番号最小」のプレイヤーを、不足卓の「最小空席」へ移動。
- * 差 1 以下なら null（=操作不要）。
+ * source/dest 卓・dest 席までを TDA 準拠で算出し、source 卓の移動候補 player を
+ * PD / busted を除外した上で seatNum 昇順で返す（候補リスト）。
+ * 「誰を動かすか」は運営者が dealer button 位置を見て BB 次プレイヤーを選ぶ。
+ *
+ * 差 1 以下なら null（操作不要）。候補が 0 人 / 不足卓に空席なし も null。
  */
-export function planBalancingMove(
+export function diagnoseBalancingNeed(
   seatedPlayers: PlayerDoc[],
   brokenTableNums: number[],
   seatsPerTable: number,
-): BalancingMove | null {
+): BalancingDiagnosis | null {
   const { maxTable, minTable, diff } = computeTableCounts(seatedPlayers, brokenTableNums);
   if (maxTable === null || minTable === null) return null;
   if (diff < 2) return null;
-  // maxTable の最小席番号プレイヤー（未バスト・席あり、PD は移動候補から除外）。
-  // 同席番号は zod 制約で発生しない。過剰卓が PD だけで構成されているケース
-  // （1 卓 1 PD 制約下では 1 人卓でその 1 人が PD のときのみ発生）は null を返す。
-  const movedPlayer = seatedPlayers
+
+  const candidatePlayerIds = seatedPlayers
     .filter(
       (p) =>
         !p.isBusted &&
@@ -245,8 +263,10 @@ export function planBalancingMove(
         p.seatNum !== null &&
         !p.isPlayingDealer,
     )
-    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0))[0];
-  if (!movedPlayer || movedPlayer.seatNum === null) return null;
+    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0))
+    .map((p) => p.id);
+  if (candidatePlayerIds.length === 0) return null;
+
   const occupied = new Set<number>();
   for (const p of seatedPlayers) {
     if (p.isBusted) continue;
@@ -254,18 +274,46 @@ export function planBalancingMove(
     if (p.seatNum === null) continue;
     occupied.add(p.seatNum);
   }
-  let targetSeat: number | null = null;
+  let destSeatNum: number | null = null;
   for (let s = 1; s <= seatsPerTable; s++) {
     if (!occupied.has(s)) {
-      targetSeat = s;
+      destSeatNum = s;
       break;
     }
   }
-  if (targetSeat === null) return null;
+  if (destSeatNum === null) return null;
+
   return {
-    playerId: movedPlayer.id,
-    from: { tableNum: maxTable, seatNum: movedPlayer.seatNum },
-    to: { tableNum: minTable, seatNum: targetSeat },
+    sourceTableNum: maxTable,
+    destTableNum: minTable,
+    destSeatNum,
+    diff,
+    candidatePlayerIds,
+  };
+}
+
+/**
+ * バランシング 1 件の auto-pick 版（互換 API）。
+ *
+ * `diagnoseBalancingNeed` の結果から **先頭候補（= 席番号最小、PD 除外済み）** を
+ * 採用して `BalancingMove` を返す。Phase 5.x 以降の本流 UI は
+ * `diagnoseBalancingNeed` + 運営者選択を使うが、テーブル閉鎖と同列の自動 path として
+ * `applyBalancingOnce` 経由で残置している（characterization tests 互換）。
+ */
+export function planBalancingMove(
+  seatedPlayers: PlayerDoc[],
+  brokenTableNums: number[],
+  seatsPerTable: number,
+): BalancingMove | null {
+  const diag = diagnoseBalancingNeed(seatedPlayers, brokenTableNums, seatsPerTable);
+  if (!diag) return null;
+  const movedId = diag.candidatePlayerIds[0];
+  const moved = seatedPlayers.find((p) => p.id === movedId);
+  if (!moved || moved.seatNum === null) return null;
+  return {
+    playerId: movedId,
+    from: { tableNum: diag.sourceTableNum, seatNum: moved.seatNum },
+    to: { tableNum: diag.destTableNum, seatNum: diag.destSeatNum },
   };
 }
 

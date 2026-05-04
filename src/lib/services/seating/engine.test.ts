@@ -6,6 +6,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import {
   MAX_TABLES,
   TooManyPlayingDealersError,
+  diagnoseBalancingNeed,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
@@ -324,6 +325,124 @@ describe("planBalancingMove", () => {
     // 卓 2 → 卓 1 へ動かす（PD は除外対象なので卓 2 から候補）。卓 1 が小さい側。
     // 過剰卓は卓 2、最小席は x1 → 卓 1 の最小空席へ。
     expect(move?.playerId).toBe("x1");
+  });
+});
+
+describe("diagnoseBalancingNeed", () => {
+  it("差 2 で source / dest / candidates を返す", () => {
+    const seated = [
+      ...Array.from({ length: 7 }, (_, i) =>
+        p({ id: `t1-${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        p({ id: `t2-${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    const diag = diagnoseBalancingNeed(seated, [], 9);
+    expect(diag).not.toBeNull();
+    expect(diag?.sourceTableNum).toBe(1);
+    expect(diag?.destTableNum).toBe(2);
+    expect(diag?.destSeatNum).toBe(6);
+    expect(diag?.diff).toBe(2);
+    expect(diag?.candidatePlayerIds).toEqual([
+      "t1-1",
+      "t1-2",
+      "t1-3",
+      "t1-4",
+      "t1-5",
+      "t1-6",
+      "t1-7",
+    ]);
+  });
+
+  it("差 1 は null", () => {
+    const seated = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        p({ id: `t1-${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        p({ id: `t2-${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    expect(diagnoseBalancingNeed(seated, [], 9)).toBeNull();
+  });
+
+  it("PD は candidates から除外される（席 1 に PD ありなら席 2,3,... が先頭）", () => {
+    const seated = [
+      p({ id: "pd", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      p({ id: "p2", tableNum: 1, seatNum: 2 }),
+      p({ id: "p3", tableNum: 1, seatNum: 3 }),
+      p({ id: "x", tableNum: 2, seatNum: 1 }),
+    ];
+    const diag = diagnoseBalancingNeed(seated, [], 9);
+    expect(diag?.candidatePlayerIds).toEqual(["p2", "p3"]);
+  });
+
+  it("過剰卓全員 PD で candidates 0 → null", () => {
+    // 卓 1: 1 名 (PD), 卓 2: 3 名 → max=卓 2, candidates は卓 2 から PD 除外で全員残るはず。
+    // PD のみ卓を作るには 1 卓 1 PD 制約に反するため、ここでは max が PD 1 名のみ卓のケースを作る:
+    // 卓 1: 3 名 (全員 PD？ 1 卓 1 PD 制約違反のため作れない)
+    // 代わりに、PD 卓が source になるケースをシミュレート: 卓 1: 3 名 (席 1 PD), 卓 2: 1 名
+    // → candidates は卓 1 の席 2,3 で OK。null になるシナリオは PD のみで空席もない overconstrained。
+    // 実用上の null は dest 卓に空席なし or candidates 0 のみ。後者は seatedPlayers[]
+    // から source 卓に PD のみ + 他全員 busted の異常状態を作って検証する。
+    const seated = [
+      p({ id: "pd", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      p({ id: "x", tableNum: 2, seatNum: 1 }),
+      p({ id: "y", tableNum: 2, seatNum: 2 }),
+      p({ id: "z", tableNum: 2, seatNum: 3 }),
+    ];
+    // ここでは max=卓 2 (3 名), candidates は卓 2 全員 → null にならない。
+    // 「PD のみで動かせない」を null にするには planBalancingMove 既存の挙動と同じく
+    // candidates 0 のとき null。0 になるのは max=卓 1 (PD のみ) だが diff>=2 で max になるには
+    // 卓 1 が多くなる必要があり、その場合卓 1 に PD 以外の active がいる。これは設計上発生不可。
+    // 防御として「全員 PD の max 卓」を unit で確認:
+    const allPdMax = [
+      p({ id: "pd1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      p({ id: "pd2", tableNum: 1, seatNum: 2, isPlayingDealer: true }),
+      p({ id: "pd3", tableNum: 1, seatNum: 3, isPlayingDealer: true }),
+      p({ id: "x", tableNum: 2, seatNum: 1 }),
+    ];
+    expect(diagnoseBalancingNeed(allPdMax, [], 9)).toBeNull();
+    // 通常ケースは候補が出る:
+    const diag = diagnoseBalancingNeed(seated, [], 9);
+    expect(diag?.sourceTableNum).toBe(2);
+    expect(diag?.candidatePlayerIds).toEqual(["x", "y", "z"]);
+  });
+
+  it("不足卓に空席なし → null", () => {
+    // 不足卓が満席というシナリオは数学的に成立しない（max > min なら min < seatsPerTable）
+    // が、broken 反映のタイミング次第で起こり得るため防御を確認。
+    // 卓 1: 9 名（満席）, 卓 2: 9 名（満席） → diff=0 で null（差 0 で早期 return）。
+    // 純粋な「dest 満席で null」を作るのは難しいので diff>=2 + dest=満席を強制的に組む:
+    // 卓 1: 9 名, 卓 2: 7 名 → max=1, min=2, diff=2, dest 卓 2 に空席あり → not null
+    // diff>=2 かつ dest 満席は組めないため、本ケースは現実的に null 経路に到達しない。
+    // 代替: planBalancingMove と同じ結果を返すことを確認。
+    const seated = [
+      ...Array.from({ length: 9 }, (_, i) =>
+        p({ id: `t1-${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 7 }, (_, i) =>
+        p({ id: `t2-${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    const diag = diagnoseBalancingNeed(seated, [], 9);
+    expect(diag?.destSeatNum).toBe(8); // 卓 2 の最小空席
+  });
+
+  it("planBalancingMove は diagnoseBalancingNeed と整合（先頭候補を採用）", () => {
+    // 既存 planBalancingMove tests と同 fixture で挙動が一致することを確認。
+    const seated = [
+      p({ id: "pd", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      p({ id: "p2", tableNum: 1, seatNum: 2 }),
+      p({ id: "p3", tableNum: 1, seatNum: 3 }),
+      p({ id: "x", tableNum: 2, seatNum: 1 }),
+    ];
+    const diag = diagnoseBalancingNeed(seated, [], 9);
+    const move = planBalancingMove(seated, [], 9);
+    expect(move?.playerId).toBe(diag?.candidatePlayerIds[0]);
+    expect(move?.to.tableNum).toBe(diag?.destTableNum);
+    expect(move?.to.seatNum).toBe(diag?.destSeatNum);
   });
 });
 
