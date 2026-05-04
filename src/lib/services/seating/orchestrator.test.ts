@@ -50,6 +50,7 @@ import {
 
 import {
   applyBalancingOnce,
+  applyManualBalancingMove,
   autoSeatLateEntry,
   bustPlayer,
   commitInitialSeating,
@@ -423,7 +424,12 @@ describe("applyBalancingOnce → applySingleMove (TG1)", () => {
   it("commits move with race-guarded seat re-verification (happy path)", async () => {
     const { seated, tables } = balancingFixture();
     // engine: maxTable=1 → 移動対象は a1 (seatNum=1 最小)、移動先は卓2 seat 6
-    // tx.get 順序: tournament → a1 → 移動先卓 (=2) の既存メンバー [b1..b5] = 7 reads
+    // tx.get 順序:
+    //   1) tournament
+    //   2) a1 (mover)
+    //   3) 移動先卓 (=2) の既存メンバー [b1..b5] (seat-taken & destActive 集計)
+    //   4) Phase 5.x: 移動元卓 (=1) の既存メンバー [a2..a7] (sourceActive 集計)
+    // 計 1 + 1 + 5 + 6 = 13 reads
     const t = makeTournament({ state: "running", currentLevel: 1 });
     const captured: Array<Record<string, unknown>> = [];
     mockTransaction(
@@ -439,6 +445,12 @@ describe("applyBalancingOnce → applySingleMove (TG1)", () => {
           id,
           data: () =>
             stripId(player({ id, tableNum: 2, seatNum: i + 1 })),
+        })),
+        ...["a2", "a3", "a4", "a5", "a6", "a7"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () =>
+            stripId(player({ id, tableNum: 1, seatNum: i + 2 })),
         })),
       ],
       (_ref, patch) => captured.push(patch as Record<string, unknown>),
@@ -876,6 +888,62 @@ describe("applyBalancingOnce → applySingleMove — additional skip reasons", (
     const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
     expect(result.applied).toBe(false);
   });
+
+  // Phase 5.x: snapshot 取得後・tx commit 前に source 卓で他 player のバストが
+  // commit されると diff < 2 となり move が逆効果になる。tx 内 source/dest 再カウントで
+  // diff-resolved を検出して skip することを確認。
+  it("skips with reason=diff-resolved when another source player busted between snapshot and tx", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // source 卓 (=1) の a2 が tx 時点で busted となり active count が変わる
+    //   source: 1 (a1 mover) + a3..a7 = 6（a2 が busted）
+    //   dest: b1..b5 = 5
+    //   diff = 6 - 5 = 1 < 2 → diff-resolved
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        // mover a1 — まだ source 卓席 1 に居て非 busted
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () => stripId(player({ id: "a1", tableNum: 1, seatNum: 1 })),
+        }),
+        // dest 卓 b1..b5 — seat 6 は空（destActive=5）
+        ...["b1", "b2", "b3", "b4", "b5"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () =>
+            stripId(player({ id, tableNum: 2, seatNum: i + 1 })),
+        })),
+        // source 卓 (mover 除外) — a2 だけ busted、他 active
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () =>
+            stripId(
+              player({
+                id: "a2",
+                tableNum: 1,
+                seatNum: 2,
+                isBusted: true,
+                bustedAt: ts,
+              }),
+            ),
+        }),
+        ...["a3", "a4", "a5", "a6", "a7"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () => stripId(player({ id, tableNum: 1, seatNum: i + 3 })),
+        })),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
+    expect(result.applied).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
 });
 
 describe("commitInitialSeating — additional branches", () => {
@@ -967,5 +1035,245 @@ describe("bustPlayer / unbustPlayer wrappers", () => {
   it("bustPlayer propagates underlying errors", async () => {
     vi.mocked(bustPlayerWrite).mockRejectedValueOnce(new Error("network"));
     await expect(bustPlayer("t1", "p1")).rejects.toThrow("network");
+  });
+});
+
+// Phase 5.x: TDA 準拠の運営者選択バランシング。diagnose を呼んで source/dest を
+// 算出し、運営者が選んだ player を applySingleMove と同じ tx 経路で commit する。
+describe("applyManualBalancingMove", () => {
+  function balancingFixture() {
+    // 卓1: 7人（席 1 が PD）, 卓2: 5人 → 差 2 → diag.source=1 / dest=2 / dest_seat=6
+    // candidates: a2..a7（PD の a1 は除外、seatNum 昇順）
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      ...Array.from({ length: 6 }, (_, i) =>
+        player({ id: `a${i + 2}`, tableNum: 1, seatNum: i + 2 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        player({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    const tables = [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+    ];
+    return { seated, tables };
+  }
+
+  it("applied=false when balancing not needed (no diag)", async () => {
+    const seated = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        player({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        player({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+    ];
+    const tables = [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+    ];
+    const result = await applyManualBalancingMove(
+      "t1",
+      "u1",
+      ["g1"],
+      "a1",
+      seated,
+      tables,
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws seating/manual-pd-not-movable when operator picks a PD player", async () => {
+    const { seated, tables } = balancingFixture();
+    await expect(
+      applyManualBalancingMove("t1", "u1", ["g1"], "a1", seated, tables, 9),
+    ).rejects.toMatchObject({ code: "seating/manual-pd-not-movable" });
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("applied=false when operator picks a player on the wrong table", async () => {
+    const { seated, tables } = balancingFixture();
+    // b1 は dest 卓 (=卓 2) のため source 卓ではない → 早期 reject
+    const result = await applyManualBalancingMove(
+      "t1",
+      "u1",
+      ["g1"],
+      "b1",
+      seated,
+      tables,
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("applied=false when player not found / busted / no seat", async () => {
+    const { seated, tables } = balancingFixture();
+    // unknown id
+    const r1 = await applyManualBalancingMove(
+      "t1",
+      "u1",
+      ["g1"],
+      "ghost",
+      seated,
+      tables,
+      9,
+    );
+    expect(r1.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("commits move with operator-picked non-PD player (a4 → 卓2 seat 6)", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // tx.get 順序:
+    //   1) tournament
+    //   2) a4 (mover)
+    //   3) 移動先卓 (=2) の既存 [b1..b5]
+    //   4) Phase 5.x: 移動元卓 (=1) の既存 (mover 除外) [a1, a2, a3, a5, a6, a7]
+    // 計 1 + 1 + 5 + 6 = 13 reads
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a4",
+          data: () => stripId(player({ id: "a4", tableNum: 1, seatNum: 4 })),
+        }),
+        ...["b1", "b2", "b3", "b4", "b5"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () =>
+            stripId(player({ id, tableNum: 2, seatNum: i + 1 })),
+        })),
+        // a1 は PD だが active なので source カウントには 1 として算入される
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () =>
+            stripId(player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true })),
+        }),
+        ...["a2", "a3"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () => stripId(player({ id, tableNum: 1, seatNum: i + 2 })),
+        })),
+        ...["a5", "a6", "a7"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () => stripId(player({ id, tableNum: 1, seatNum: i + 5 })),
+        })),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualBalancingMove(
+      "t1",
+      "u1",
+      ["g1"],
+      "a4",
+      seated,
+      tables,
+      9,
+    );
+    expect(result.applied).toBe(true);
+    expect(result.description).toBe("Table 1 / 席 4 → Table 2 / 席 6");
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tableNum).toBe(2);
+    expect(captured[0].seatNum).toBe(6);
+  });
+
+  it("rejects non-member at tx boundary", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1, groupId: "g1" });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+    ]);
+    await expect(
+      applyManualBalancingMove(
+        "t1",
+        "u1",
+        ["g-other"],
+        "a4",
+        seated,
+        tables,
+        9,
+      ),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+  });
+
+  // Phase 5.x: ユーザーがクリックする寸前に source 卓の別 player がバスト → snapshot
+  // 反映前の click 経路。tx 内 source/dest 再カウントで diff-resolved を検出して skip。
+  it("skips with diff-resolved when another source player busted between click and tx", async () => {
+    const { seated, tables } = balancingFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // mover a4 を運営者がクリック。tx 内では a3 が busted となり source active=6, dest=5 → diff=1
+    // mover 除外 source = [a1(PD), a2, a3, a5, a6, a7]
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a4",
+          data: () => stripId(player({ id: "a4", tableNum: 1, seatNum: 4 })),
+        }),
+        // dest 卓 b1..b5 (destActive=5、seat 6 は空)
+        ...["b1", "b2", "b3", "b4", "b5"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () =>
+            stripId(player({ id, tableNum: 2, seatNum: i + 1 })),
+        })),
+        // source 卓 (mover 除外) — a1 PD active, a2 active, a3 busted, a5/a6/a7 active
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () =>
+            stripId(player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a3",
+          data: () =>
+            stripId(
+              player({
+                id: "a3",
+                tableNum: 1,
+                seatNum: 3,
+                isBusted: true,
+                bustedAt: ts,
+              }),
+            ),
+        }),
+        ...["a5", "a6", "a7"].map((id, i) => () => ({
+          exists: () => true,
+          id,
+          data: () => stripId(player({ id, tableNum: 1, seatNum: i + 5 })),
+        })),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualBalancingMove(
+      "t1",
+      "u1",
+      ["g1"],
+      "a4",
+      seated,
+      tables,
+      9,
+    );
+    expect(result.applied).toBe(false);
+    expect(captured).toHaveLength(0);
   });
 });

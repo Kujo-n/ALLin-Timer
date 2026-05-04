@@ -21,6 +21,7 @@ import {
   InvalidSeatsPerTableError,
   TooManyPlayingDealersError,
   TooManyTablesError,
+  diagnoseBalancingNeed,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
@@ -343,6 +344,70 @@ export async function applyBalancingOnce(
   return await applySingleMove(tid, uid, userGroupIds, move, players);
 }
 
+/**
+ * Phase 5.x: TDA 準拠の運営者選択バランシング適用。
+ *
+ * `diagnoseBalancingNeed` で source/dest 卓を算出し、運営者が選んだ `playerId` を
+ * source 卓 → dest 席へ移動する。engine の auto-pick（最小席番号）に依存せず、
+ * 実 dealer button 位置を見た運営者の判断で「BB 次プレイヤー」を選択できる。
+ *
+ * 早期 reject:
+ *  - balancing 不要（diff < 2 / candidates 0 / dest 満席）→ applied=false
+ *  - playerId が candidates に含まれない（PD or 別卓 or busted）→ applied=false
+ *  - PD player を運営者が誤選択 → `seating/manual-pd-not-movable` AppError
+ *
+ * tx 内 race guard は applySingleMove と同じ（lastMovedAt + 移動先 seat 占有再確認）。
+ */
+export async function applyManualBalancingMove(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  playerId: string,
+  players: PlayerDoc[],
+  tables: TableDoc[],
+  seatsPerTable: number,
+): Promise<ApplyBalancingResult> {
+  const brokenTableNums = tables.filter((t) => t.isBroken).map((t) => t.tableNum);
+  const diag = diagnoseBalancingNeed(players, brokenTableNums, seatsPerTable);
+  if (!diag) {
+    logger.info("manual balancing skipped (no diag)", { tid, playerId });
+    return { applied: false, description: null };
+  }
+  const player = players.find((p) => p.id === playerId);
+  // PD は候補リストから engine 側で除外済みだが、サーバ側でも明示的なエラーで弾く
+  // （UI bug 等で候補外 PD が手動指定されたケースの最終防衛 + 運営者向け UX）。
+  if (player?.isPlayingDealer) {
+    throw new AppError(
+      "PD（プレイングディーラー）はバランシングで移動できません",
+      "seating/manual-pd-not-movable",
+    );
+  }
+  // 候補ガードは engine 側 diag.candidatePlayerIds に集約する。busted / 別卓 / 席なし /
+  // PD 除外といった個別判定は diagnoseBalancingNeed の filter 内に同居しており、
+  // engine の filter が将来拡張された場合も orchestrator は自動追従する（drift 防止）。
+  if (!diag.candidatePlayerIds.includes(playerId)) {
+    logger.info("manual balancing skipped (not a candidate)", {
+      tid,
+      playerId,
+      sourceTable: diag.sourceTableNum,
+      candidates: diag.candidatePlayerIds.length,
+    });
+    return { applied: false, description: null };
+  }
+  // candidatePlayerIds に含まれている時点で player は存在し tableNum/seatNum は non-null
+  // （engine filter が保証）。型ナローイングのため defensive guard を残す。
+  if (!player || player.tableNum === null || player.seatNum === null) {
+    logger.info("manual balancing skipped (player invalid)", { tid, playerId });
+    return { applied: false, description: null };
+  }
+  const move: BalancingMove = {
+    playerId,
+    from: { tableNum: player.tableNum, seatNum: player.seatNum },
+    to: { tableNum: diag.destTableNum, seatNum: diag.destSeatNum },
+  };
+  return await applySingleMove(tid, uid, userGroupIds, move, players);
+}
+
 async function applySingleMove(
   tid: string,
   uid: string,
@@ -358,6 +423,12 @@ async function applySingleMove(
   // 移動先卓の既存プレイヤー ID（H2 と同じ seat 占有再検証）。
   const targetTableExistingIds = players
     .filter((p) => p.tableNum === move.to.tableNum && p.id !== move.playerId)
+    .map((p) => p.id);
+  // Phase 5.x: 移動元卓の既存プレイヤー ID（diff-resolved race guard 用）。
+  // snapshot 取得後・本 tx commit 前に source 卓で他 player のバストが commit されると
+  // diff < 2 になり move は不要 / 逆方向に害になる。tx 内で source/dest active を再カウント。
+  const sourceTableExistingIds = players
+    .filter((p) => p.tableNum === move.from.tableNum && p.id !== move.playerId)
     .map((p) => p.id);
 
   try {
@@ -397,17 +468,40 @@ async function applySingleMove(
       }
 
       // 移動先 seat の現在占有を tx 内で確認。
+      // 同時に dest 卓の active 人数（後続の diff-resolved 検証用）を集計する。
       const freshTarget = await Promise.all(
         targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
       );
+      let destActiveCount = 0;
       for (const snap of freshTarget) {
         if (!snap.exists()) continue;
         const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
         if (fresh.isBusted) continue;
-        if (fresh.tableNum === move.to.tableNum && fresh.seatNum === move.to.seatNum) {
+        if (fresh.tableNum !== move.to.tableNum) continue;
+        if (fresh.seatNum === move.to.seatNum) {
           skipReason = "seat-taken";
           return;
         }
+        destActiveCount++;
+      }
+
+      // Phase 5.x: source/dest 卓の現アクティブ人数を tx 内で再カウントし、
+      // diff (= source - dest) が 2 未満なら move は無意味 / 逆方向に害になるため skip。
+      // mover 自身は active 確定（busted ガード済み）なので 1 を加算。
+      const freshSource = await Promise.all(
+        sourceTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+      );
+      let sourceActiveCount = 1;
+      for (const snap of freshSource) {
+        if (!snap.exists()) continue;
+        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        if (fresh.isBusted) continue;
+        if (fresh.tableNum !== move.from.tableNum) continue;
+        sourceActiveCount++;
+      }
+      if (sourceActiveCount - destActiveCount < 2) {
+        skipReason = "diff-resolved";
+        return;
       }
 
       tx.update(pRef, {
