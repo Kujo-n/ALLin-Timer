@@ -378,6 +378,77 @@ export function planTableBreak(
   return { brokenTableNum: toBreak, moves };
 }
 
+/**
+ * Phase 5.x: 同卓 D&D で drop 先が占有席だった場合の cascade 計算。
+ *
+ * direction = sign(source - target) に沿って、target から source 方向に占有席を
+ * 1 つずつ shift する。最初の空席（または source 到達）で停止。
+ * cascade 中で PD player に当たった場合は cascade 不能として `null` を返す
+ * （PD は手動移動禁止 + 席 1 固定の慣習を D&D 側で勝手に崩さない）。
+ *
+ * 例: 席 1,2,3,5,6 占有 / seat 4 空 / dragged=席 5 / target=席 2
+ *  → direction=+1, walk: 席 2 → 席 3 → 席 4(empty で停止)
+ *  → moves: [{2→3}, {3→4}, {dragged 5→2}]
+ *  最終: 1, 2(dragged), 3(原 2), 4(原 3), 5(空), 6 のまま
+ *
+ * @param sameTablePlayers 同卓の player（dragged 自身を含む）。busted は filter で除外。
+ * @returns 全 cascade move（順序は walk 順、最後に dragged の move）。null は不能ケース。
+ */
+export function planManualSeatCascade(
+  sameTablePlayers: PlayerDoc[],
+  draggedPlayerId: string,
+  targetSeatNum: number,
+): BalancingMove[] | null {
+  const dragged = sameTablePlayers.find((p) => p.id === draggedPlayerId);
+  if (
+    !dragged ||
+    dragged.isBusted ||
+    dragged.tableNum === null ||
+    dragged.seatNum === null
+  ) {
+    return null;
+  }
+  if (dragged.seatNum === targetSeatNum) return null;
+
+  const tableNum = dragged.tableNum;
+  const sourceSeat = dragged.seatNum;
+  const direction: 1 | -1 = targetSeatNum < sourceSeat ? 1 : -1;
+
+  // dragged を除外した同卓 active player を seat → {id, isPd} に index 化。
+  // sourceSeat は dragged が占有していた席だが、dragged を除外したので map では「空」。
+  // この性質を利用して loop の終端判定が「occupant 不在」のみで済む。
+  const seatToOccupant = new Map<number, { id: string; isPd: boolean }>();
+  for (const p of sameTablePlayers) {
+    if (p.isBusted) continue;
+    if (p.id === draggedPlayerId) continue;
+    if (p.tableNum !== tableNum) continue;
+    if (p.seatNum === null) continue;
+    seatToOccupant.set(p.seatNum, { id: p.id, isPd: p.isPlayingDealer });
+  }
+
+  const moves: BalancingMove[] = [];
+  let cursor = targetSeatNum;
+  // Safety: bound iterations to prevent infinite loop on malformed input
+  let safety = sameTablePlayers.length + 2;
+  while (cursor !== sourceSeat && safety-- > 0) {
+    const occ = seatToOccupant.get(cursor);
+    if (!occ) break;
+    if (occ.isPd) return null;
+    moves.push({
+      playerId: occ.id,
+      from: { tableNum, seatNum: cursor },
+      to: { tableNum, seatNum: cursor + direction },
+    });
+    cursor += direction;
+  }
+  moves.push({
+    playerId: draggedPlayerId,
+    from: { tableNum, seatNum: sourceSeat },
+    to: { tableNum, seatNum: targetSeatNum },
+  });
+  return moves;
+}
+
 function computeTableCounts(
   players: PlayerDoc[],
   brokenTableNums: number[],

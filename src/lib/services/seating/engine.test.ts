@@ -10,6 +10,7 @@ import {
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
+  planManualSeatCascade,
   planTableBreak,
 } from "./engine";
 
@@ -306,25 +307,23 @@ describe("planBalancingMove", () => {
     expect(move?.playerId).toBe("p2"); // PD ではなく次に小さい席番号
   });
 
-  it("過剰卓全員 PD → null（バランシング不能）", () => {
-    // 卓 1: 1 人（PD）, 卓 2: 0 人 ... 実質 1 卓 → diff 0
-    // 1 人卓だと diff 計算が成立しないので 2 卓構成で:
-    // 卓 1: 1 人（PD のみ）, 卓 2: 0 人
-    // ↑これでは min/max に同じ卓が出てこない（count=1 卓と count=0 卓だが,
-    //   computeTableCounts は count.size < 2 で null を返す = 既存挙動）
-    // 1 卓 1 PD 制約のため「過剰卓全員 PD」は実質発生しないが、
-    // 防御として PD のみの卓 → 移動候補ゼロ → null を確認するテスト:
+  it("非 PD 卓が source になる（PD のみ卓は dest 側で候補除外の影響を受けない）", () => {
+    // 卓 1: PD のみ 1 人 / 卓 2: 非 PD 3 人 → 過剰卓は卓 2 / 不足卓は卓 1。
+    // 卓 2 の最小席 (x1) が卓 1 の最小空席（PD が seat 1 占有なので seat 2）へ動く。
+    // PD 除外フィルタは「source 卓の candidates」に対してのみ効くため、
+    // dest 卓に PD が居ても move は成立する。
+    // null 経路（max 卓全員 PD）の characterization は diagnoseBalancingNeed 側に集約。
     const seated = [
       p({ id: "pd1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
-      // 卓 2 に 3 人、卓 1 が PD のみ 1 人
       p({ id: "x1", tableNum: 2, seatNum: 1 }),
       p({ id: "x2", tableNum: 2, seatNum: 2 }),
       p({ id: "x3", tableNum: 2, seatNum: 3 }),
     ];
     const move = planBalancingMove(seated, [], 9);
-    // 卓 2 → 卓 1 へ動かす（PD は除外対象なので卓 2 から候補）。卓 1 が小さい側。
-    // 過剰卓は卓 2、最小席は x1 → 卓 1 の最小空席へ。
     expect(move?.playerId).toBe("x1");
+    expect(move?.from.tableNum).toBe(2);
+    expect(move?.to.tableNum).toBe(1);
+    expect(move?.to.seatNum).toBe(2); // PD が seat 1 占有のため最小空席は 2
   });
 });
 
@@ -521,5 +520,115 @@ describe("planTableBreak", () => {
     // a1 を卓 3（少ない卓）へ
     expect(plan?.moves[0].to.tableNum).toBe(3);
     expect(plan?.moves[0].to.seatNum).toBe(3);
+  });
+});
+
+describe("planManualSeatCascade", () => {
+  it("returns single move when target seat is empty (no cascade needed)", () => {
+    // 席 1,2,3 占有 / dragged=席 1 / target=席 5（空）
+    const seated = [
+      p({ id: "a", tableNum: 1, seatNum: 1 }),
+      p({ id: "b", tableNum: 1, seatNum: 2 }),
+      p({ id: "c", tableNum: 1, seatNum: 3 }),
+    ];
+    const moves = planManualSeatCascade(seated, "a", 5);
+    expect(moves).toHaveLength(1);
+    expect(moves?.[0]).toEqual({
+      playerId: "a",
+      from: { tableNum: 1, seatNum: 1 },
+      to: { tableNum: 1, seatNum: 5 },
+    });
+  });
+
+  it("cascade direction +1 for target<source: 5→2 with seats 1,2,3,5,6 (gap at 4)", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "a5", tableNum: 1, seatNum: 5 }),
+      p({ id: "a6", tableNum: 1, seatNum: 6 }),
+    ];
+    const moves = planManualSeatCascade(seated, "a5", 2);
+    expect(moves).toEqual([
+      { playerId: "a2", from: { tableNum: 1, seatNum: 2 }, to: { tableNum: 1, seatNum: 3 } },
+      { playerId: "a3", from: { tableNum: 1, seatNum: 3 }, to: { tableNum: 1, seatNum: 4 } },
+      { playerId: "a5", from: { tableNum: 1, seatNum: 5 }, to: { tableNum: 1, seatNum: 2 } },
+    ]);
+  });
+
+  it("cascade direction -1 for target>source: 2→5 with seats 1,2,3,5,6", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "a5", tableNum: 1, seatNum: 5 }),
+      p({ id: "a6", tableNum: 1, seatNum: 6 }),
+    ];
+    const moves = planManualSeatCascade(seated, "a2", 5);
+    // direction = -1。walk: 席 5 → 席 4(empty で停止)
+    expect(moves).toEqual([
+      { playerId: "a5", from: { tableNum: 1, seatNum: 5 }, to: { tableNum: 1, seatNum: 4 } },
+      { playerId: "a2", from: { tableNum: 1, seatNum: 2 }, to: { tableNum: 1, seatNum: 5 } },
+    ]);
+  });
+
+  it("cascade fills source when no empty seats between target and source: 4→1 with 1,2,3,4 occupied", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "a4", tableNum: 1, seatNum: 4 }),
+    ];
+    const moves = planManualSeatCascade(seated, "a4", 1);
+    // direction=+1. walk 1→2, 2→3, 3→4(=source, dragged 除外で empty 扱い)
+    expect(moves).toEqual([
+      { playerId: "a1", from: { tableNum: 1, seatNum: 1 }, to: { tableNum: 1, seatNum: 2 } },
+      { playerId: "a2", from: { tableNum: 1, seatNum: 2 }, to: { tableNum: 1, seatNum: 3 } },
+      { playerId: "a3", from: { tableNum: 1, seatNum: 3 }, to: { tableNum: 1, seatNum: 4 } },
+      { playerId: "a4", from: { tableNum: 1, seatNum: 4 }, to: { tableNum: 1, seatNum: 1 } },
+    ]);
+  });
+
+  it("returns null when PD encountered in cascade range: 4→1 with PD at seat 2", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "pd", tableNum: 1, seatNum: 2, isPlayingDealer: true }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "a4", tableNum: 1, seatNum: 4 }),
+    ];
+    // walk 1→2, 2 が PD → null
+    expect(planManualSeatCascade(seated, "a4", 1)).toBeNull();
+  });
+
+  it("returns null when target === source (no-op)", () => {
+    const seated = [p({ id: "a", tableNum: 1, seatNum: 3 })];
+    expect(planManualSeatCascade(seated, "a", 3)).toBeNull();
+  });
+
+  it("returns null when dragged player is busted", () => {
+    const seated = [
+      p({ id: "a", tableNum: 1, seatNum: 1, isBusted: true, bustedAt: ts }),
+    ];
+    expect(planManualSeatCascade(seated, "a", 5)).toBeNull();
+  });
+
+  it("returns null when dragged player not in list", () => {
+    const seated = [p({ id: "a", tableNum: 1, seatNum: 1 })];
+    expect(planManualSeatCascade(seated, "ghost", 5)).toBeNull();
+  });
+
+  it("ignores busted players in seat occupancy map (acts as empty)", () => {
+    // a2 is busted (no seat) → seat 2 effectively empty for cascade
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: null, isBusted: true, bustedAt: ts }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+    ];
+    // dragged a3, target seat 1: walk seat 1 → push to 2 (empty since a2 busted-no-seat)
+    const moves = planManualSeatCascade(seated, "a3", 1);
+    expect(moves).toEqual([
+      { playerId: "a1", from: { tableNum: 1, seatNum: 1 }, to: { tableNum: 1, seatNum: 2 } },
+      { playerId: "a3", from: { tableNum: 1, seatNum: 3 }, to: { tableNum: 1, seatNum: 1 } },
+    ]);
   });
 });
