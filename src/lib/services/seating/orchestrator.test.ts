@@ -51,6 +51,8 @@ import {
 import {
   applyBalancingOnce,
   applyManualBalancingMove,
+  applyManualSeatChange,
+  applyManualSeatUndo,
   autoSeatLateEntry,
   bustPlayer,
   commitInitialSeating,
@@ -1277,3 +1279,391 @@ describe("applyManualBalancingMove", () => {
     expect(captured).toHaveLength(0);
   });
 });
+
+// Phase 5.x: 運営者の D&D 手動席移動。balancing 由来でない自由移動のため
+// diff-resolved guard は通らず（verifyBalancingDiff=false）、source 側 re-read も発生しない。
+describe("applyManualSeatChange", () => {
+  function fixture() {
+    // 卓 1: 3 人 (a1=PD, a2, a3), 卓 2: 2 人 (b1, b2)
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      player({ id: "a2", tableNum: 1, seatNum: 2 }),
+      player({ id: "a3", tableNum: 1, seatNum: 3 }),
+      player({ id: "b1", tableNum: 2, seatNum: 1 }),
+      player({ id: "b2", tableNum: 2, seatNum: 2 }),
+    ];
+    return { seated };
+  }
+
+  it("throws seating/manual-pd-not-movable when target player is PD", async () => {
+    const { seated } = fixture();
+    await expect(
+      applyManualSeatChange(
+        "t1",
+        "u1",
+        ["g1"],
+        "a1",
+        { tableNum: 2, seatNum: 5 },
+        seated,
+      ),
+    ).rejects.toMatchObject({ code: "seating/manual-pd-not-movable" });
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("applied=false when player is unknown", async () => {
+    const { seated } = fixture();
+    const r = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "ghost",
+      { tableNum: 1, seatNum: 4 },
+      seated,
+    );
+    expect(r.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("no-op when from === to (same seat drop)", async () => {
+    const { seated } = fixture();
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a2",
+      { tableNum: 1, seatNum: 2 },
+      seated,
+    );
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("commits same-table move (a2: 1-2 → 1-5) without diff-resolved skip", async () => {
+    // verifyBalancingDiff=false のため、source 側 re-read が走らずに commit される。
+    // tx.get 順序: tournament → a2 (mover) → 同卓 dest existing [a1, a3]
+    const { seated } = fixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () =>
+            stripId(
+              player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+            ),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a3",
+          data: () => stripId(player({ id: "a3", tableNum: 1, seatNum: 3 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a2",
+      { tableNum: 1, seatNum: 5 },
+      seated,
+    );
+    expect(result.applied).toBe(true);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tableNum).toBe(1);
+    expect(captured[0].seatNum).toBe(5);
+  });
+
+  it("commits cross-table move (a2: 1-2 → 2-5) without diff-resolved skip", async () => {
+    // 卓 1 → 卓 2 の手動移動。差は 3 vs 2 = 1 で diff-resolved guard では skip 対象だが、
+    // verifyBalancingDiff=false で commit される。
+    const { seated } = fixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "b1",
+          data: () => stripId(player({ id: "b1", tableNum: 2, seatNum: 1 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "b2",
+          data: () => stripId(player({ id: "b2", tableNum: 2, seatNum: 2 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a2",
+      { tableNum: 2, seatNum: 5 },
+      seated,
+    );
+    expect(result.applied).toBe(true);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].tableNum).toBe(2);
+    expect(captured[0].seatNum).toBe(5);
+  });
+
+  it("skips with seat-taken when destination seat occupied at tx (race)", async () => {
+    const { seated } = fixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // a2 を 卓 2 / 席 1 (b1 が居る) へ drop。tx 内 b1 が占有 → seat-taken。
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "b1",
+          data: () => stripId(player({ id: "b1", tableNum: 2, seatNum: 1 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "b2",
+          data: () => stripId(player({ id: "b2", tableNum: 2, seatNum: 2 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a2",
+      { tableNum: 2, seatNum: 1 },
+      seated,
+    );
+    expect(result.applied).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("rejects non-member at tx boundary", async () => {
+    const { seated } = fixture();
+    const t = makeTournament({ state: "running", currentLevel: 1, groupId: "g1" });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+    ]);
+    await expect(
+      applyManualSeatChange(
+        "t1",
+        "u1",
+        ["g-other"],
+        "a2",
+        { tableNum: 2, seatNum: 5 },
+        seated,
+      ),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+  });
+});
+
+// Phase 5.x: 同卓 D&D で drop 先が占有席だった場合の cascade 適用。
+// engine.planManualSeatCascade の結果を受けて applyCascadeMoves 経由で N 件 atomic commit。
+describe("applyManualSeatChange — same-table cascade", () => {
+  function cascadeFixture() {
+    // 卓 1: 1, 2, 3, 5, 6 占有 / 4 空。dragged=a5 → target seat 2 で cascade を狙う。
+    // expected cascade: a2 (席2→3), a3 (席3→4), a5 (席5→2)
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1 }),
+      player({ id: "a2", tableNum: 1, seatNum: 2 }),
+      player({ id: "a3", tableNum: 1, seatNum: 3 }),
+      player({ id: "a5", tableNum: 1, seatNum: 5 }),
+      player({ id: "a6", tableNum: 1, seatNum: 6 }),
+    ];
+    return { seated };
+  }
+
+  it("commits 3-move cascade atomically (a5 → seat 2 with shift)", async () => {
+    const { seated } = cascadeFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // tx.get 順序:
+    //   1) tournament
+    //   2) cascade 各 player re-read [a2, a3, a5]（順序: planManualSeatCascade の moves 順）
+    //   3) newly-occupied seat の他 player 占有検証 [a1, a6]
+    // 計 1 + 3 + 2 = 6 reads
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a3",
+          data: () => stripId(player({ id: "a3", tableNum: 1, seatNum: 3 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a5",
+          data: () => stripId(player({ id: "a5", tableNum: 1, seatNum: 5 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () => stripId(player({ id: "a1", tableNum: 1, seatNum: 1 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a6",
+          data: () => stripId(player({ id: "a6", tableNum: 1, seatNum: 6 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a5",
+      { tableNum: 1, seatNum: 2 },
+      seated,
+    );
+    expect(result.applied).toBe(true);
+    expect(result.moves).toHaveLength(3);
+    expect(captured).toHaveLength(3);
+    // captured 順: a2→3, a3→4, a5→2
+    expect(captured[0]).toMatchObject({ tableNum: 1, seatNum: 3 });
+    expect(captured[1]).toMatchObject({ tableNum: 1, seatNum: 4 });
+    expect(captured[2]).toMatchObject({ tableNum: 1, seatNum: 2 });
+  });
+
+  it("rejects when PD is in cascade range (engine returns null)", async () => {
+    // 卓 1: a1(PD), a2, a3, a4 全部占有。a4 → seat 1 だと cascade 経路に PD がいる
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1, isPlayingDealer: true }),
+      player({ id: "a2", tableNum: 1, seatNum: 2 }),
+      player({ id: "a3", tableNum: 1, seatNum: 3 }),
+      player({ id: "a4", tableNum: 1, seatNum: 4 }),
+    ];
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a4",
+      { tableNum: 1, seatNum: 1 },
+      seated,
+    );
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("skips with race when one cascade player has lastMovedAt mismatch at tx", async () => {
+    const { seated } = cascadeFixture();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const movedTs = Timestamp.fromMillis(999_000);
+    const captured: Array<Record<string, unknown>> = [];
+    // applyCascadeMoves は cascade reads を Promise.all で同時 dispatch するため、
+    // race を 1 件混ぜても全件 read が完了する。最後の guard チェックで race detect。
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a2",
+          data: () => stripId(player({ id: "a2", tableNum: 1, seatNum: 2 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a3",
+          data: () =>
+            stripId(
+              player({ id: "a3", tableNum: 1, seatNum: 3, lastMovedAt: movedTs }),
+            ),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a5",
+          data: () => stripId(player({ id: "a5", tableNum: 1, seatNum: 5 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatChange(
+      "t1",
+      "u1",
+      ["g1"],
+      "a5",
+      { tableNum: 1, seatNum: 2 },
+      seated,
+    );
+    expect(result.applied).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+});
+
+// Phase 5.x: 直前の手動席移動を reverse 適用して元に戻す。
+describe("applyManualSeatUndo", () => {
+  it("applied=false on empty move list", async () => {
+    const result = await applyManualSeatUndo("t1", "u1", ["g1"], [], []);
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("reverses single-move via applySingleMove path", async () => {
+    // 元 move: a (1-2) → (2-5)。undo で a を 2-5 → 1-2 に戻す。
+    const seated = [player({ id: "a", tableNum: 2, seatNum: 5 })];
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // applySingleMove 経路: tournament → mover → dest卓 existing(なし、卓1 空)
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "a",
+          data: () => stripId(player({ id: "a", tableNum: 2, seatNum: 5 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualSeatUndo(
+      "t1",
+      "u1",
+      ["g1"],
+      [
+        {
+          playerId: "a",
+          from: { tableNum: 1, seatNum: 2 },
+          to: { tableNum: 2, seatNum: 5 },
+        },
+      ],
+      seated,
+    );
+    expect(result.applied).toBe(true);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({ tableNum: 1, seatNum: 2 });
+  });
+});
+

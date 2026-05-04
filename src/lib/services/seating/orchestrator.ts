@@ -25,6 +25,7 @@ import {
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
+  planManualSeatCascade,
   planTableBreak,
   type BalancingMove,
 } from "./engine";
@@ -314,6 +315,12 @@ interface ApplyBalancingResult {
   applied: boolean;
   description: string | null;
   break?: boolean;
+  /**
+   * Phase 5.x: 実際に commit された move のリスト。手動 D&D / cascade で適用された
+   * 全 move を呼出側に返すことで、dashboard 側で undo（reverseMoves）に利用できる。
+   * applied=false のときは undefined / 空配列。
+   */
+  moves?: BalancingMove[];
 }
 
 /**
@@ -408,12 +415,301 @@ export async function applyManualBalancingMove(
   return await applySingleMove(tid, uid, userGroupIds, move, players);
 }
 
+/**
+ * Phase 5.x: 運営者による D&D / クリック起点の手動席移動。
+ *
+ * バランシング由来でない自由移動のための薄いラッパ。`applySingleMove(..., verifyBalancingDiff=false)`
+ * を呼び、source/dest 卓の active 人数差検証は **意図的に skip する**（運営者が「想定外
+ * ユースケースの是正」目的で動かすため、diff が小さくても許容したい）。
+ *
+ * 同卓内で drop 先が占有席だった場合は engine.planManualSeatCascade で cascade 計算し、
+ * target → source 方向に既存 player を 1 つずつ shift して受け入れる。
+ * 卓間移動の drop 先は空席のみ受け付ける（cascade は同卓のみ）。
+ *
+ * 早期 reject:
+ *  - player 不在 / busted / 席なし → applied=false
+ *  - PD player（dragged）→ `seating/manual-pd-not-movable` AppError
+ *  - from === to（自席 drop）→ applied=false
+ *  - 同卓 cascade に PD が混入 → applied=false（engine が null）
+ *  - 卓間で drop 先が占有 → applied=false（cascade across tables 非対応）
+ *
+ * 注意（race guard 階層）:
+ *   - 卓間移動の `destOccupiedInSnapshot` 早期 reject は **UX 用の早期 return**（snapshot で
+ *     既に占有なら無駄な tx を発火させない）。snapshot 取得後・tx commit 前に他端末が
+ *     当該 seat を取った最終 race は `applySingleMove` の `seat-taken` 検査が tx 内で塞ぐ。
+ *     Firestore Rules 側では cross-table 占有検査を再現していない（rule で複数 doc 同期検査は
+ *     表現困難なため）。最終防衛は `seat-taken` race guard。
+ */
+export async function applyManualSeatChange(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  playerId: string,
+  to: { tableNum: number; seatNum: number },
+  players: PlayerDoc[],
+): Promise<ApplyBalancingResult> {
+  const player = players.find((p) => p.id === playerId);
+  if (
+    !player ||
+    player.isBusted ||
+    player.tableNum === null ||
+    player.seatNum === null
+  ) {
+    logger.info("manual seat change skipped (player invalid)", { tid, playerId });
+    return { applied: false, description: null };
+  }
+  if (player.isPlayingDealer) {
+    throw new AppError(
+      "PD（プレイングディーラー）は手動移動できません",
+      "seating/manual-pd-not-movable",
+    );
+  }
+  if (player.tableNum === to.tableNum && player.seatNum === to.seatNum) {
+    return { applied: false, description: null };
+  }
+
+  // 同卓内: cascade 計算（drop 先が空席なら 1 件 move、占有なら shift 連鎖）
+  if (player.tableNum === to.tableNum) {
+    const sameTablePlayers = players.filter(
+      (p) => p.tableNum === to.tableNum && !p.isBusted,
+    );
+    const moves = planManualSeatCascade(sameTablePlayers, playerId, to.seatNum);
+    if (!moves || moves.length === 0) {
+      logger.info("manual seat change skipped (cascade not possible)", {
+        tid,
+        playerId,
+      });
+      return { applied: false, description: null };
+    }
+    if (moves.length === 1) {
+      // 単純 1 件 move（drop 先が空席）。既存 applySingleMove で十分。
+      return await applySingleMove(
+        tid,
+        uid,
+        userGroupIds,
+        moves[0],
+        players,
+        false,
+      );
+    }
+    return await applyCascadeMoves(tid, uid, userGroupIds, moves, players);
+  }
+
+  // 卓間移動: drop 先は空席のみ。snapshot 時点で占有なら早期 reject。
+  // tx 内 race（snapshot 空 → tx 占有）は applySingleMove の seat-taken 検証で塞ぐ。
+  const destOccupiedInSnapshot = players.some(
+    (p) =>
+      !p.isBusted &&
+      p.id !== playerId &&
+      p.tableNum === to.tableNum &&
+      p.seatNum === to.seatNum,
+  );
+  if (destOccupiedInSnapshot) {
+    logger.info(
+      "manual seat change skipped (cross-table dest occupied, no cascade)",
+      { tid, playerId, to },
+    );
+    return { applied: false, description: null };
+  }
+  const move: BalancingMove = {
+    playerId,
+    from: { tableNum: player.tableNum, seatNum: player.seatNum },
+    to,
+  };
+  return await applySingleMove(tid, uid, userGroupIds, move, players, false);
+}
+
+/**
+ * Phase 5.x: 手動席移動の undo。
+ *
+ * 直前の cascade 全 move を reverse 方向（from↔to swap）で 1 tx 内で commit する。
+ * 内部実装は applyCascadeMoves と同じ（race guard + atomic update）。
+ *
+ * 失敗ケース:
+ *  - 元の cascade 中の player が独立に bust / 移動 → race / moved skipReason
+ *  - 元 from-seat が他の player に占有 → seat-taken skipReason
+ *
+ * 失敗時は applied=false で返り、dashboard 側で error message を提示する想定。
+ */
+export async function applyManualSeatUndo(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  movesToReverse: BalancingMove[],
+  players: PlayerDoc[],
+): Promise<ApplyBalancingResult> {
+  if (movesToReverse.length === 0) {
+    return { applied: false, description: null };
+  }
+  const reversed: BalancingMove[] = movesToReverse.map((m) => ({
+    playerId: m.playerId,
+    from: m.to,
+    to: m.from,
+  }));
+  if (reversed.length === 1) {
+    return await applySingleMove(tid, uid, userGroupIds, reversed[0], players, false);
+  }
+  return await applyCascadeMoves(tid, uid, userGroupIds, reversed, players);
+}
+
+/**
+ * Phase 5.x: 複数 player を同 tx 内で原子的に席移動する。
+ *
+ * cascade（同卓 D&D）と undo の共有実装。各 move 対象 player について
+ * lastMovedAt + from-seat 一致を tx 内で再確認し、いずれか不一致なら全体 skip。
+ * cascade で newly-occupied なる席（move の to にあって、どの move の from でもない席）
+ * は他 player に占有されていないことを tx 内 re-read で検証する（seat-taken race guard）。
+ *
+ * verifyBalancingDiff は手動経路のため常に false（diff-resolved guard なし）。
+ *
+ * ⚠ 残存 race window: `otherTablePlayerIds` は呼出側 snapshot 時点で involved table に居た
+ *   player を列挙したもの。snapshot 取得後・本 tx 開始前に同卓へ新規 player が join
+ *   （late entry / 別 cascade）した場合、その player は再 read 対象に含まれず
+ *   newly-occupied 検証から漏れる。`setIsPlayingDealer` の race window と同列で、
+ *   20 人 × 月 1〜2 回スケールでは実用上発生しない頻度。完全防止には tournament 全件
+ *   tx.get（read 量大）または Cloud Functions 化が必要だが現状は許容する。
+ */
+async function applyCascadeMoves(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  moves: BalancingMove[],
+  players: PlayerDoc[],
+): Promise<ApplyBalancingResult> {
+  const cascadePlayerIds = new Set(moves.map((m) => m.playerId));
+  const fromKeys = new Set(
+    moves.map((m) => `${m.from.tableNum}-${m.from.seatNum}`),
+  );
+  const newlyOccupiedKeys = new Set(
+    moves
+      .map((m) => `${m.to.tableNum}-${m.to.seatNum}`)
+      .filter((k) => !fromKeys.has(k)),
+  );
+  const involvedTables = new Set([
+    ...moves.map((m) => m.from.tableNum),
+    ...moves.map((m) => m.to.tableNum),
+  ]);
+  // cascade に含まれない同卓の他 player ID（newly-occupied seat 占有検証用）
+  const otherTablePlayerIds = players
+    .filter(
+      (p) =>
+        !p.isBusted &&
+        p.tableNum !== null &&
+        involvedTables.has(p.tableNum) &&
+        !cascadePlayerIds.has(p.id),
+    )
+    .map((p) => p.id);
+
+  try {
+    let applied = false;
+    let skipReason: string | null = null;
+
+    await runTransaction(firestore, async (tx) => {
+      const tRef = tournamentRef(tid);
+      const tSnap = await tx.get(tRef);
+      if (!tSnap.exists()) {
+        throw new AppError("not found", "firestore/not-found");
+      }
+      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
+      if (!userGroupIds.includes(t.groupId)) {
+        throw new AppError("not allowed", "firestore/permission-denied");
+      }
+
+      // 各 cascade 対象 player を re-read し race guard。
+      const freshCascade = await Promise.all(
+        moves.map(async (m) => ({
+          move: m,
+          snap: await tx.get(doc(playersRef(tid), m.playerId)),
+        })),
+      );
+      for (const { move, snap } of freshCascade) {
+        if (!snap.exists()) {
+          skipReason = `missing:${move.playerId}`;
+          return;
+        }
+        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        if (fresh.isBusted) {
+          skipReason = `busted:${move.playerId}`;
+          return;
+        }
+        if (
+          fresh.tableNum !== move.from.tableNum ||
+          fresh.seatNum !== move.from.seatNum
+        ) {
+          skipReason = `moved:${move.playerId}`;
+          return;
+        }
+        const expected = players.find((p) => p.id === move.playerId);
+        const expectedMs = expected?.lastMovedAt
+          ? expected.lastMovedAt.toMillis()
+          : null;
+        const actualMs = fresh.lastMovedAt
+          ? fresh.lastMovedAt.toMillis()
+          : null;
+        if (actualMs !== expectedMs) {
+          skipReason = `race:${move.playerId}`;
+          return;
+        }
+      }
+
+      // newly-occupied seat に他 player が居ないか re-read（seat-taken race guard）。
+      // cascade の from-seat は別の cascade move が空けるため対象外。to-only の seat だけ検証。
+      if (newlyOccupiedKeys.size > 0) {
+        const freshOthers = await Promise.all(
+          otherTablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        );
+        for (const snap of freshOthers) {
+          if (!snap.exists()) continue;
+          const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+          if (fresh.isBusted) continue;
+          if (fresh.tableNum === null || fresh.seatNum === null) continue;
+          const key = `${fresh.tableNum}-${fresh.seatNum}`;
+          if (newlyOccupiedKeys.has(key)) {
+            skipReason = `seat-taken:${key}`;
+            return;
+          }
+        }
+      }
+
+      const ts = serverTimestamp();
+      for (const m of moves) {
+        tx.update(doc(playersRef(tid), m.playerId), {
+          tableNum: m.to.tableNum,
+          seatNum: m.to.seatNum,
+          lastMovedAt: ts,
+        });
+      }
+      applied = true;
+    });
+
+    if (!applied) {
+      logger.info("cascade move skipped", { tid, reason: skipReason });
+      return { applied: false, description: null };
+    }
+    const desc = `${moves.length} 名の cascade 移動`;
+    logger.info("cascade move ok", { tid, uid, count: moves.length });
+    return { applied: true, description: desc, moves };
+  } catch (e) {
+    const wrapped = AppError.from(
+      e,
+      "firestore/write_failed",
+      "席の cascade 移動に失敗しました",
+    );
+    logger.warn(wrapped.message, { code: wrapped.code, tid });
+    throw wrapped;
+  }
+}
+
 async function applySingleMove(
   tid: string,
   uid: string,
   userGroupIds: string[],
   move: BalancingMove,
   players: PlayerDoc[],
+  // Phase 5.x: balancing 由来 (true) か手動 D&D (false) かで diff-resolved guard を切替。
+  // balancing は「卓間差を縮める」意図なので diff < 2 になった move は逆効果 → skip。
+  // 手動 D&D は「想定外を是正」する自由移動なので diff 検証はしない。
+  verifyBalancingDiff: boolean = true,
 ): Promise<ApplyBalancingResult> {
   const expected = players.find((p) => p.id === move.playerId);
   const expectedLastMovedAtMs = expected?.lastMovedAt
@@ -488,20 +784,23 @@ async function applySingleMove(
       // Phase 5.x: source/dest 卓の現アクティブ人数を tx 内で再カウントし、
       // diff (= source - dest) が 2 未満なら move は無意味 / 逆方向に害になるため skip。
       // mover 自身は active 確定（busted ガード済み）なので 1 を加算。
-      const freshSource = await Promise.all(
-        sourceTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
-      );
-      let sourceActiveCount = 1;
-      for (const snap of freshSource) {
-        if (!snap.exists()) continue;
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
-        if (fresh.isBusted) continue;
-        if (fresh.tableNum !== move.from.tableNum) continue;
-        sourceActiveCount++;
-      }
-      if (sourceActiveCount - destActiveCount < 2) {
-        skipReason = "diff-resolved";
-        return;
+      // verifyBalancingDiff=false（手動 D&D）の場合は source 卓の余分な read も skip する。
+      if (verifyBalancingDiff) {
+        const freshSource = await Promise.all(
+          sourceTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        );
+        let sourceActiveCount = 1;
+        for (const snap of freshSource) {
+          if (!snap.exists()) continue;
+          const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+          if (fresh.isBusted) continue;
+          if (fresh.tableNum !== move.from.tableNum) continue;
+          sourceActiveCount++;
+        }
+        if (sourceActiveCount - destActiveCount < 2) {
+          skipReason = "diff-resolved";
+          return;
+        }
       }
 
       tx.update(pRef, {
@@ -518,7 +817,7 @@ async function applySingleMove(
     }
     const desc = `Table ${move.from.tableNum} / 席 ${move.from.seatNum} → Table ${move.to.tableNum} / 席 ${move.to.seatNum}`;
     logger.info("balancing move ok", { tid, uid, playerId: move.playerId, desc });
-    return { applied: true, description: desc };
+    return { applied: true, description: desc, moves: [move] };
   } catch (e) {
     const wrapped = AppError.from(e, "firestore/write_failed", "バランシング適用に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
