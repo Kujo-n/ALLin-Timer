@@ -11,10 +11,6 @@ import { cn } from "@/lib/utils";
 import { useNavState } from "./nav-state";
 import { PrimaryNav } from "./PrimaryNav";
 
-// /tournaments/{tid}/live の参加者向け閲覧画面では sidebar を非表示にして
-// タイマーを最大化する fullscreen pattern。dashboard (/tournaments/{tid}) は対象外。
-const FULLSCREEN_PATTERN = /^\/tournaments\/[^/]+\/live\/?$/;
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuthUser();
@@ -29,7 +25,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Phase 5.1: 匿名ユーザー（ゲスト受付完了後の閲覧）はサイドバー / ハンバーガーから
   // アプリ機能へ進めない設計のため、サイドバー / Sheet を render skip する。
-  // 同様に /live は fullscreen pattern で sidebar を出さない。
   //
   // ⚠ React tree position: 旧実装は `if (user?.isAnonymous) return <main>...` で
   //   ルート要素を `<div>` ↔ `<main>` 間で切り替えていたため、user 状態が変わるたびに
@@ -42,10 +37,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   //   conditional render（`null` placeholder）で出し分けることで `<main>` が常に
   //   同じ children index に居続けるようにする。React は children index ベースで
   //   reconciliation するため、null/false は slot を消費するが、`<main>` の slot は
-  //   isAnonymous / fullscreen トグル前後で同じ index に保たれ、unmount されない。
+  //   isAnonymous トグル前後で同じ index に保たれ、unmount されない。
   const isAnon = !!user?.isAnonymous;
-  const isFullscreen = FULLSCREEN_PATTERN.test(pathname ?? "");
-  const showSidebar = !isAnon && !isFullscreen;
+  const showSidebar = !isAnon;
 
   return (
     <div className={cn(showSidebar && "flex min-h-[calc(100vh-3rem)]")}>

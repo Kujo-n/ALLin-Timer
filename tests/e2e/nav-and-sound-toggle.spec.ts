@@ -18,7 +18,8 @@ import {
  *      - signed-out: ホームのみ
  *      - organizer + currentGroupId: サウンド設定 visible
  *      - member + currentGroupId: サウンド設定 hidden
- *   2. /tournaments/{tid}/live の fullscreen pattern（sidebar 非表示）
+ *   2. /tournaments/{tid}/live でも sidebar / hamburger が機能する
+ *      （旧 fullscreen pattern は廃止。一般参加者が画面を閉じても戻れる導線を提供）
  *   3. dashboard SoundToggleButton OFF → クリック → Firestore audioSettings.enabled が反転
  *      （Phase 4.13 で settingsHref 廃止 → in-place 書込みに変更）
  *   4. mobile viewport: hamburger → Sheet 開閉、ナビゲーションで自動クローズ
@@ -139,7 +140,9 @@ test.describe("Phase 4.13: nav shell", () => {
     }
   });
 
-  test("/tournaments/{tid}/live: fullscreen pattern により sidebar が消える", async ({ page }) => {
+  test("/tournaments/{tid}/live でも sidebar が出て hamburger で切替できる", async ({ page }) => {
+    // tmp/13_Phase5_memo.md「トーナメント参加者が /live でハンバーガーを押しても反応しない」
+    // 対応で fullscreen pattern を廃止。dashboard と同じく sidebar / Sheet を render する。
     const organizer = randomOrganizer("nav-fs");
     await registerOrganizer(page, organizer);
     await createGroup(page, "Nav Fullscreen Group");
@@ -152,12 +155,17 @@ test.describe("Phase 4.13: nav shell", () => {
       page.getByRole("complementary", { name: SIDEBAR_LABEL }),
     ).toBeVisible({ timeout: 15_000 });
 
-    // /live では sidebar 自体が描画されない（AppShell の早期 return）
+    // /live でも sidebar が描画される（旧 fullscreen pattern は廃止）
     await page.goto(`/tournaments/${tid}/live`);
-    await expect(page.locator("main")).toBeVisible();
     await expect(
       page.getByRole("complementary", { name: SIDEBAR_LABEL }),
-    ).toHaveCount(0);
+    ).toBeVisible({ timeout: 15_000 });
+
+    // ハンバーガーで desktop sidebar を折りたためる（aria-expanded が反転する）
+    const opener = page.getByRole("button", { name: /^メニューを(開く|閉じる)$/ });
+    await expect(opener).toHaveAttribute("aria-expanded", "true");
+    await opener.click();
+    await expect(opener).toHaveAttribute("aria-expanded", "false");
   });
 
   test("mobile viewport: hamburger → Sheet 開閉、ナビ選択で自動クローズ", async ({ page }) => {

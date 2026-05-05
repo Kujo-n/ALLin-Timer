@@ -96,7 +96,7 @@ test.describe("Phase 4.6: member role split UX", () => {
       // live 画面の主要要素（タイマー / 自席セクション）が表示される。
       // Phase 4.13 で AppShell が `<main id="main">` を追加したため、live-client の
       // page-level `<main>` と二重になり `locator("main")` は strict-mode violation を
-      // 起こす。AppShell 側の `#main` を直接参照して fullscreen pattern が機能している
+      // 起こす。AppShell 側の `#main` を直接参照して redirect 先がレンダリング済みである
       // ことを確認する。
       await expect(memberPage.locator("#main")).toBeVisible();
     } finally {
