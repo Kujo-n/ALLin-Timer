@@ -35,12 +35,16 @@ Determine input type from `$ARGUMENTS`:
    - Look for `pending` phases
    - Check dependency chains (a phase may depend on prior phases being `complete`)
    - Select the **next eligible pending phase**
-4. Extract from the selected phase:
+4. Locate the phase's detail content. PRDs may inline Phase Details directly under `### Phase Details`, or split each phase into a per-file under a sibling directory (e.g. `allin-timer/phases/phase-X.md`). Determine which:
+   - If the **Phase Details** section contains a full inline block for the selected phase (`**Phase X: Name**` + Goal / Scope / Success signal), use that block as the detail source
+   - If the **Phase Details** section is a link list and points to `[phase-X.md](path/to/phase-X.md)` for the selected phase, **read that linked file** — it is the canonical source of Goal / 背景 / Scope / Success signal. The Implementation Phases table row only carries a one-line description, which is insufficient on its own
+   - If neither inline block nor linked file exists for the selected phase (e.g. the phase only has a table row), fall back to the table row's `Description` and `PRP Plan` link. If a plan file is already linked and the phase is `pending`, the plan file may itself serve as the detail source — read it before generating a new plan
+5. Extract from the resolved detail content (inline block or linked per-file):
    - Phase name and description
-   - Acceptance criteria
-   - Dependencies on prior phases
-   - Any scope notes or constraints
-5. Use the phase description as the feature to plan
+   - Acceptance criteria (Success signal)
+   - Dependencies on prior phases (from the table)
+   - Any scope notes or constraints (Goal / 背景 / Scope)
+6. Use the extracted Goal / Scope as the feature to plan
 
 If no pending phases remain, report that all phases are complete.
 
