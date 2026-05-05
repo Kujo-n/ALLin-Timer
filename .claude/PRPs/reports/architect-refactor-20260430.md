@@ -2,7 +2,7 @@
 
 ## Scope
 
-リポジトリ全体（src/ / firestore.rules / scripts/ / .claude/rules/）を Architect + Security 二眼で監査し、計画 [.claude/PRPs/plans/architect-refactor-20260430.plan.md](../plans/architect-refactor-20260430.plan.md) に従って 18 commit の atomic refactor を実施。観測可能な動作変更は 0。
+リポジトリ全体（src/ / firestore.rules / scripts/ / .claude/rules/）を Architect + Security 二眼で監査し、計画 [.claude/PRPs/plans/completed/architect-refactor-20260430.plan.md](../plans/completed/architect-refactor-20260430.plan.md) に従って 18 commit の atomic refactor を実施。観測可能な動作変更は 0。
 
 - Branch: `feature/hole-refactor`
 - Baseline commit: `7e8ab3b`

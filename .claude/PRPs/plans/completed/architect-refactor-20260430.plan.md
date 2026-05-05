@@ -2,7 +2,7 @@
 
 ## Summary
 
-`/architect-refactor` で実施した [監査レポート](../reviews/architect-refactor-20260430.md) の 16 finding 全件（critical 0 / high 1 / medium 7 / low 8）を atomic な commit に分解し、**既存テスト網（unit 523 件 + E2E）を常に green に保ちながら段階的にリファクタリング**する計画。
+`/architect-refactor` で実施した [監査レポート](../../reviews/architect-refactor-20260430.md) の 16 finding 全件（critical 0 / high 1 / medium 7 / low 8）を atomic な commit に分解し、**既存テスト網（unit 523 件 + E2E）を常に green に保ちながら段階的にリファクタリング**する計画。
 
 **観測可能な動作変更は 0**。ユーザー体験 / 永続化フォーマット / Firestore スキーマ / URL / 環境変数の破壊的変更を一切起こさない。1 commit = 1 finding を原則とし、依存がある finding（`limits.ts` 集約 → repositories 移行 → wrap helper など）は 2-3 commit に分割する。
 
@@ -13,7 +13,7 @@
 1. `npm run typecheck` / `npm run lint` / `npm test` / `npm run build` がすべて pass。
 2. 既存 unit test 523 件のうち skip / disable / 削除なし。テストの書換は「実装の内部詳細に依存していた」ケースのみ、commit message に明記する。
 3. 公開 API（pages / URL / Firestore schema / 招待コード文字列フォーマット / 環境変数）に破壊的変更なし。
-4. プロジェクト規約（[firebase-patterns.md](../../rules/firebase-patterns.md) / [error-logging.md](../../rules/error-logging.md) / [security.md](../../rules/security.md) / [group-membership.md](../../rules/group-membership.md)）を維持。
+4. プロジェクト規約（[firebase-patterns.md](../../../rules/firebase-patterns.md) / [error-logging.md](../../../rules/error-logging.md) / [security.md](../../../rules/security.md) / [group-membership.md](../../../rules/group-membership.md)）を維持。
 5. `.claude/rules/` の更新は本リファクタで「定数の出所」「招待コード長」「allowed-keys 一覧表」を変更する commit と同じ commit に含める。
 
 E2E は **(P0) 着手前** と **(P5) 最終検証** の 2 回走らせる。中間 commit では unit + typecheck + lint + build で代替する（emulator 起動コストを抑えるため）。
@@ -21,7 +21,7 @@ E2E は **(P0) 着手前** と **(P5) 最終検証** の 2 回走らせる。中
 ## Metadata
 
 - **Complexity**: Large（11–14 commit、約 1,500–2,500 行の差分）
-- **Source review**: [.claude/PRPs/reviews/architect-refactor-20260430.md](../reviews/architect-refactor-20260430.md)
+- **Source review**: [.claude/PRPs/reviews/architect-refactor-20260430.md](../../reviews/architect-refactor-20260430.md)
 - **Branch**: `feature/hole-refactor`（既に存在 / clean）
 - **Estimated Files Touched**: 約 25 file（src 配下 約 20 / scripts 1 / rules ドキュメント 2 / 新規 hooks/services/components 約 6）
 
@@ -611,7 +611,7 @@ trace: .claude/PRPs/plans/architect-refactor-20260430.plan.md (P6-5)
   1. `npm run typecheck` / `npm run lint` / `npm test` / `npm run test:rules-limits` / `npm run build` を全件再走行 → 全 green 確認
   2. `npm run test:e2e` を再走行 → 全 green 確認
   3. `git log --oneline <baseline>..HEAD` で commit が atomic な単位で並んでいることを確認
-- レポート生成: `.claude/PRPs/reports/architect-refactor-20260430.md`（[テンプレート](../../skills/architect-refactor/references/report-template.md) 準拠）
+- レポート生成: `.claude/PRPs/reports/architect-refactor-20260430.md`（[テンプレート](../../../skills/architect-refactor/references/report-template.md) 準拠）
 - ユーザーに PR 起票の意向を確認（必要なら `/prp-pr` を促す）
 
 ## ロールバック戦略
