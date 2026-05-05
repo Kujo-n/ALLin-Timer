@@ -71,7 +71,7 @@
 
 - **Who**: ポーカー歴 5 年前後・運営歴 1 年前後のサークル運営メンバー（典型サークルに 3 人）。プレイヤーを兼任する
 - **Current behavior**: PC 画面に Poker Blind Timer を表示、紙と個人の記憶でテーブルバランスと席移動を管理
-- **Trigger**: トーナメント開始前の設定／開始操作／バスト申告時（受付は参加者側で完結したい）
+- **Trigger**: トーナメント開始前の設定／開始操作／バスト申告時(受付は参加者側で完結したい)
 - **Success state**: 自分がハンド中でも、アプリに指示を出すだけでトーナメントがルール通りに進行し、ブラインド確認の質問も席移動の議論も発生しない
 
 **Secondary User: サークル参加者**
@@ -158,7 +158,7 @@
 |---|---|---|
 | フロントエンド | Next.js 15（App Router） | Vercel との親和性・SSR/CSR 両対応・学習資料豊富 |
 | UI | Tailwind CSS + shadcn/ui | AI 支援での実装速度最大化 |
-| DB | **Firebase Firestore** | **休眠なし**（従量制・Google インフラ常時稼働）・Realtime リスナー標準・無料枠（1GB / 50K読/20K書 per day）はサークル規模で十分 |
+| DB | **Firebase Firestore** | **休眠なし**(従量制・Google インフラ常時稼働)・Realtime リスナー標準・無料枠（1GB / 50K読/20K書 per day）はサークル規模で十分 |
 | リアルタイム同期 | Firestore `onSnapshot` リスナー | DB 変更を全クライアントに自動伝播・追加インフラ不要 |
 | 認証 | **Firebase Authentication** | メール認証・匿名認証・Google ログイン対応。参加者の 3 択フロー（ログイン／ゲスト／アカウント登録）を公式 SDK で実装可 |
 | デプロイ | Vercel Hobby | 完全無料・GitHub 連携・運用ゼロ |
@@ -233,386 +233,29 @@
 
 ### Phase Details
 
-**Phase 1: Foundation**
-- **Goal**: アプリの土台を作り、以降の並列開発を可能にする
-- **Scope**:
-  - Next.js 15 プロジェクト初期化、Tailwind + shadcn/ui セットアップ
-  - Firebase プロジェクト作成、Firestore 初期データモデル定義、セキュリティルール雛形
-  - Firebase Authentication 有効化（メール・匿名・Email Link の 3 方式）
-  - Vercel デプロイパイプライン（GitHub 連携）
-  - MIT ライセンスファイル追加、`.gitignore` で `.env.local` 除外
-- **Success signal**: ローカルと Vercel 上で空のトーナメント作成→Firestore 反映が確認できる
+各 Phase の詳細（Goal / 背景 / Scope / Success signal）は [allin-timer/phases/](allin-timer/phases/) 配下に per-file 化した。`/prp-plan` は **Implementation Phases 表**で次の pending phase を見つけたら、本セクションの link を辿って該当ファイルから Goal / Scope / Success signal を読み込む（[`prp-plan.md`](../../commands/prp-plan.md) Phase 0 — DETECT 参照）。
 
-**Phase 2: Tournament Setup & Receipt**
-- **Goal**: トーナメントを設定し、参加者を集められる状態を作る
-- **Scope**:
-  - ストラクチャ編集 UI（ブラインド構造・初期スタック・レイトエントリー締切レベル）
-  - ストラクチャのプリセット保存
-  - トーナメント作成／編集／削除
-  - 参加者受付画面（URL/QR 発行）
-  - 参加者 3 択フロー実装:
-    - (a) ログイン（既存 Firebase Auth ユーザー）
-    - (b) ゲスト参加（匿名 Auth + 表示名入力）
-    - (c) アカウント登録（Email Link でマジックリンク認証・そのまま参加完了）
-- **Success signal**: 運営者がサンプルトーナメントを作成し、参加者役の端末から 3 ルート全てで受付完了できる
+- **Phase 1: Foundation** — アプリの土台 → [phase-1.md](allin-timer/phases/phase-1.md)
+- **Phase 2: Tournament Setup & Receipt** — トーナメント設定 + 参加者受付 → [phase-2.md](allin-timer/phases/phase-2.md)
+- **Phase 2.5: Group (サークル) Management** — サークル単位の共有モデル → [phase-2.5.md](allin-timer/phases/phase-2.5.md)
+- **Phase 3: Timer & Realtime & Viewer** — 全端末同期タイマー → [phase-3.md](allin-timer/phases/phase-3.md)
+- **Phase 4: Seating Automation** — 席決め + バランシング自動化 → [phase-4.md](allin-timer/phases/phase-4.md)
+- **Phase 4.5: Pre-Phase 5 Improvements** — Phase 5 前 UX / 運用 polish 7 件 → [phase-4.5.md](allin-timer/phases/phase-4.5.md)
+- **Phase 4.6: Member Role Split** — owner / organizer / member の 3 階層化 → [phase-4.6.md](allin-timer/phases/phase-4.6.md)
+- **Phase 4.7: Onboarding Polish & Structure Enhancements** — 7 件の UX / 機能ペイン解消 → [phase-4.7.md](allin-timer/phases/phase-4.7.md)
+- **Phase 4.8: Structure Template Library** — サークル横断テンプレート + templateAdmins → [phase-4.8.md](allin-timer/phases/phase-4.8.md)
+- **Phase 4.9: Audio Notifications (Default Sounds)** — bundled デフォルト音源で MVP → [phase-4.9.md](allin-timer/phases/phase-4.9.md)
+- **Phase 4.10: Audio Notifications (Custom Upload) [Deferred]** — Storage 必須のためオプション扱い → [phase-4.10.md](allin-timer/phases/phase-4.10.md)
+- **Phase 4.11: Timer Layout & Control Polish** — 3 カラム化 + pause invariant 修正 → [phase-4.11.md](allin-timer/phases/phase-4.11.md)
+- **Phase 4.12: Dashboard Top-Row Equal-Height & "卓 → Table" Rename** — 等高 grid + 用語統一 → [phase-4.12.md](allin-timer/phases/phase-4.12.md)
+- **Phase 4.13: Nav Shell 刷新 + サウンド設定導線整理** — AppShell + サイドバー + Sheet → [phase-4.13.md](allin-timer/phases/phase-4.13.md)
+- **Phase 4.14: Dashboard 受付画面 + サイドバー UX Polish** — Fullscreen API + 削除 cascade → [phase-4.14.md](allin-timer/phases/phase-4.14.md)
+- **Phase 4.15: Header Slot 機構 + Timer Controls 統合** — PageTitleSlot + コントロール集約 → [phase-4.15.md](allin-timer/phases/phase-4.15.md)
+- **Phase 4.16: Tournament Default Name (Finished Counter)** — `groups.finishedTournamentCount` + デフォルト名 → [phase-4.16.md](allin-timer/phases/phase-4.16.md)
+- **Phase 4.17: Group Default Seats Per Table** — `groups.defaultSeatsPerTable` 永続化 → [phase-4.17.md](allin-timer/phases/phase-4.17.md)
+- **Phase 5: Field Test & Polish** — 実運用ドライラン + 仮説検証 → [phase-5.md](allin-timer/phases/phase-5.md)
 
-**Phase 2.5: Group (サークル) Management**
-- **Goal**: サークルを第一級エンティティ化し、2〜3 人の運営者で structures / tournaments を共有できるようにする
-- **背景**: 実サークルは運営者が複数人いるため、Phase 2 の個人所有モデル（`ownerUid`）では共有できず実運用にならない
-- **Scope**:
-  - `groups/{gid}` コレクション（name / ownerUid / memberUids / createdAt）
-  - `groupJoinCodes/{code}` 招待コード（有効期限付き、1 回 or 複数回使用可）
-  - `users/{uid}.groupIds` 逆引きフィールド
-  - `structures/{sid}`・`tournaments/{tid}` を **`ownerUid` → `groupId` + `createdByUid` に破壊的変更**
-  - `/groups` 一覧 / `/groups/new` 作成 / `/groups/[gid]` 詳細（メンバー一覧・招待コード発行・脱退）
-  - `/groups/join/[code]` 加入ページ
-  - Phase 2 既存 UI（`/structures` / `/tournaments` など）を「現在選択中の group」をコンテキストとして扱うよう修正
-  - Firestore Security Rules: group メンバーシップ（`request.auth.uid in get(...).data.memberUids`）に基づく read/write
-  - **既存データは手動削除／マイグレーション前提**（破壊的変更）
-- **Success signal**: 運営者 2 人が同じ group に所属した状態で、片方が作った structure / tournament をもう片方が編集・使用できる
-
-**Phase 3: Timer & Realtime & Viewer**
-- **Goal**: 全端末で同期されたタイマー表示を実現する
-- **Scope**:
-  - サーバ時刻基準のタイマーロジック、レベル自動繰り上げ
-  - Firestore `onSnapshot` によるトーナメント状態購読
-  - 運営者用コントロール（開始／一時停止／再開／手動レベル変更）
-  - 参加者閲覧画面（モバイル最適化、ブラインド・残り時間・自席表示）
-  - 接続切断検知 UI（最終時刻＋「接続切れ」表示、Firestore オフライン永続化＋再接続時の状態再取得）
-- **Success signal**: 3 台以上の異なる端末でタイマーが 1 秒以内のズレで同期表示される
-
-**Phase 4: Seating Automation**
-- **Goal**: 席決め・バスト・バランシングを自動指示する
-- **Scope**:
-  - **初回席決めアルゴリズム**（ランダムシード、全員分）— 運営者トリガー操作で実行
-  - **進行中レイトエントリーの自動席決定**（参加登録完了と同時・TDA ルール準拠・レイトエントリー締切レベル判定）
-  - バストボタン UI と状態遷移
-  - テーブルバランシングロジック（TDA 2015 ルール準拠、6 テーブル以下前提）
-    - 人数差 2 以上でバランス発動
-    - BB 次のプレイヤーを移動対象に選定、**同着は席番号昇順で決定**
-    - 最終卓集約時のテーブルブレイク処理
-  - 席移動指示の参加者スマホへの表示
-  - バランシングロジックの単体テスト
-- **Success signal**: 架空の 20 人・3 テーブルトーナメントで、バスト発生 → バランス指示が TDA ルール通りに算出され、進行中の新規参加も自動配席される
-
-**Phase 4.5: Pre-Phase 5 Improvements**
-- **Goal**: Phase 5 のドライラン前に、Phase 4 完了時点で洗い出された UX / 運用の摩擦を一括整理する
-- **背景**: 受付・席管理・バランシングは Phase 4 で完結したが、`/groups` 画面からの導線不足・ヘッダーの email 表示・Winner 演出の欠如・匿名アカウントの蓄積・未使用の Email Link 方式など、実投入前に潰しておきたい 7 件の改善要望が発生
-- **Scope**:
-  - 運営者ダッシュボード（setup）に「自分も参加する」ワンクリック導線追加
-  - `/groups/[gid]` からトーナメント / ストラクチャへの直接遷移ボタン追加
-  - ヘッダーのユーザー表示を `displayName` 優先に変更（email はフォールバック）
-  - 未ログイン時のトップ画面を「ログイン/新規登録」1 ボタンに簡素化
-  - 残り 1 人を検知した時点で Winner バナー表示 → 2 秒後に `finishTournament` を運営者端末から自動呼出
-  - トーナメント終了 / ログアウト / 参加取消時、匿名ユーザーの Firebase Auth + `users/{uid}` を client-side best-effort で自己削除
-  - Email Link サインイン方式の完全撤廃（ルート・UI タブ・auth-actions・receipt・localStorage・テストすべて削除）
-- **Success signal**: 7 件すべての挙動を手動確認し、typecheck / lint / test / build が green、Phase 5 のドライラン準備が整う
-
-**Phase 4.6: Member Role Split**
-- **Goal**: サークル所属を「運営（organizer）」と「一般メンバー（general member）」に分離し、一般メンバーがアプリ上から参加サークルのトーナメントを見てワンタップ参加できるようにする
-- **背景**: Phase 2.5 のフラットな `memberUids` モデルでは「見るだけ・参加だけ」の権限レベルが存在せず、実サークルで非運営者をそのままメンバーに加えると全員が CRUD 権限を持ってしまう。実運用では「運営 2-3 人 + 参加する側の一般メンバー多数」の構成が必要
-- **Scope**:
-  - `groups/{gid}` スキーマ拡張: `ownerUid: string` → `ownerUids: string[]`（**オーナー複数可**）、`organizerUids: string[]` 新設（`memberUids ⊇ organizerUids ⊇ ownerUids` の invariant）
-  - 既存メンバーは全員 organizer として migration（運営権限は保持、破壊なし）。既存 `ownerUid` は `ownerUids: [ownerUid]` に昇格
-  - 招待コード加入のデフォルトを「一般メンバー」に変更（`memberUids` のみ +1、organizerUids / ownerUids には追加しない）
-  - ロール昇降格 UI は **オーナー専用**（owner のみ member ↔ organizer ↔ owner を操作可能）
-  - 最後のオーナーは降格 / 脱退 / group 削除不可（service + rule の二重ガード）
-  - `/tournaments` 一覧は一般メンバーも閲覧可能、カードに「参加する」ボタン追加（`joinAsCurrentUser` ワンタップ）
-  - 一般メンバーが `/tournaments/{tid}` （運営ダッシュボード）URL を直打ちした場合、`/tournaments/{tid}/live` にリダイレクト
-  - Firestore Security Rules: structures / tournaments / groupJoinCodes の write 条件を `isGroupMember` → `isOrganizer` に強化、groups の rename / delete / roles update は `isOwner` 判定（ownerUids 配列対応）
-  - 既存データ移行用 migration スクリプト（admin SDK、dry-run 対応）
-- **Success signal**:
-  - Owner / Organizer / Member の 3 視点でブラウザ検証がすべて通る（運営 UI の表示/非表示、参加ボタンの挙動、ロール変更の反映）
-  - Migration スクリプトが既存 groups を破壊せず新スキーマに揃える
-  - 最後のオーナー保護などの invariant が service + rule 両層で enforce されている
-
-**Phase 4.7: Onboarding Polish & Structure Enhancements**
-- **Goal**: Phase 5 のドライラン前に、運用で挙がった **7 件の UX / 機能ペイン**（memo-08 の 5 件 + memo-09 の 2 件）を一括解消する。Structure Templates は Phase 4.8 に分離
-- **背景**: 運営者側からの改善要望（`tmp/08_Phase4.6_memo.md` + `tmp/09_pahse4.7_memo.md`）で、サークル SNS ニックネーム前提の運用・平均スタック把握要求・ブレイク運用・サークルメンバー識別（UID → displayName）・トーナメント一覧の状態視認性が出揃った
-- **Scope**:
-  - Google 新規ログイン時の `DisplayNameDialog` 強制表示（`additionalUserInfo.isNewUser` 判定）、既存ユーザーは skip
-  - `AuthProvider.refreshUser()` を公開し、`signInAsGuest` / `registerWithEmail` / `updateDisplayName` 直後に呼び出してヘッダ displayName を即反映（useReducer bump で強制再描画）
-  - `structures.{rebuyStack, addOnStack}` と `structureSnapshot.{rebuyStack, addOnStack}` を nullable number として追加（schema additive、旧 doc は zod default で null）
-  - `AverageStackCard` を dashboard / live の TimerDisplay 枠外に独立カードとして配置（計算式: `totalEntries × initialStack ÷ activePlayers`）
-  - `Level.isBreak: boolean` 追加、LevelTable にチェックボックス、TimerDisplay は "☕ BREAK" 表示に切替
-  - **`groups/{gid}.memberDisplayNames` snapshot 追加**（`/groups/{gid}` で UID ではなく displayName 表示）。`consumeJoinCode` 時の書込と `updateDisplayName` 時の best-effort 伝播。rule は self-key 書込条件を追加（`diff().affectedKeys().hasOnly([auth.uid])`）
-  - **`/tournaments` 一覧カードの状態別色分け**: setup/seating=slate、running/paused=emerald、finished=muted 半透明。日本語ラベル化（進行中 / 未開催 / 終了）
-  - 既存 schema は additive、Firestore Rules は groups update に 1 条件追加、破壊的 migration 不要
-- **Success signal**: 7 件すべての挙動を手動ブラウザで確認し、typecheck / lint / test / build が green
-
-**Phase 4.8: Structure Template Library**
-- **Goal**: サークル横断でストラクチャのひな形を共有できる Structure Templates を提供。memo item 2 の初心者ペイン（SB/BB 設計に悩む）と「出先でスマホから追加できる運用」を両立する
-- **背景**: Phase 4.7 で基礎的な UX 改善は完了。初心者運営者が他サークルのベストプラクティスを再利用できる仕組みが未実装のため、テンプレート共有コレクションを新設する
-- **Scope**:
-  - **`structureTemplates/{tid}` コレクション新設**: サインイン済み全員が read・create 可、edit は本人のみ、delete は本人または管理者
-  - **`templateAdmins/{uid}` コレクション新設**: doc 存在 = テンプレート管理者。作成者脱会後のテンプレを削除する権限。bootstrap は Firestore Console で最初の 1 人を手動 seed
-  - 作成者名を template doc に `createdByDisplayName` として snapshot 保存（`users/{uid}` の self-only read 制約回避）
-  - `/templates` 一覧 / `/templates/new` / `/templates/{tid}/edit` の 3 ページ追加
-  - `/structures/new` の `StructureTemplatePicker` は `listStructureTemplates()` 経由で Firestore から取得し、選択でフォームに一括反映（Phase 4.7 時点では未実装）
-  - `firestore.rules` に `isTemplateAdmin()` helper と 2 match ブロック追加、本番デプロイ + README への管理者 seed 手順追記
-  - Phase 4.7 の `levelSchema.isBreak` / `rebuyStack` / `addOnStack` を re-use（schema drift 防止）
-- **Success signal**:
-  - Owner / 他人 / 管理者の 3 視点でブラウザ検証がすべて通る（編集・削除ボタンの表示／非表示、実操作の成功）
-  - Firestore Rules デプロイ後、最初の管理者が Console で seed 済み
-  - `/structures/new` で Firestore から取得したテンプレが適用できる
-
-**Phase 4.9: Audio Notifications (Default Sounds)**
-- **Goal**: ブラインドレベルが上がるタイミング／優勝者が確定したタイミングで音を鳴らし、運営者が見落とさないようにする。Phase 4.10 のカスタム音源アップロードに先立ち、デフォルト音源 1 種類で MVP として動かす
-- **背景**: PRD 当初の MVP scope に音声通知が含まれていなかったが、フィールド投入前の要件確認で「運営者がブラインドアップに気付かない」「会場で優勝確定が伝わりにくい」というペインが残っていることが判明し Must 化（要件漏れの追加）
-- **Scope**:
-  - **データモデル**: `groups/{gid}.audioSettings` フィールド追加（schema は additive）
-    - `{ enabled: boolean (default true), levelUpSoundId: string (default "default:bell"), winnerSoundId: string (default "default:bell"), volume: number (0.0–1.0, default 0.7) }`
-    - 既存 group docs は zod default で補完（破壊的 migration なし）
-  - **再生主体**: ロールベース。`useCurrentGroup()` の `currentGroupRole` が `"owner" | "organizer"` の端末でのみ再生。`member` および `/live` を見ている参加者では鳴らない
-    - `/live` を運営者が会場ディスプレイで全画面投影しているケースでは、運営者ロールで鳴る
-  - **検知ポイント**:
-    - レベル変更: `useTournamentTimer` 経由の `tournament.currentLevel` 変化を `useEffect` で観測
-    - 優勝確定: `resolveWinner(tournament, players)` の戻り値が `null → PlayerDoc` に遷移した瞬間
-    - debounce / 重複再生防止（手動 advance や reconnect 時の re-fire を抑止）
-  - **autoplay unlock**: `<SoundUnlockBanner>` を `/tournaments/[tid]` および `/tournaments/[tid]/live` で運営者ロール時のみ表示。「サウンドを有効化」ボタンクリックで `AudioContext.resume()`
-  - **設定 UI**: `/groups/[gid]/audio-settings`（organizer 以上のみアクセス可）。on/off トグル + 音源プルダウン（Phase 4.9 では `default:bell` 1 択） + 音量スライダー
-  - **デフォルト音源**: `public/sounds/level-up.{mp3,ogg}` / `public/sounds/winner.{mp3,ogg}` を bundled。ライセンス安全策として **ffmpeg の純音生成スクリプト**を `scripts/generate-default-sounds.sh` に同梱し、ファイル自体は生成物としてコミット
-  - **Firestore Rules**: `groups/{gid}` の update に「`audioSettings` だけを書き換える操作は organizer 以上」の条件を追加（既存 rule を壊さない additive 拡張）
-  - **テスト**: レベル切替検知 / `resolveWinner` 遷移検知 / ロールフィルタ / debounce のユニットテスト。実際の Audio 再生はモック
-- **Success signal**:
-  - Owner / Organizer / Member / 匿名参加者の 4 視点でブラウザ検証: 運営者ロールでは音が鳴る、参加者では鳴らない
-  - on/off 設定が group 全運営者に同期される
-  - autoplay unlock ボタンを押さないと音が鳴らない（ブラウザ仕様準拠）
-  - typecheck / lint / test / build が green
-
-**Phase 4.10: Audio Notifications (Custom Upload) [Deferred to Post-Phase 5]**
-- **位置付け**: **Phase 5 以降の改善候補に持ち越し**。Phase 4.9 のデフォルト音源で MVP 要件は満たせており、カスタム音源は付加価値であるため Phase 5 のドライラン前に実装しない。Phase 5 のフィールドテストで運営者ヒアリングを行い、カスタム音源の実需要が確認できた場合のみ Phase 5.x として着手判断する。Storage 未設定環境では引き続き Phase 4.9 のデフォルト音源で運用継続可能
-- **Goal**: サークルが独自の音源（自作・選曲）をアップロードして level-up / winner 通知に使えるようにする。Phase 4.9 の MVP からの自然拡張
-- **背景**: Phase 4.9 は実装シンプル化のためデフォルト音源 1 種固定。フィールドテスト前に「サークルらしさを出したい」「優勝の歓声音を別のものにしたい」要望に応えるためカスタム音源を追加
-- **オプション化の理由**:
-  - 2024-10 以降、Firebase の新規プロジェクトでは Cloud Storage 利用に Blaze プラン（従量課金 + クレジットカード登録）が必須化。MIT 公開リポジトリとしてフォークユーザーの導入ハードルを上げないため、Storage 必須化を避ける
-  - Phase 4.9 のデフォルト音源で「ブラインドアップ見落とし」「優勝確定の伝達」のコアペインは解消済み。カスタム音源は付加価値であり MVP の必須要件ではない
-  - 本家サークル（運営者の所属サークル）で Storage を有効化できる場合のみ実装する想定。Spark プランのまま Storage 有効化が可能か Console で要判定
-- **フォークユーザー向け運用**:
-  - Phase 4.10 を実装しない場合、`audioSettings.{levelUp,winner}SoundId` は `"default:bell"` 固定運用
-  - `/groups/[gid]/audio-settings` の音源プルダウンは Phase 4.9 と同じく `default:bell` 1 択のまま
-  - Storage SDK / Storage Rules / `audioAssets` サブコレクションは未追加
-  - README で「Phase 4.10 はオプション機能」「Storage 未設定でも Phase 4.9 まで運用可能」を明記
-- **Scope**（実装する場合）:
-  - **Firebase Storage 初期導入**:
-    - プロジェクトレベルで Storage を有効化（既存 env `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` を活用）
-    - SDK インポート (`firebase/storage`) を `src/lib/firebase/client.ts` の singleton に追加
-    - `storage.rules` 新規作成、deny-by-default から開始
-  - **データモデル**: `groups/{gid}/audioAssets/{assetId}` サブコレクション新設
-    - `{ name: string, storagePath: string, contentType: "audio/mpeg" | "audio/ogg", sizeBytes: number, createdAt: Timestamp, createdByUid: string, createdByDisplayName: string }`
-    - Phase 4.9 の `audioSettings.{levelUp,winner}SoundId` を `"default:bell"` または `"custom:<assetId>"` に拡張
-  - **アップロード UI**: `/groups/[gid]/audio-settings` に「音源を追加」ボタン。ファイル選択 → クライアント側で MIME / サイズ検証 → Storage に upload → Firestore に `audioAssets` doc 作成
-  - **制約**:
-    - 1 ファイル最大 1MB（クライアント + Storage Rules で二重チェック）
-    - group あたり最大 3 本（client + Firestore Rules で `getAfter()` カウント）
-    - mp3 (`audio/mpeg`) または ogg (`audio/ogg`) のみ
-  - **権限**: organizer 以上のみ create / delete 可能。**作成者本人でなくても organizer なら他者の音源を削除可**（要件 Q5 準拠）
-  - **Storage Rules**: `groups/{gid}/audioAssets/{assetId}` の path に対し、`isOrganizer(gid)` + サイズ / MIME 検証
-  - **設定 UI 拡張**: 音源プルダウンに `default:bell` + group 内のカスタム音源リストを表示
-  - **既存音源削除時の参照整合**: 削除しようとした音源が `audioSettings.{levelUp,winner}SoundId` に使われている場合は `default:bell` にフォールバック（service 層で atomic に処理）
-  - **テスト**: アップロード validation / 上限本数 / 権限 / 参照整合のユニット + 統合テスト
-- **Success signal**:
-  - 1MB 超や非 mp3/ogg のアップロードが client / Storage Rules 双方で拒否される
-  - group 内 3 本上限で 4 本目アップロードが拒否される
-  - organizer が他人の音源を削除可能、member は不可
-  - 使用中の音源を削除すると `audioSettings` が default にフォールバック
-  - typecheck / lint / test / build が green
-
-**Phase 4.11: Timer Layout & Control Polish**
-- **Goal**: Phase 4.9 のフィールド投入準備中に上がった「タイマー画面の見やすさ」「終了時の挙動」「サウンド UX」「pause 中レベル遷移バグ」を一括解消し、運営者が会場ディスプレイ投影でも片手スマホ操作でも違和感なく扱える状態に仕上げる
-- **背景**: Phase 4.9 のサウンド通知投入後に運営者から `tmp/10_Phase4.9_memo.md` で 5 件 + 追加 4 件のフィードバック・自主検証で発覚した 2 件のバグが発生。schema additive な範囲で UX を整理しつつ、pause/finish/手動 advance 周りの状態機械バグも合わせて潰す
-- **Scope**:
-  - **Live / Dashboard レイアウト 3 カラム化**（lg+）
-    - 左: `QrPanel`（途中参加用 QR、`lg:sticky lg:top-4` で常時可視）
-    - 中: `TimerDisplay` + `WinnerBanner` + 自分の席 + Structure（live のみ）
-    - 右: `NextBreakCard` / `AverageStackCard` / `PlayersCard`（`lg:sticky`）
-    - モバイル（lg 未満）はタイマー → 情報 → QR → その他の順で 1 カラム積み上げ
-  - **新規共通カード**:
-    - `StructureSnapshotCard`: dashboard と /live 双方で利用、現在 level をハイライト
-    - `NextBreakCard`: 次 break までの ETA を `mm:ss` / `h:mm:ss` 形式で表示（タイマーと書式統一）
-    - `PlayersCard`: 残人数 / 母数を `M / N` で表示
-    - `SoundToggleButton`: 3 状態識別（OFF=`VolumeX` 赤系 / 要有効化=`BellRing` amber / ON=`Volume2` 緑系）
-  - **TimerDisplay の SB/BB/Ante**: `text-3xl/4xl` 太字 + sky 系カラー、ラベルを uppercase tracking で小さく
-  - **TimerControls 再構成**: running/paused のボタンを **サウンド → 前レベル → 再生/一時停止 → 次レベル → 終了** の順にアイコン化（`SkipBack`/`Pause`/`Play`/`SkipForward`/`Square`）。`gap-x-10`（アイコン 1 個分）で誤タップ防止。dashboard ではタイマー直下に中央揃えで配置
-  - **AverageStackCard 整理**: 人数表示は `PlayersCard` に移管し、平均値と初期値のみ表示
-  - **タイマー停止仕様**: `getRemainingMs` を `state === "finished"` のとき `finishedAt` 基準で残時間固定（pause と同様の挙動）。終了時に `00:00` ではなく終了時点の残時間で表示が止まる
-  - **AudioContext 共有 unlocked**: `useAudioPlayer` の `unlocked` を `useState` から `useSyncExternalStore` に移行。`audio-context.ts` に `subscribeAudioContextState` / `readAudioContextState` を追加し、AudioContext singleton の `statechange` を全 hook に通知。dashboard と /live の両方で unlock 状態が即時同期される（再読み込み不要）
-  - **pause 中レベル遷移 invariant 修正**: `revertLevel` / `advanceLevel`（手動 + auto）が pause 状態のときに `pausedAt: null` を書き込み、`state="paused" && pausedAt=null` の不変条件違反 → 再開時 `tournament/invalid-state` エラーを誘発していた。`levelTransitionUpdates(prevState, newCurrentLevel, kind)` ヘルパに集約し、pause 中なら `pausedAt: serverTimestamp()` で新 level の先頭で再アーム
-  - **手動 advance/revert はサウンド非再生**: `tournamentBodySchema` に `lastLevelChangeKind: "auto" | "manual" | null | undefined` を additive で追加（既存 doc は missing field を許容）。advance(auto)→`"auto"`、advance(manual)/revert→`"manual"` を記録。`useAudioPlayer` の levelUp 検知で `lastLevelChangeKind === "manual"` なら早期 return → 運営者の意図的なレベル送り戻しでブラインドアップ音が誤発火しない
-  - **テスト追加**: 新規 3 カードの単体テスト（21 件）+ getRemainingMs finished 系（2 件）+ NextBreakInfo（5 件）+ pause 中 advance/revert invariant + lastLevelChangeKind 検証（6 件）+ useAudioPlayer の auto/manual 分岐（2 件）。453 → 478 件に増加
-- **Success signal**:
-  - 運営者が pause 中に「前/次レベル」を押しても再開時にエラーが出ない
-  - dashboard で unlock したサウンドが /live 側でも再読み込みなしで反映される
-  - 手動レベル送り戻しで音が鳴らず、auto-advance のみブラインドアップ音が鳴る
-  - 終了時、タイマーが `00:00` ではなく終了時点の残時間で停止する
-  - PC / モバイル両幅でレイアウトが崩れず、`SoundToggleButton` の 3 状態が色 + アイコンの両方で識別可能
-  - typecheck / lint / test / build が green
-
-**Phase 4.12: Dashboard Top-Row Equal-Height & "卓 → Table" Rename**
-- **Goal**: Phase 4.11 後の運営者フィードバックを反映し、Dashboard 上段 3 セット（QR / Timer+Controls / 統計 3 カード）を**同じ高さに揃える**ことと、UI 全体の **「卓 → Table」用語統一**を完了させる。schema / Firestore Rules / hook を一切触らない純 UI / ラベル変更
-- **背景**: Phase 4.11 で 3 カラムレイアウトを導入したが `lg:self-start` で各列が `align-items: stretch` をオプトアウトしているため高さが揃わず、会場プロジェクター投影時に視線が上下に飛ぶ。また `/live` 側は既に `Table` ラベル化済みだが Dashboard / SeatingBoard / TournamentForm / orchestrator description などに `卓` が残存しており、用語混在が運営者から指摘された
-- **Scope**:
-  - **Dashboard 上段の等高化**: 既存 grid を「等高 3 列の上段」と「下段（中央列の残り）」に分割。`lg:items-stretch` + 各列 `h-full` で QR を基準に他 2 列が伸びる。`lg:sticky lg:top-4 lg:self-start` を廃止
-  - **state による右列縮退**: state=`setup` / `seating` で 3 統計カードがすべて null を返すケースで右 aside ごと非表示にし grid を `lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)]` の 2 列に切替
-  - **TimerDisplay フォント拡大**: 残時間 `lg:text-[10rem] lg:leading-none`、SB/BB/Ante `lg:text-5xl`、BREAK `lg:text-4xl`
-  - **統計 3 カードのスタイル更新**: タイトル → `text-base md:text-lg font-semibold text-foreground`（OKLCH トークンでライト時黒・ダーク時白）、値テキストは 1 段拡大（NextBreak `md:text-4xl` / AvgStack `md:text-5xl` / Players active `md:text-5xl`）
-  - **QrPanel に className prop 追加**: `h-full` を呼び出し側から注入
-  - **WinnerBanner / SeatingBoard / PlayerList / Structure を上段 grid 外**に分離: 中央列の縦伸長で等高 grid が乱れるのを防ぐ
-  - **「卓 → Table」一括リネーム**（user-facing 文字列のみ・コメント / docstring は日本語維持）:
-    - `dashboard-client.tsx`: `1 卓 N 席` → `1 Table N 席`、`<CardTitle>卓 / 席</CardTitle>` → `<CardTitle>Table List</CardTitle>`
-    - `SeatingBoard.tsx`: `卓 N（M 人）` → `Table N（M 人）`
-    - `BalancingInstructionCard.tsx` / `orchestrator.ts`: `卓 N を閉鎖（M 名移動）` → `Table N を閉鎖（M 名移動）`
-    - `orchestrator.ts` move description: `${X}卓${Y}席 → ${P}卓${Q}席` → `Table X / 席 Y → Table P / 席 Q`
-    - `TournamentForm.tsx`: バリデーションエラー / Label / 補足の `卓` → `Table`
-    - `orchestrator.ts` errors: `テーブル数の上限（N 卓）` → `（N Tables）`、`1 卓あたり席数の値が不正です` → `1 Table あたり席数の値が不正です`
-    - `orchestrator.test.ts` description assertion 2 件を新フォーマットに更新
-  - **schema フィールド名 / collection 名 / AppError ドメインコードは不変**（`tableNum` / `tables` / `tournament/seating-too-many-tables` 等はすべて維持）
-  - **`/live` ページは無変更**（既に Table 表記）
-- **Success signal**:
-  - Dashboard `lg+` で上段 3 列の `offsetHeight` がピクセル単位で一致
-  - state=`setup`/`seating`/`finished` での右列出し入れが破綻なく動作
-  - 統計 3 カードのタイトルがライト=黒 / ダーク=白で大きく表示
-  - user-facing 文字列の "卓" が完全に "Table" になり、orchestrator description テストが新フォーマットで pass
-  - typecheck / lint / test / build が green、`/live` 差分ゼロ
-
-**Phase 4.13: Nav Shell 刷新 + サウンド設定導線整理**
-- **Goal**: Phase 4.12 まで各画面ヘッダに散在していたナビゲーションボタンとサウンド設定リンクを、グローバルなサイドバー / モバイル Sheet に集約する。**schema / Firestore Rules / repository 完全不変**で純 UI / a11y / 導線整理に閉じる
-- **背景**: Phase 4.12 までは画面ごとに「サークル」「トーナメント」「ストラクチャ」ボタンや `audio-settings` への戻り link を散在配置していたため、(a) ページ間のナビが一貫せず迷子になりやすい、(b) 同じリンクが複数箇所に重複、(c) `/groups/[gid]` の名前変更が Dialog 起動で操作 1 段重い、などのペインが運営者から挙がっていた。Phase 4.14 のサブナビ追加に先立ち、まずナビ shell を整える
-- **Scope**:
-  - **AppShell + PrimaryNav 新設**（[src/components/nav/](../../../src/components/nav/)）:
-    - `AppShell.tsx`: layout root から呼ばれる shell。`md+` で固定幅 `<aside id="primary-nav-sidebar">` を表示、`md` 未満は hamburger（`HeaderMenuButton`）+ Radix `Sheet` で expand
-    - `PrimaryNav.tsx`: nav 項目を role / signedIn ベースで gate（`resolveNavItems`）。aria-current=`page` で active 状態を表現
-    - `nav-items.ts`: ホーム / サークル / トーナメント / ストラクチャ / テンプレート / サウンド設定 / アカウント設定 を集中管理（`authOnly` / `requireOrganizer` / `requireGroup` の 3 種フラグで gate）
-    - `nav-state.tsx`: モバイル Sheet open/close を React context で共有
-    - shadcn `Sheet` primitive（[src/components/ui/sheet.tsx](../../../src/components/ui/sheet.tsx)）追加
-  - **fullscreen pattern**: `/^\/tournaments\/[^/]+\/live\/?$/` のときのみ `<aside>` 自体を描画しない（参加者用 `/live` を会場プロジェクター投影中に sidebar が映らないように）
-  - **ページ内 nav ボタン撤去**: `tournaments-client.tsx` / `structures-client.tsx` / `groups-detail-client.tsx` / `dashboard-client.tsx` などのヘッダから「サークル」「トーナメント」「ストラクチャ」リンクを削除しサイドバーに集約
-  - **`SoundUnlockBanner` / `SoundToggleButton` から `settingsHref` 廃止**: 詳細設定はサイドバー「サウンド設定」へ。`audio-settings` ページ自体は維持しつつ、戻り link は `?from=live&tid=` クエリで条件付き表示（`/live` から開いたときのみ「全画面表示へ戻る」を出す URL 契約）
-  - **`/groups/[gid]` のサークル名変更を Dialog → インライン編集**: ペン icon クリックで text input に切替、`requestAnimationFrame` 後に focus + select、Esc / 同名 / 空文字で自動キャンセル、Enter / blur で確定。optimistic UI 風挙動だが Firestore 書込み完了まで edit 状態を維持して整合
-  - **`AuthBadge` をゲスト表示に縮退**: 通常ユーザーの認証状態 / displayName / サークル切替はサイドバーフッター（user プロファイル link）が担うため `AuthBadge` は匿名ゲスト時のみ表示するよう簡素化。サークル切替（旧ヘッダ右上）は撤去（複数 group 所属時のフローはサイドバー「サークル一覧」配下のサブリンクで代替）
-  - **a11y**: skip link `<a href="#main">`、`<main id="main" tabIndex={-1}>` でフォーカス到達確保、Sheet には `SheetTitle "メニュー"` で accessible name を付与（Radix Dialog の aria-labelledby 経路）
-- **既知の所見**（local review より）:
-  - M1: `aria-controls` が desktop / mobile で参照先 ID が異なる（`primary-nav-sidebar` vs `primary-nav`）。SR 利用者向けの細かい改善余地あり、Phase 4.14 以降で fix 候補
-  - M2: `aria-current="page"` が親「サークル」と「サブリンク（group 名）」で重複付与される — Phase 4.14 で `isGroups && groupSubActive` 分岐により解消済み（PrimaryNav の active 解除ロジック追加）
-- **Success signal**:
-  - desktop（md+）でサイドバー、`md` 未満で hamburger + Sheet が描画され、ナビ選択で Sheet が自動クローズ
-  - `/live` でサイドバーが非表示になり会場投影が崩れない
-  - `aria-current=page` / focus 移動 / skip link が WCAG 2.2 AA 相当で機能
-  - `/groups/[gid]` のサークル名変更がインライン編集で 1 操作完結
-  - typecheck / lint / 479 unit tests / E2E（`nav-and-sound-toggle.spec.ts` 追加）すべて green
-
-**Phase 4.14: Dashboard 受付画面 + サイドバー UX Polish**
-- **Goal**: Phase 4.13 ナビ刷新後に運営者から挙がった 8 件の UX 摩擦（受付画面の grid 跳ね・サウンドトグルのリアクティブ反映漏れ・終了済みトーナメント削除導線・全画面遷移の重複・サイドバー文言と開催中トーナメントへの直接導線）を一括解消する。**schema / Firestore Rules / hook / repository の破壊的変更なし**で純 UI / 既存 service 層の組合せ調整に閉じる
-- **背景**: Phase 4.13 のナビ刷新と同時に運営者から `tmp/` 経由で改善要望が出揃った。Phase 4.13 でサイドバー骨格は完成したが (a) サイドバー文言が「サークル」「トーナメント」のみで「一覧」が欠ける、(b) 開催中トーナメントへの直接導線が無い、(c) 受付画面の grid が状態遷移で跳ねる、(d) 削除可能 state が setup のみで履歴整理ができない、(e) 「全画面表示」が `/live` への画面遷移であり同 dashboard を投影中の運営者には不便、などのペインが残存していた
-- **Scope**:
-  - **受付画面の右列恒常化（dashboard）**: `showRightColumn` フラグを撤去し `lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(220px,260px)]` で 3 列固定。`NextBreakCard` / `AverageStackCard` / `PlayersCard` の `state in {setup, seating}` ガードを緩め、各カード内部で「開始前プレビュー」（NextBreak は Lv 1 起点で最初の break level までのレベル数 / Average は受付済み × 初期スタック / Players は受付済み件数）を表示
-  - **サウンドトグルのリアクティブ反映**: `dashboard-client.tsx` の `onToggleEnabled` で `updateAudioSettings()` 成功後に `useCurrentGroup().refreshGroups()` を await。GroupProvider の `groups` を再フェッチし、リロードなしで `tournamentGroup.audioSettings.enabled` を即時反映。GroupProvider の onSnapshot 化は **NOT building**（最少差分維持）
-  - **終了済みトーナメント削除（破壊的 API rename）**: `deleteTournamentIfSetup` を `deleteTournament` に rename（互換 alias は作らない、Phase 2.5 先例）。`setup` または `finished` を許容、players / tables sub-collection を `writeBatch` で cascade 削除（参加者 ≤20 + tables ≤6 = 1 batch 内に収まる）。dashboard ヘッダの「削除」ボタンは `canDelete = state==="setup" || state==="finished"`、confirm dialog の文言は state で分岐（「開始前なので安全に削除」/ 「終了済みのため履歴ごと削除」）
-  - **ヘッダ整理**: 「一覧へ戻る」ボタン削除（サイドバー「トーナメント一覧」で代替）。トーナメント名横の raw state バッジ（`<span>{data.state}</span>`）を削除（TimerDisplay 内の日本語ラベル「開始前 / 進行中 / 一時停止中 / 終了」が真実源）。`ConnectionBadge` は維持
-  - **Fullscreen API トグル**: 「全画面表示」ボタンを `/tournaments/[tid]/live` への `<Link>` から `document.documentElement.requestFullscreen()` / `document.exitFullscreen()` のページ内トグルに置換。`fullscreenchange` を購読してアイコンを `Maximize` ↔ `Minimize` に同期（`webkit*` プレフィックスも保険で OR 登録）。失敗時は新ドメインコード `ui/fullscreen-failed` で `logger.warn` 握り。`/live` ページは無変更（参加者用フローと既存 E2E 依存のため）
-  - **サイドバー label rename**: `nav-items.ts` の「サークル」→「サークル一覧」、「トーナメント」→「トーナメント一覧」
-  - **サイドバー「トーナメント一覧」配下に開催中サブナビ追加**: `tournaments.ts` に `subscribeTournamentsByGroup` を新設（`tables.ts` の subscribe パターン mirror、複合 index 不要のため client 側ソート）。`PrimaryNav.tsx` で `currentGroupId` 配下の `seating` / `running` / `paused` トーナメントを realtime にサブリンクとして並べる。state 別のドット色分け（running=emerald / paused=amber / seating=slate）。`/tournaments/{tid}/edit` 等の派生ルートでも `pathname.startsWith` で active 判定
-  - **テスト**: 新規 unit（`deleteTournament` 5 ケース cascade + `subscribeTournamentsByGroup` smoke + 各カード setup 描画）+ E2E（サブナビ realtime 表示 + クリック遷移 + aria-current、受付画面の右列 / 全画面トグル / 終了済み削除フロー）
-- **破壊的変更ではないが要注意**:
-  - `deleteTournamentIfSetup` の rename は API 名のみ破壊的。callsite は `dashboard-client.tsx` 1 箇所のみで完結
-  - `state バッジ` 削除に伴い E2E 5 spec の `dash.stateBadge` selector を `region[name=タイマー]` 内の日本語ラベルに repoint（page object と spec の連鎖修正が必要）
-- **Success signal**:
-  - 受付画面の grid が `setup → seating → running → paused → finished` の状態遷移で列数を変えず、TimerDisplay フォントサイズが揺らがない
-  - サウンドトグルクリックでボタン色が即時切り替わる（リロード不要）
-  - 終了済みトーナメントを dashboard から削除でき、Firestore 上で sub-collection（players / tables）も同時に消える
-  - 「全画面表示」ボタンで同 dashboard が画面全体に拡張、再押下 / `Esc` で復帰してアイコンが Maximize に戻る
-  - サイドバーの文言が「サークル一覧」「トーナメント一覧」となり、開催中トーナメント作成 → 約 1 秒以内にサブリンクが realtime 表示・ステート遷移で消失
-  - typecheck / lint / test / build が green、E2E 全 spec pass
-
-**Phase 4.15: Header Slot 機構 + Timer Controls 統合 (Post-4.14 Polish)**
-- **Goal**: Phase 4.14 後のフォローアップ。グローバルヘッダにページ固有タイトル / 操作 slot を提供する仕組みを導入し、dashboard 上段の重複表示と独自ヘッダ実装を整理する。同時に Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル・接続状態バッジを `TimerControls` 内に統合してタイマー周辺の操作集約を完成させる。**schema / Firestore Rules / repository / hook 完全不変**で純 UI / レイアウト改善に閉じる
-- **背景**: Phase 4.13（AppShell + サイドバー）+ Phase 4.14（受付画面 grid・Fullscreen API・サブナビ）でナビと dashboard 機能は揃ったが、(1) グローバルヘッダの中央領域が空のままで dashboard 側にトーナメント名を別途配置していた、(2) Fullscreen ボタン / 同期中バッジが TimerControls とは別位置に散在し視線移動が大きい、(3) `ConnectionBadge` が横長で領域を圧迫、(4) 受付運用時にレイトレジスト締切 Lv が QR 周りから一目で読み取れない、というレビュー所見が出揃った
-- **Scope**:
-  - **グローバルヘッダ Page Title Slot 機構**: [src/components/nav/page-title.tsx](../../../src/components/nav/page-title.tsx) を新設。`PageTitleProvider` / `usePageTitle(title)` hook / `PageTitleSlot` の 3 構成で、各ページが mount 中に呼ぶだけでヘッダ中央にタイトルを表示、unmount 時に自動クリア。`setTitle` 参照は `useCallback` で安定化し消費側 `useEffect` の deps に乗せても再実行を起こさない
-  - **layout.tsx でのヘッダ slot 化**: 既存 `<header>` 内に `<PageTitleSlot />` を中央配置、`PageTitleProvider` を `AppShell` 配下にラップ
-  - **dashboard でのトーナメント名ヘッダ表示**: `dashboard-client.tsx` から `usePageTitle(tournament.name)` を呼んで dashboard 内ヘッダのトーナメント名表記を撤去、ヘッダ中央に集約
-  - **TimerControls 統合**: Phase 4.14 で dashboard ヘッダに置いた Fullscreen トグル（`requestFullscreen` / `exitFullscreen` + `fullscreenchange` listener）と `ConnectionBadge` を `TimerControls` 右側に移動し、タイマー操作・同期状態・全画面切替を 1 行に集約
-  - **ConnectionBadge 縦組み variant**: 縦組み（compact）レイアウト指定を追加し、TimerControls 右端の限られた横幅でも文言が可読に収まるようにする
-  - **QrPanel レイトレジスト Lv 表示**: `QrPanel` に「Late Registration: Lv N まで」（`structureSnapshot.lateRegistrationLevel` 参照）の補助情報を追加。受付運用時に締切が QR と同じカード内で確認できる
-  - **E2E Page Object 追従**: 全画面トグル位置変更（dashboard ヘッダ → TimerControls 内）を `tests/e2e/pages/TournamentsPage.ts` および `tests/e2e/dashboard-polish.spec.ts` の selector に反映
-  - **schema / Firestore Rules / repository / hook / AppError ドメインコード完全不変**（`ui/fullscreen-failed` は Phase 4.14 で導入済み、追加なし）
-- **Success signal**:
-  - dashboard 上段の視線移動が「ヘッダ（トーナメント名 + ナビ）→ TimerControls 集約コントロール → QR / 統計カード」の縦 1 列で完結
-  - 任意のページから `usePageTitle()` を呼ぶだけでヘッダ中央 slot を利用可能（ページ間遷移で残留しない）
-  - Fullscreen トグル / `ConnectionBadge` が TimerControls 右側に統合され、E2E spec が新位置の selector で pass
-  - QR カードからレイトレジスト締切 Lv が一目で読み取れる
-  - typecheck / lint / test / build が green
-
-**Phase 4.16: Tournament Default Name (Finished Counter)**
-- **Goal**: 新規トーナメント作成画面のトーナメント名フィールドが空欄のまま提示される UX を改善し、`[サークル名]トーナメント-X`（X = サークルで終了したトーナメント数 + 1）のフォーマットで自動プリセットする。サークル詳細画面では運営者（owner / organizer）が開催数を確認・手動補正でき、一般メンバーは値の閲覧のみ可能にする
-- **背景**: Phase 4.15 までの `/tournaments/new` は `<TournamentForm initialName="">` で空欄スタートだったため、運営者は毎回手で「Saturday 月例 #3」のような名前を入力していた。サークル単位で「何回目のトーナメント」を機械可読に持っておけば、命名の手間と認知負荷を同時に減らせる。同時に、実装前から運用していたサークルの実績数や、誤操作で counter がズレた場合に備えて、手動で値を補正できる導線が必要
-- **Scope**:
-  - **データモデル**: `groups/{gid}.finishedTournamentCount` フィールド追加（schema additive）
-    - `z.number().int().nonnegative().default(0)`（旧 doc は 0 で hydrate、破壊的 migration なし）
-  - **自動 +1 経路**: `finishTournament()` を `runTransaction` 化し、tournament の状態更新（`state: "finished"` / `finishedAt` / `pausedAt: null`）と `groups/{gid}.finishedTournamentCount` の `increment(1)` を atomic に実行。tx 内で `state !== "finished"` を再 read することで、複数端末同時呼び出し時の二重 increment race を防止
-  - **手動補正経路**: `setFinishedTournamentCount({ gid, uid, value })`（service） → `updateFinishedTournamentCount(gid, value)`（repository）。owner / organizer 限定で任意の非負整数値を書込可能。値域チェック（>= 0 / 整数）は service / repository / rule の三層で防御
-  - **新規作成画面**: `/tournaments/new` で `useCurrentGroup().groups` から `defaultName` を `useMemo` 派生して `<TournamentForm initialName=...>` に流し込む。追加 fetch なし
-  - **サークル詳細画面**: `/groups/[gid]` に「開催数」カードを追加。全メンバーが現在値を確認でき、owner / organizer は inline edit（`Pencil` アイコン + Input + 保存/キャンセル + Esc キャンセル + 同値 noop close）で値を補正可能
-  - **Firestore Rules**: `groups/{gid}` update に organizer-only `finishedTournamentCount` 単独書換 branch を 1 件 OR 追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['finishedTournamentCount'])` + `is int` + `>= 0`）。自動 +1 と手動補正の両経路を同 branch でカバー
-  - **self-* 分岐の security patch**（emulator 検証で発覚した既存欠陥の修復）: `groups/{gid}` update の self-add / self-leave / self-key memberDisplayNames 3 分岐に `request.resource.data.diff(resource.data).affectedKeys().hasOnly([...])` を追加し、map diff の `hasOnly([uid])` が空集合で true になる性質を悪用した audioSettings / finishedTournamentCount の任意 member 改竄経路を deny
-  - **テスト**: schema additive（3 ケース）、`finishTournament` の runTransaction 化（race guard 含む）、repository（happy / 負値 / 小数 / write エラー）、service（owner / organizer / member / 負値 / 小数）、rules emulator スクリプト（`scripts/test-rules-finished-count.mjs`、8 ケース全 pass）
-- **Success signal**:
-  - Owner / Organizer / Member の 3 視点でブラウザ検証: 開催数カードの表示は全員、編集ボタンは owner / organizer のみ
-  - `finishTournament()` 完了で対応する group の `finishedTournamentCount` が +1 され、`/tournaments/new` の連番が繰り上がる
-  - サークル詳細画面の inline edit で任意の非負整数値に補正でき、その値が次回作成時のデフォルト名に反映される
-  - rule + service の二重防御で範囲外値（負値・小数）が deny される
-  - rules emulator 8 ケースが全 pass、self-* 分岐の affectedKeys 漏洩も修復後に green
-  - typecheck / lint / test / build が green
-
-**Phase 4.17: Group Default Seats Per Table**
-- **Goal**: トーナメント新規作成時の「1 Table あたりの席数」初期値をサークル単位で永続化し、毎回手動で書き換える運用ペインを解消する。`/tournaments/new` のフォーム初期値として自動適用されるが、運営者は引き続き任意の値で上書き可能
-- **背景**: 6 人卓運用のサークルでは現状 `DEFAULT_SEATS_PER_TABLE = 9` がフォームに固定で出るため、トーナメントを作るたびに `9 → 6` に直す手間が発生。サークル単位で標準席数が決まっている運営実態に合わせ、`groups/{gid}` 側でデフォルト値を保存できるようにする
-- **Scope**:
-  - **データモデル**: `groups/{gid}.defaultSeatsPerTable` フィールド追加（schema additive）
-    - `z.number().int().min(2).max(10).default(9)`（`tournament.ts` の `seatsPerTable.min(2).max(10)` と完全一致）
-    - 既存 group docs は zod default で 9 として hydrate（破壊的 migration なし）
-  - **新規作成画面**: `/tournaments/new` で `useCurrentGroup().groups` から `defaultSeatsPerTable` を派生し、`<TournamentForm initialSeatsPerTable=...>` に流し込む。Phase 4.16 の `defaultName` 派生と同じ `useMemo` パターン。`undefined` 時は TournamentForm 側の `DEFAULT_SEATS_PER_TABLE = 9` にフォールバック
-  - **編集 UI**: サークル詳細画面（`/groups/[gid]`）に「1 Table あたりの席数（デフォルト）」カードを追加。Phase 4.16「開催数」カードの inline edit パターン（`Pencil` アイコン + Input + 保存/キャンセル + Esc キャンセル + 同値 noop close）を mirror。owner / organizer のみ編集可、参照は全メンバー
-  - **service / repository**: `setDefaultSeatsPerTable({ gid, uid, value })`（service） → `updateDefaultSeatsPerTable(gid, value)`（repository）の 2 層。範囲チェック（2..10 / 整数）は service / repository の両方で実施し、`AppError("validation/default-seats-invalid")` でラップ
-  - **Firestore Rules**: `groups/{gid}` update に organizer-only `defaultSeatsPerTable` 単独書換 branch を 1 件 OR 追加（`isOrganizer(gid)` + `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + `>= 2 && <= 10`）。owner はフル update branch でカバー済み
-  - **テスト**: schema additive（5 ケース：default / explicit / min-1 / max+1 / 非整数）、repository（happy path / 範囲外 / Firestore reject）、service（owner / organizer / member / 範囲外）、rules emulator（9 ケース：境界値 / member 拒否 / affectedKeys 拒否 / legacy doc / owner full update）
-  - **DRIFT WARNING**: schema 上限 10 は `firestore.rules` の `players seatNum <= 10` および `tournament.seatsPerTable.max(10)` と連動。同時に変更する制約をコメントで明記
-- **Success signal**:
-  - サークル A（`defaultSeatsPerTable: 6`）で `/tournaments/new` を開くと席数欄に `6` がプリセット、サークル B（未設定）では `9` がプリセット
-  - サークル詳細画面で owner / organizer が inline edit で値を変更できる、member は値表示のみ（編集ボタン非表示）
-  - 範囲外値（`1` / `11`）が service / rule の両層で deny される
-  - 既存 `/tournaments/[tid]/edit` 画面は変更なし（regression なし）
-  - typecheck / lint / test / build / rules emulator が green
-
-**Phase 5: Field Test & Polish**
-- **Goal**: 実運用に投入し、仮説検証を開始する
-- **Scope**:
-  - 有志 2-3 人でドライラン（バグ洗い出し）
-  - UX 磨き込み（エラー文言、警告タイミング、モバイル表示調整）
-  - 賞金計算（単純分配）を余力に応じて追加
-  - 初回サークル投入 → 運営者フィードバック収集
-  - 即時修正と次回投入準備
-- **UX 磨き込み候補（Phase 4.5 から繰越）**:
-  - `/groups` 一覧カードの「詳細」ボタンを **「開く」** にリネーム（遷移先の意図を強調、Phase 4.5 レビューで判明した「`/groups` と `/groups/[gid]` の役割が一見して分かりづらい」への対応）
-- **機能候補（運営者ヒアリング後に Phase 5.x として実施判断）**:
-  - **カスタム音源アップロード（旧 Phase 4.10 から持ち越し）**
-    - **背景**: Phase 4.9 のデフォルト音源（`level-up.{mp3,ogg}` / `winner.{mp3,ogg}`）で MVP 要件は満たせるが、サークル独自の音源（自作・選曲）への要望は付加価値として残存
-    - **想定 Scope**: Firebase Storage 初期導入、`groups/{gid}/audioAssets/{assetId}` サブコレクション、アップロード UI（1 ファイル ≤1MB / group あたり 3 本 / mp3 or ogg）、organizer 以上が CRUD 可能。詳細は Phase 4.10 セクションを参照
-    - **判断時期**: Phase 5 のドライラン後の運営者ヒアリングで、デフォルト音源では不足する具体的なシーンを確認してから着手判断。Firebase Storage の有効化（Spark プランで可否要確認 / Blaze プラン許容可否）も合わせて判断する
-  - **マスター機 1 台モード（ネットワーク非依存運用）**
-    - **背景 / 想定シナリオ**: サークルが借りるレンタルスペースに Wi-Fi が無く、運営者がスマートフォンのテザリングも避けたいケースで「PC 1 台だけでトーナメントを完走させたい」という要望
-    - **目的（解釈 A 限定）**: **マスター機自身の画面でブラインド進行と表示が止まらないこと**で十分。参加者の `/live` をオフライン中も同期する要件は範囲外（Firestore はクラウドブローカ型で両端のオンライン必須のため、原理的に Firestore のみでは満たせない）
-    - **現状の素地**:
-      - Firestore SDK の `persistentLocalCache` は既に有効（[src/lib/firebase/client.ts](../../../src/lib/firebase/client.ts) L86-87）
-      - `useTournamentTimer` の `setInterval` はネット切断でも継続動作（[src/lib/hooks/useTournamentTimer.ts](../../../src/lib/hooks/useTournamentTimer.ts) L65-96）
-      - 不足: 「進行担当を 1 台に固定する」仕組みが未実装。現状は組織者ダッシュボードを開いた全員が `advanceLevel` を試みる構造（[src/app/tournaments/[tid]/dashboard-client.tsx](../../../src/app/tournaments/[tid]/dashboard-client.tsx) L64-65）
-    - **Phase 5 で運営者に確認したい論点**:
-      1. 「マスター機」を tournament 単位で 1 台に固定する UX で十分か（dashboard に「このPCをマスターに設定」ボタン）
-      2. オフライン中に蓄積された write を再接続時に flush する挙動を許容するか（複数レベル分の `advanceLevel` 暴発リスク・`serverTimestamp` がオフライン中確定しない問題への対処要否）
-      3. オフライン中、参加者の `/live` 表示が固まることを「明示エラー表示」で許容するか、それとも「Wi-Fi 無し会場では `/live` を提供しない」運用ガイドで割り切るか
-      4. PC 1 台モードと既存の「複数 organizer 端末で冗長化される」現挙動を共存させるか、片方に倒すか
-    - **判断時期**: Phase 5 ドライラン後の運営者ヒアリングで、Wi-Fi 無し会場の発生頻度と回避策（テザリング受容度）を確認してから Phase 5.x として正式着手するか決定
-- **Success signal**: サークル 1 回目の投入でトーナメントが完走し、運営者から継続利用の意思表明を得る
+> Phase 5.1 以降は per-file の Phase Details を未作成。詳細は Implementation Phases 表行の description / PRP Plan link を直接参照する（plan が `pending` で投入されている phase は plan ファイルが Goal / Scope を兼ねる）。
 
 ### Parallelism Notes
 
