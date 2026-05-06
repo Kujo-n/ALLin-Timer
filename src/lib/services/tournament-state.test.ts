@@ -12,6 +12,7 @@ import {
   canAdvanceLevel,
   canAppendLevel,
   canBeginSeating,
+  canClone,
   canCommitInitialSeating,
   canConfirmSeating,
   canDelete,
@@ -316,5 +317,11 @@ describe("canAppendLevel", () => {
     expect(
       canAppendLevel(tournamentWithLevels("running", MAX_LEVELS_PER_TOURNAMENT - 1)),
     ).toBe(true);
+  });
+});
+
+describe("canClone", () => {
+  it.each(ALL_STATES)("state=%s で finished のときのみ true", (state) => {
+    expect(canClone(tournament({ state }))).toBe(state === "finished");
   });
 });

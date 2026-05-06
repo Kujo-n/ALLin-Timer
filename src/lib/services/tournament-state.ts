@@ -168,3 +168,12 @@ export function canAppendLevel(t: TournamentDoc): boolean {
   if (isFinished(t)) return false;
   return t.structureSnapshot.levels.length < MAX_LEVELS_PER_TOURNAMENT;
 }
+
+/**
+ * Phase 5.4: 「同じ参加者で次のトーナメントを作成」操作の許可判定。
+ *  - state === "finished" のみ true。
+ *  - membership / role の判定は呼出側（dashboard 側で `isOrganizer` と AND する）。
+ */
+export function canClone(t: TournamentDoc): boolean {
+  return isFinished(t);
+}
