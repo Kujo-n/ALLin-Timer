@@ -1,7 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { Timestamp } from "firebase/firestore";
+import { describe, expect, it, vi } from "vitest";
 
-import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
+import type {
+  StructureSnapshot,
+  TournamentDoc,
+} from "@/lib/firebase/schemas/tournament";
 
 import { StructureSnapshotCard } from "./StructureSnapshotCard";
 
@@ -98,5 +102,139 @@ describe("StructureSnapshotCard", () => {
       expect(r.className).not.toContain("bg-sky-500/10");
       expect(r.className).not.toContain("ring-2");
     });
+  });
+});
+
+describe("StructureSnapshotCard — editing (Phase 5.2)", () => {
+  const baseTs = Timestamp.fromMillis(0);
+  function makeTournament(
+    state: TournamentDoc["state"],
+    currentLevel: number,
+    snapshot: StructureSnapshot,
+  ): TournamentDoc {
+    return {
+      id: "t1",
+      groupId: "g1",
+      createdByUid: "u1",
+      name: "T",
+      structureSnapshot: snapshot,
+      state,
+      startedAt: null,
+      levelStartedAt: null,
+      pausedAt: null,
+      pausedAccumMs: 0,
+      finishedAt: null,
+      currentLevel,
+      lateEntryDeadlineLevel: 6,
+      seatsPerTable: 9,
+      createdAt: baseTs,
+      updatedAt: baseTs,
+    };
+  }
+
+  it("does not render edit affordance when canEdit is undefined (read-only legacy path)", () => {
+    render(<StructureSnapshotCard snapshot={makeSnapshot()} />);
+    expect(
+      screen.queryByRole("button", { name: /時間を変更/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render edit affordance when canEdit=true but tournament is missing", () => {
+    render(
+      <StructureSnapshotCard
+        snapshot={makeSnapshot()}
+        canEdit
+        onUpdateDurationSec={vi.fn()}
+        onEditError={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /時間を変更/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders edit affordance for current and future levels when running", () => {
+    const snapshot = makeSnapshot();
+    const tournament = makeTournament("running", 2, snapshot); // currentLevel=2 (1-based)
+    render(
+      <StructureSnapshotCard
+        snapshot={snapshot}
+        currentLevel={2}
+        canEdit
+        tournament={tournament}
+        onUpdateDurationSec={vi.fn()}
+        onEditError={vi.fn()}
+      />,
+    );
+    // Lv1 は過去なので編集ボタンなし
+    expect(
+      screen.queryByRole("button", { name: "Lv 1 の時間を変更" }),
+    ).not.toBeInTheDocument();
+    // Lv2 (現在) と Lv3 (未来 break) と Lv4 (未来) は編集ボタンあり
+    expect(
+      screen.getByRole("button", { name: "Lv 2 の時間を変更" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Lv 3 の時間を変更" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Lv 4 の時間を変更" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders edit affordance for all levels during setup", () => {
+    const snapshot = makeSnapshot();
+    const tournament = makeTournament("setup", 0, snapshot);
+    render(
+      <StructureSnapshotCard
+        snapshot={snapshot}
+        canEdit
+        tournament={tournament}
+        onUpdateDurationSec={vi.fn()}
+        onEditError={vi.fn()}
+      />,
+    );
+    // 全レベル編集可
+    [1, 2, 3, 4].forEach((lv) => {
+      expect(
+        screen.getByRole("button", { name: `Lv ${lv} の時間を変更` }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not render edit affordance for any level when finished", () => {
+    const snapshot = makeSnapshot();
+    const tournament = makeTournament("finished", 4, snapshot);
+    render(
+      <StructureSnapshotCard
+        snapshot={snapshot}
+        canEdit
+        tournament={tournament}
+        onUpdateDurationSec={vi.fn()}
+        onEditError={vi.fn()}
+      />,
+    );
+    [1, 2, 3, 4].forEach((lv) => {
+      expect(
+        screen.queryByRole("button", { name: `Lv ${lv} の時間を変更` }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not render edit affordance when canEdit is false even with full props", () => {
+    const snapshot = makeSnapshot();
+    const tournament = makeTournament("setup", 0, snapshot);
+    render(
+      <StructureSnapshotCard
+        snapshot={snapshot}
+        canEdit={false}
+        tournament={tournament}
+        onUpdateDurationSec={vi.fn()}
+        onEditError={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /時間を変更/ }),
+    ).not.toBeInTheDocument();
   });
 });

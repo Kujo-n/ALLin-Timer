@@ -1,8 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
+import type {
+  StructureSnapshot,
+  TournamentDoc,
+} from "@/lib/firebase/schemas/tournament";
+import { canEditLevelDurations } from "@/lib/services/tournament-state";
 import { cn } from "@/lib/utils";
+
+import { EditableLevelDurationCell } from "./EditableLevelDurationCell";
 
 interface Props {
   snapshot: StructureSnapshot;
@@ -11,18 +17,49 @@ interface Props {
   /** 末尾の説明文を出すか（dashboard では出す、live では非表示）。 */
   showDescription?: boolean;
   className?: string;
+  /**
+   * Phase 5.2: 各レベルの durationSec を編集できる callback。
+   * 指定なし（live など read-only 経路）では編集 affordance を出さない。
+   */
+  onUpdateDurationSec?: (levelIndex: number, durationSec: number) => Promise<void>;
+  /**
+   * Phase 5.2: tournament（state + currentLevel）。各行の編集可否判定に使う。
+   * 指定なしのとき canEditLevelDurations を呼べないため、編集モードに入らない。
+   */
+  tournament?: TournamentDoc;
+  /**
+   * Phase 5.2: ロール判定。owner / organizer のみ編集可。
+   * 指定なし or false なら編集 affordance を出さない（read-only）。
+   */
+  canEdit?: boolean;
+  /** Phase 5.2: 編集失敗時に呼ばれる（dashboard の setError に流す）。 */
+  onEditError?: (message: string) => void;
 }
 
 /**
  * ストラクチャ snapshot を一覧表示するカード。dashboard / live の両方で利用。
  * trace: tmp/10_Phase4.9_memo.md 改善要望#2（/live にも表示）
+ *
+ * Phase 5.2: organizer ロールのときに各レベルの durationSec を inline edit できる
+ * `EditableLevelDurationCell` を組み込む。`canEdit` / `tournament` /
+ * `onUpdateDurationSec` / `onEditError` のすべてが揃ったときのみ編集 affordance を出す。
  */
 export function StructureSnapshotCard({
   snapshot,
   currentLevel,
   showDescription = false,
   className,
+  onUpdateDurationSec,
+  tournament,
+  canEdit,
+  onEditError,
 }: Props) {
+  const editingEnabled =
+    canEdit === true &&
+    tournament !== undefined &&
+    onUpdateDurationSec !== undefined &&
+    onEditError !== undefined;
+
   return (
     <Card className={className}>
       <CardHeader>
@@ -49,6 +86,20 @@ export function StructureSnapshotCard({
             <tbody>
               {snapshot.levels.map((l) => {
                 const isCurrent = currentLevel != null && currentLevel === l.level;
+                const levelIndex = l.level - 1;
+                const cellEditable =
+                  editingEnabled && canEditLevelDurations(tournament, levelIndex);
+                const minutesCell = cellEditable ? (
+                  <EditableLevelDurationCell
+                    levelIndex={levelIndex}
+                    durationSec={l.durationSec}
+                    canEdit
+                    onSave={onUpdateDurationSec}
+                    onError={onEditError}
+                  />
+                ) : (
+                  Math.round(l.durationSec / 60)
+                );
                 if (l.isBreak) {
                   return (
                     <tr
@@ -62,7 +113,7 @@ export function StructureSnapshotCard({
                       <td className="px-2 py-1 font-semibold" colSpan={3}>
                         <span aria-hidden>☕ </span>BREAK
                       </td>
-                      <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
+                      <td className="px-2 py-1">{minutesCell}</td>
                     </tr>
                   );
                 }
@@ -79,7 +130,7 @@ export function StructureSnapshotCard({
                     <td className="px-2 py-1">{l.sb}</td>
                     <td className="px-2 py-1">{l.bb}</td>
                     <td className="px-2 py-1">{l.ante}</td>
-                    <td className="px-2 py-1">{Math.round(l.durationSec / 60)}</td>
+                    <td className="px-2 py-1">{minutesCell}</td>
                   </tr>
                 );
               })}
