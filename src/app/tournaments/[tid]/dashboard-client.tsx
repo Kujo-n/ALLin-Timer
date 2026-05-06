@@ -32,6 +32,7 @@ import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import {
+  appendLevel,
   deleteTournament,
   setLevelDurationSec,
 } from "@/lib/firebase/repositories/tournaments";
@@ -52,6 +53,7 @@ import {
 } from "@/lib/services/seating/orchestrator";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 import {
+  canAppendLevel,
   canDelete as canDeleteTournament,
   canEdit as canEditTournament,
   isInProgress,
@@ -547,6 +549,10 @@ export function DashboardClient({ tid }: { tid: string }) {
           await setLevelDurationSec(tid, user.uid, groupIds, levelIndex, durationSec);
         }}
         onEditError={setError}
+        canAppend={isOrganizer && canAppendLevel(data)}
+        onAppendLevel={async (input) => {
+          await appendLevel(tid, user.uid, groupIds, input);
+        }}
       />
 
 
