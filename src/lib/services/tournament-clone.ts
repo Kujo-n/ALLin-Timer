@@ -1,4 +1,4 @@
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import { clonePlayersFromTournament } from "@/lib/firebase/repositories/players";
 import { createTournament } from "@/lib/firebase/repositories/tournaments";
 import type { CreateTournamentInput } from "@/lib/firebase/schemas/tournament";
@@ -45,8 +45,8 @@ export async function cloneTournamentWithPlayers(
     });
     return { newTid, cloned };
   } catch (e) {
-    throw e instanceof AppError
-      ? e
-      : AppError.from(e, "firestore/write_failed", "クローンに失敗しました");
+    // 内部の clonePlayersFromTournament で既に AppError ラップ + logger.warn 済み。
+    // 二重 wrap / 二重 warn を避けるため unwrapOrFrom で透過する。未 wrap のときだけ補完。
+    throw unwrapOrFrom(e, "firestore/write_failed", "クローンに失敗しました");
   }
 }
