@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
@@ -43,15 +43,12 @@ import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
 import { useAutoFinish } from "@/lib/hooks/useAutoFinish";
 import { useFullscreen } from "@/lib/hooks/useFullscreen";
 import { useGroupRole } from "@/lib/hooks/useGroupRole";
+import { useManualSeatChange } from "@/lib/hooks/useManualSeatChange";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
-import {
-  applyManualSeatChange,
-  applyManualSeatUndo,
-  setIsPlayingDealer,
-} from "@/lib/services/seating/orchestrator";
+import { setIsPlayingDealer } from "@/lib/services/seating/orchestrator";
 import { getSameTableActiveOtherIds } from "@/lib/services/seating/same-table";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 import {
@@ -86,27 +83,6 @@ export function DashboardClient({ tid }: { tid: string }) {
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [tables, setTables] = useState<TableDoc[]>([]);
-
-  // Phase 5.x: 運営者の D&D 手動席移動。busy 中は次の drag を抑止。
-  const [seatChangeBusy, setSeatChangeBusy] = useState(false);
-  // 直近の移動を 30 秒間 undo 可能にする banner 状態。
-  // cascade で複数 move が起きた場合は全 move を保持して reverse で undo する。
-  const [seatChangeUndo, setSeatChangeUndo] = useState<{
-    /** undo banner に表示するための「主役」プレイヤーの label */
-    summary: string;
-    /** undo 時に reverse 適用する全 move（cascade なら N 件、単純 move なら 1 件） */
-    moves: Array<{
-      playerId: string;
-      from: { tableNum: number; seatNum: number };
-      to: { tableNum: number; seatNum: number };
-    }>;
-  } | null>(null);
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    };
-  }, []);
 
   // Phase 4.14 追加要望: トーナメント名を AppRoot のグローバルヘッダ（「ALLin-PokerTimer」
   // と同じ行）の中央 slot に出す。data ロード前は null（slot 非表示）。
@@ -204,90 +180,21 @@ export function DashboardClient({ tid }: { tid: string }) {
     }
   }
 
-  // Phase 5.x: D&D による手動席移動。orchestrator.applyManualSeatChange を呼び、
-  // 成功時は 30 秒間 undo 可能な banner を表示する（cascade の場合も全 move 保持）。
-  // 失敗（race / seat-taken / state ガード違反）は applied=false で返るため inline message。
-  const handleMoveSeat = useCallback(
-    async (player: PlayerDoc, to: { tableNum: number; seatNum: number }) => {
-      if (!user) return;
-      if (seatChangeBusy) return;
-      if (player.tableNum === null || player.seatNum === null) return;
-      const from = { tableNum: player.tableNum, seatNum: player.seatNum };
-      setSeatChangeBusy(true);
-      try {
-        const result = await applyManualSeatChange(
-          tid,
-          user.uid,
-          groupIds,
-          player.id,
-          to,
-          players,
-        );
-        if (!result.applied) {
-          setError("席を変更できませんでした（席が埋まっている、または状態が変わった可能性）");
-          return;
-        }
-        // 成功 → undo banner state 更新 + 30 秒タイマーで自動非表示。
-        // result.moves は applySingleMove / applyCascadeMoves が必ず返す（applied=true なら non-null）。
-        const moves = result.moves ?? [
-          { playerId: player.id, from, to },
-        ];
-        const cascadeNote = moves.length > 1 ? `（${moves.length} 名 cascade）` : "";
-        setSeatChangeUndo({
-          summary: `${player.displayName} を Table ${from.tableNum} / 席 ${from.seatNum} → Table ${to.tableNum} / 席 ${to.seatNum} へ移動${cascadeNote}`,
-          moves,
-        });
-        if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-        undoTimeoutRef.current = setTimeout(() => {
-          setSeatChangeUndo(null);
-        }, 30_000);
-      } catch (e) {
-        const wrapped = AppError.from(
-          e,
-          "firestore/write_failed",
-          "席の変更に失敗しました",
-        );
-        logger.warn(wrapped.message, { code: wrapped.code, tid, pid: player.id });
-        setError(`${wrapped.code}: ${wrapped.message}`);
-      } finally {
-        setSeatChangeBusy(false);
-      }
-    },
-    [user, seatChangeBusy, tid, groupIds, players],
-  );
-
-  // 直近の手動席移動を reverse 適用して元に戻す。
-  // cascade だった場合も全 move を逆方向 (from↔to swap) で 1 tx 内に commit する。
-  const handleUndoSeatChange = useCallback(async () => {
-    if (!user || !seatChangeUndo || seatChangeBusy) return;
-    const { moves } = seatChangeUndo;
-    setSeatChangeBusy(true);
-    try {
-      const result = await applyManualSeatUndo(
-        tid,
-        user.uid,
-        groupIds,
-        moves,
-        players,
-      );
-      if (!result.applied) {
-        setError("元に戻せませんでした（席が埋まっている、または状態が変わった可能性）");
-        return;
-      }
-      setSeatChangeUndo(null);
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    } catch (e) {
-      const wrapped = AppError.from(
-        e,
-        "firestore/write_failed",
-        "元に戻せませんでした",
-      );
-      logger.warn(wrapped.message, { code: wrapped.code, tid });
-      setError(`${wrapped.code}: ${wrapped.message}`);
-    } finally {
-      setSeatChangeBusy(false);
-    }
-  }, [user, seatChangeUndo, seatChangeBusy, tid, groupIds, players]);
+  // Phase 5.x: D&D による手動席移動の state / 30 秒 undo banner / cascade 適用は
+  // useManualSeatChange hook に集約済み。dashboard 側は busy / undoBanner /
+  // 2 つの handler を SeatingBoard と undo banner UI に渡すだけ。
+  const {
+    busy: seatChangeBusy,
+    undoBanner: seatChangeUndo,
+    handleMoveSeat,
+    handleUndoSeatChange,
+  } = useManualSeatChange({
+    tid,
+    uid: user?.uid ?? null,
+    groupIds,
+    players,
+    onError: setError,
+  });
 
   if (timerError) {
     return (
