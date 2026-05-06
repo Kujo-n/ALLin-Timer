@@ -1,9 +1,16 @@
 import { Timestamp } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
-import { getLevelInfo, getNextBreakInfo, getRemainingMs, shouldAutoAdvance } from "./timer";
+import {
+  getLevelInfo,
+  getNextBreakInfo,
+  getRemainingMs,
+  resolveRanking,
+  shouldAutoAdvance,
+} from "./timer";
 
 const baseCreatedAt = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
 const t0 = Timestamp.fromDate(new Date("2026-04-20T10:00:00Z"));
@@ -307,5 +314,146 @@ describe("shouldAutoAdvance", () => {
   it("returns false when levelStartedAt is null", () => {
     const t = makeTournament({ levelStartedAt: null });
     expect(shouldAutoAdvance(t, t0Ms + 700_000)).toBe(false);
+  });
+});
+
+/**
+ * Phase A: 順位導出の純関数。`finishTournament` の seasonStats 増分で利用するため、
+ * 同 ms タイ・全員 active・空配列の境界も決定論的に動くことを characterization する。
+ */
+function makePlayer(overrides: Partial<PlayerDoc> = {}): PlayerDoc {
+  return {
+    id: "p1",
+    displayName: "P1",
+    uid: "p1",
+    entryAt: Timestamp.fromMillis(t0Ms),
+    isBusted: false,
+    bustedAt: null,
+    tableNum: null,
+    seatNum: null,
+    lastMovedAt: null,
+    isPlayingDealer: false,
+    ...overrides,
+  };
+}
+
+describe("resolveRanking", () => {
+  it("returns empty array for empty input", () => {
+    expect(resolveRanking([])).toEqual([]);
+  });
+
+  it("places single active player at rank 1", () => {
+    const winner = makePlayer({ id: "p1", uid: "u1", displayName: "Alice" });
+    const r = resolveRanking([winner]);
+    expect(r).toEqual([{ pid: "p1", rank: 1, uid: "u1", displayName: "Alice" }]);
+  });
+
+  it("ranks 1 active + 4 busted by bustedAt desc (active is rank 1)", () => {
+    // bust order: p2(t+5s) bust 4th, p3(t+10s) bust 3rd, p4(t+20s) bust 2nd, p5(t+30s) bust 1st (last bust = rank 2)
+    const p1 = makePlayer({
+      id: "p1",
+      uid: "u1",
+      displayName: "Alice",
+      entryAt: Timestamp.fromMillis(t0Ms),
+    });
+    const p2 = makePlayer({
+      id: "p2",
+      uid: "u2",
+      displayName: "Bob",
+      entryAt: Timestamp.fromMillis(t0Ms + 100),
+      isBusted: true,
+      bustedAt: Timestamp.fromMillis(t0Ms + 5_000),
+    });
+    const p3 = makePlayer({
+      id: "p3",
+      uid: "u3",
+      displayName: "Carol",
+      entryAt: Timestamp.fromMillis(t0Ms + 200),
+      isBusted: true,
+      bustedAt: Timestamp.fromMillis(t0Ms + 10_000),
+    });
+    const p4 = makePlayer({
+      id: "p4",
+      uid: "u4",
+      displayName: "Dave",
+      entryAt: Timestamp.fromMillis(t0Ms + 300),
+      isBusted: true,
+      bustedAt: Timestamp.fromMillis(t0Ms + 20_000),
+    });
+    const p5 = makePlayer({
+      id: "p5",
+      uid: "u5",
+      displayName: "Eve",
+      entryAt: Timestamp.fromMillis(t0Ms + 400),
+      isBusted: true,
+      bustedAt: Timestamp.fromMillis(t0Ms + 30_000),
+    });
+    const r = resolveRanking([p3, p1, p5, p2, p4]); // 入力順は混ぜる
+    expect(r.map((x) => x.pid)).toEqual(["p1", "p5", "p4", "p3", "p2"]);
+    expect(r.map((x) => x.rank)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("orders multiple active players by entryAt asc (defensive for mid-game)", () => {
+    const a = makePlayer({
+      id: "a",
+      uid: "ua",
+      entryAt: Timestamp.fromMillis(t0Ms + 200),
+    });
+    const b = makePlayer({
+      id: "b",
+      uid: "ub",
+      entryAt: Timestamp.fromMillis(t0Ms + 100),
+    });
+    const c = makePlayer({
+      id: "c",
+      uid: "uc",
+      entryAt: Timestamp.fromMillis(t0Ms + 300),
+    });
+    const r = resolveRanking([a, b, c]);
+    expect(r.map((x) => x.pid)).toEqual(["b", "a", "c"]);
+  });
+
+  it("breaks bustedAt-tie by entryAt asc, then by pid asc (deterministic)", () => {
+    const sameBust = Timestamp.fromMillis(t0Ms + 5_000);
+    const winner = makePlayer({ id: "w", uid: "uw" });
+    const p2 = makePlayer({
+      id: "p2",
+      uid: "u2",
+      entryAt: Timestamp.fromMillis(t0Ms + 100),
+      isBusted: true,
+      bustedAt: sameBust,
+    });
+    const p3 = makePlayer({
+      id: "p3",
+      uid: "u3",
+      entryAt: Timestamp.fromMillis(t0Ms + 100), // 同 entryAt
+      isBusted: true,
+      bustedAt: sameBust, // 同 ms バスト
+    });
+    const p1 = makePlayer({
+      id: "p1",
+      uid: "u1",
+      entryAt: Timestamp.fromMillis(t0Ms + 50), // 早い entryAt
+      isBusted: true,
+      bustedAt: sameBust, // 同 ms バスト
+    });
+    const r = resolveRanking([p3, p2, p1, winner]);
+    // active winner が rank 1。次にバスト 3 名は entryAt asc: p1(50ms) → p2(100ms) → p3(100ms, pid asc)
+    expect(r.map((x) => x.pid)).toEqual(["w", "p1", "p2", "p3"]);
+  });
+
+  it("returns deterministic order even with all-busted players (defensive)", () => {
+    const ts = Timestamp.fromMillis(t0Ms + 5_000);
+    const p1 = makePlayer({ id: "p1", isBusted: true, bustedAt: ts });
+    const p2 = makePlayer({ id: "p2", isBusted: true, bustedAt: ts });
+    const r = resolveRanking([p2, p1]);
+    expect(r.map((x) => x.pid)).toEqual(["p1", "p2"]);
+    expect(r.map((x) => x.rank)).toEqual([1, 2]);
+  });
+
+  it("preserves uid: null entries (Phase 4 以前互換)", () => {
+    const p1 = makePlayer({ id: "p1", uid: null, displayName: "Anonymous" });
+    const r = resolveRanking([p1]);
+    expect(r[0].uid).toBeNull();
   });
 });

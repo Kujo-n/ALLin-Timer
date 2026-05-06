@@ -90,6 +90,50 @@ export function resolveWinner(
 }
 
 /**
+ * Phase A: 全 player から最終順位を導出する純関数。
+ *
+ * 順位ルール:
+ *   1. 未バスト（active）プレイヤーが先頭。`finishTournament` は通常 active が 1 人で
+ *      呼ばれるが、防衛的に複数 active のときは `entryAt asc` で安定化する。
+ *   2. バスト済みは `bustedAt` 降順（後にバストした人ほど上位）。
+ *   3. 同 ms タイは `entryAt asc` → `id (= pid)` asc を tiebreak とする（決定論的）。
+ *
+ * 戻り値は 1-based rank の配列。`finishTournament` の seasonStats 増分や
+ * 結果カードのランキング表示で再利用する。
+ */
+export function resolveRanking(
+  players: readonly PlayerDoc[],
+): Array<{
+  pid: string;
+  rank: number;
+  uid: string | null;
+  displayName: string;
+}> {
+  const sorted = [...players].sort((a, b) => {
+    if (a.isBusted !== b.isBusted) return a.isBusted ? 1 : -1;
+    if (!a.isBusted && !b.isBusted) {
+      const ae = a.entryAt.toMillis();
+      const be = b.entryAt.toMillis();
+      if (ae !== be) return ae - be;
+      return a.id.localeCompare(b.id);
+    }
+    const aBust = a.bustedAt?.toMillis() ?? 0;
+    const bBust = b.bustedAt?.toMillis() ?? 0;
+    if (aBust !== bBust) return bBust - aBust;
+    const aEntry = a.entryAt.toMillis();
+    const bEntry = b.entryAt.toMillis();
+    if (aEntry !== bEntry) return aEntry - bEntry;
+    return a.id.localeCompare(b.id);
+  });
+  return sorted.map((p, i) => ({
+    pid: p.id,
+    rank: i + 1,
+    uid: p.uid,
+    displayName: p.displayName,
+  }));
+}
+
+/**
  * 次の break レベルまでの情報。
  *  - 現在 level が break のときは「現在 break 中」を意図して
  *    `levelsAhead === 0` / `etaMs === 残り時間` を返す。
