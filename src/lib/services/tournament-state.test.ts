@@ -22,6 +22,7 @@ import {
   canPause,
   canResume,
   canRevertLevel,
+  isBeforeStart,
   isFinished,
   isInProgress,
   isPaused,
@@ -102,6 +103,15 @@ describe("tournament-state — state predicates", () => {
     (state) => {
       expect(isInProgress(tournament({ state }))).toBe(
         state === "running" || state === "paused",
+      );
+    },
+  );
+
+  it.each(ALL_STATES)(
+    "isBeforeStart is true only for setup or seating (state=%s)",
+    (state) => {
+      expect(isBeforeStart(tournament({ state }))).toBe(
+        state === "setup" || state === "seating",
       );
     },
   );

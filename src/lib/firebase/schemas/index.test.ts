@@ -5,6 +5,8 @@ import {
   DEFAULT_AUDIO_SETTINGS,
   deriveRole,
   groupBodySchema,
+  isOrganizerRole,
+  isOwnerRole,
   type GroupBody,
 } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
@@ -623,6 +625,40 @@ describe("deriveRole", () => {
 
   it("returns null when uid is not in the group at all", () => {
     expect(deriveRole(baseGroup, "u-stranger")).toBeNull();
+  });
+});
+
+describe("isOrganizerRole / isOwnerRole", () => {
+  it("isOrganizerRole returns true for owner", () => {
+    expect(isOrganizerRole("owner")).toBe(true);
+  });
+
+  it("isOrganizerRole returns true for organizer", () => {
+    expect(isOrganizerRole("organizer")).toBe(true);
+  });
+
+  it("isOrganizerRole returns false for member", () => {
+    expect(isOrganizerRole("member")).toBe(false);
+  });
+
+  it("isOrganizerRole returns false for null", () => {
+    expect(isOrganizerRole(null)).toBe(false);
+  });
+
+  it("isOwnerRole returns true only for owner", () => {
+    expect(isOwnerRole("owner")).toBe(true);
+  });
+
+  it("isOwnerRole returns false for organizer", () => {
+    expect(isOwnerRole("organizer")).toBe(false);
+  });
+
+  it("isOwnerRole returns false for member", () => {
+    expect(isOwnerRole("member")).toBe(false);
+  });
+
+  it("isOwnerRole returns false for null", () => {
+    expect(isOwnerRole(null)).toBe(false);
   });
 });
 

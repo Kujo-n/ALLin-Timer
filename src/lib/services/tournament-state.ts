@@ -45,6 +45,17 @@ export function isInProgress(t: TournamentDoc): boolean {
 }
 
 /**
+ * setup または seating（トーナメント開始前）。
+ *
+ * Phase 4 architect-refactor 後の Phase 5.x で TimerDisplay / NextBreakCard /
+ * AverageStackCard の 3 component で `state === "setup" || state === "seating"` の
+ * 直接比較が散在したため、再集約のために導入。
+ */
+export function isBeforeStart(t: TournamentDoc): boolean {
+  return isSetup(t) || isSeating(t);
+}
+
+/**
  * トーナメント編集が可能か（dashboard の「編集」ボタン visibility）。
  * 開始前の setup 中のみ。membership は呼出側で別途判定する。
  */

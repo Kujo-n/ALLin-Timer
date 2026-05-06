@@ -117,3 +117,21 @@ export function deriveRole(group: GroupBody, uid: string): MemberRole | null {
   if (group.organizerUids.includes(uid)) return "organizer";
   return "member";
 }
+
+/**
+ * `MemberRole | null` から「organizer 以上（owner も含む）か」を判定する pure helper。
+ *
+ * Phase 4.6 で 3 階層ロールを導入した際、UI 各所で
+ *   `role === "owner" || role === "organizer"`
+ * を `isOrganizer` 変数名でインライン展開してきたが、Phase 5.x で 4 callsite に増えた
+ * drift を集約するために導入。命名は「変数名 isOrganizer 上で実は owner も含む」という
+ * 暗黙仕様を関数名に表出させる目的。
+ */
+export function isOrganizerRole(role: MemberRole | null | undefined): boolean {
+  return role === "owner" || role === "organizer";
+}
+
+/** `MemberRole | null` から「owner か」を判定する pure helper。`isOrganizerRole` と対。 */
+export function isOwnerRole(role: MemberRole | null | undefined): boolean {
+  return role === "owner";
+}
