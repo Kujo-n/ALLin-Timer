@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { AppendLevelInput } from "@/lib/firebase/repositories/tournaments";
 import type {
   StructureSnapshot,
   TournamentDoc,
@@ -8,6 +12,7 @@ import type {
 import { canEditLevelDurations } from "@/lib/services/tournament-state";
 import { cn } from "@/lib/utils";
 
+import { AppendLevelDialog } from "./AppendLevelDialog";
 import { EditableLevelDurationCell } from "./EditableLevelDurationCell";
 
 interface Props {
@@ -34,6 +39,16 @@ interface Props {
   canEdit?: boolean;
   /** Phase 5.2: 編集失敗時に呼ばれる（dashboard の setError に流す）。 */
   onEditError?: (message: string) => void;
+  /**
+   * Phase 5.3: 末尾レベル追加 callback。指定なし or `canAppend !== true` のとき
+   * append affordance を出さない。失敗時は AppError throw、Dialog が unwrapOrFrom で表示。
+   */
+  onAppendLevel?: (input: AppendLevelInput) => Promise<void>;
+  /**
+   * Phase 5.3: append 権限。owner / organizer かつ append 上限未達のとき true。
+   * 指定なし or false で append button 非表示（read-only）。
+   */
+  canAppend?: boolean;
 }
 
 /**
@@ -53,12 +68,16 @@ export function StructureSnapshotCard({
   tournament,
   canEdit,
   onEditError,
+  onAppendLevel,
+  canAppend,
 }: Props) {
   const editingEnabled =
     canEdit === true &&
     tournament !== undefined &&
     onUpdateDurationSec !== undefined &&
     onEditError !== undefined;
+  const appendEnabled = canAppend === true && onAppendLevel !== undefined;
+  const [appendOpen, setAppendOpen] = useState(false);
 
   return (
     <Card className={className}>
@@ -137,6 +156,25 @@ export function StructureSnapshotCard({
             </tbody>
           </table>
         </div>
+        {appendEnabled ? (
+          <div className="mt-3 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setAppendOpen(true)}
+              aria-label="レベル追加"
+            >
+              + レベル追加
+            </Button>
+            <AppendLevelDialog
+              open={appendOpen}
+              onOpenChange={setAppendOpen}
+              existingLevels={snapshot.levels}
+              onAppend={onAppendLevel}
+            />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Timestamp } from "firebase/firestore";
 import { describe, expect, it, vi } from "vitest";
 
@@ -236,5 +236,60 @@ describe("StructureSnapshotCard — editing (Phase 5.2)", () => {
     expect(
       screen.queryByRole("button", { name: /時間を変更/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("StructureSnapshotCard — append (Phase 5.3)", () => {
+  it("renders append button when canAppend=true and onAppendLevel is provided", () => {
+    render(
+      <StructureSnapshotCard
+        snapshot={makeSnapshot()}
+        canAppend
+        onAppendLevel={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "レベル追加" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render append button when canAppend is undefined (regression 0 for /live)", () => {
+    render(<StructureSnapshotCard snapshot={makeSnapshot()} />);
+    expect(
+      screen.queryByRole("button", { name: "レベル追加" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render append button when canAppend=false", () => {
+    render(
+      <StructureSnapshotCard
+        snapshot={makeSnapshot()}
+        canAppend={false}
+        onAppendLevel={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "レベル追加" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render append button when canAppend=true but onAppendLevel is missing", () => {
+    render(<StructureSnapshotCard snapshot={makeSnapshot()} canAppend />);
+    expect(
+      screen.queryByRole("button", { name: "レベル追加" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens AppendLevelDialog showing 'レベル N を末尾に追加' when append button is clicked", () => {
+    render(
+      <StructureSnapshotCard
+        snapshot={makeSnapshot()}
+        canAppend
+        onAppendLevel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "レベル追加" }));
+    // makeSnapshot() は 4 levels なので新規は Lv 5
+    expect(screen.getByText("レベル 5 を末尾に追加")).toBeInTheDocument();
   });
 });
