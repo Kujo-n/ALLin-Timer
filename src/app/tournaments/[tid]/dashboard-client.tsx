@@ -31,7 +31,10 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
-import { deleteTournament } from "@/lib/firebase/repositories/tournaments";
+import {
+  deleteTournament,
+  setLevelDurationSec,
+} from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
@@ -538,6 +541,12 @@ export function DashboardClient({ tid }: { tid: string }) {
         snapshot={data.structureSnapshot}
         currentLevel={data.currentLevel}
         showDescription
+        tournament={data}
+        canEdit={isOrganizer}
+        onUpdateDurationSec={async (levelIndex, durationSec) => {
+          await setLevelDurationSec(tid, user.uid, groupIds, levelIndex, durationSec);
+        }}
+        onEditError={setError}
       />
 
 
