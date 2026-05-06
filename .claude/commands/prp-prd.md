@@ -180,9 +180,24 @@ Ask final clarifying questions:
 
 ## Phase 7: GENERATE - Write PRD
 
-**Output path**: `.claude/PRPs/prds/{kebab-case-name}.prd.md`
+**Output path**: `.claude/PRPs/prds/{NN}-{kebab-case-name}.prd.md`
 
-Create directory if needed: `mkdir -p .claude/PRPs/prds`
+`{NN}` is the **next sequential 2-digit zero-padded number** (01, 02, 03, ...). Determine it by listing existing PRDs:
+
+```bash
+ls .claude/PRPs/prds/ | grep -E '^[0-9]{2}-' | sort | tail -1
+# extract the leading NN, increment by 1, zero-pad to 2 digits
+```
+
+If no numbered PRDs exist yet, start from `01`. The number reflects PRD creation order = development sequence; never re-number existing PRDs.
+
+Also create the matching plans folder skeleton:
+
+```bash
+mkdir -p .claude/PRPs/prds .claude/PRPs/plans/{NN}-{kebab-case-name}/completed
+```
+
+This makes `/prp-plan` invocations later resolve into the correct PRD-scoped folder automatically.
 
 ### PRD Template
 
@@ -353,7 +368,7 @@ After generating, report:
 ```markdown
 ## PRD Created
 
-**File**: `.claude/PRPs/prds/{name}.prd.md`
+**File**: `.claude/PRPs/prds/{NN}-{name}.prd.md`
 
 ### Summary
 
@@ -387,7 +402,7 @@ After generating, report:
 
 ### To Start Implementation
 
-Run: `/prp-plan .claude/PRPs/prds/{name}.prd.md`
+Run: `/prp-plan .claude/PRPs/prds/{NN}-{name}.prd.md`
 
 This will automatically select the next pending phase and create an implementation plan.
 ```
