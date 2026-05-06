@@ -14,7 +14,8 @@ import {
 } from "@/lib/firebase/repositories/players";
 import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
-import { tournamentBodySchema, type TournamentDoc } from "@/lib/firebase/schemas/tournament";
+import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
+import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
 import { logger } from "@/lib/logger";
 
 import {
@@ -84,15 +85,8 @@ export async function commitInitialSeating(
 ): Promise<void> {
   try {
     const plannedTableCount = await runTransaction<number>(firestore, async (tx) => {
+      const t = await loadTournamentInTx(tx, tid, userGroupIds);
       const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
       if (t.state !== "setup" && t.state !== "seating") {
         throw new AppError(
           "初回席決めは setup / seating 中のみ可能です",
@@ -229,15 +223,7 @@ export async function autoSeatLateEntry(
       .map((p) => p.id);
 
     await runTransaction(firestore, async (tx) => {
-      const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
+      const t = await loadTournamentInTx(tx, tid, userGroupIds);
       // Phase 5.1: 座席確定後 (seating) のレイトエントリーも即時配席するため
       // tx 内 state guard を seating/running/paused に緩和。setup / finished のみ skip。
       if (
@@ -605,15 +591,7 @@ async function applyCascadeMoves(
     let skipReason: string | null = null;
 
     await runTransaction(firestore, async (tx) => {
-      const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
+      await loadTournamentInTx(tx, tid, userGroupIds);
 
       // 各 cascade 対象 player を re-read し race guard。
       const freshCascade = await Promise.all(
@@ -732,15 +710,7 @@ async function applySingleMove(
     let skipReason: string | null = null;
 
     await runTransaction(firestore, async (tx) => {
-      const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
+      await loadTournamentInTx(tx, tid, userGroupIds);
 
       const pRef = doc(playersRef(tid), move.playerId);
       const pSnap = await tx.get(pRef);
@@ -851,15 +821,7 @@ async function applyTableBreak(
     let skipReason: string | null = null;
 
     await runTransaction(firestore, async (tx) => {
-      const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
+      await loadTournamentInTx(tx, tid, userGroupIds);
 
       // 全 move 対象 player を tx.get で再確認し race を弾く。
       const freshPlayers = await Promise.all(
@@ -984,15 +946,7 @@ export async function setIsPlayingDealer(
 ): Promise<void> {
   try {
     await runTransaction(firestore, async (tx) => {
-      const tRef = tournamentRef(tid);
-      const tSnap = await tx.get(tRef);
-      if (!tSnap.exists()) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      const t: TournamentDoc = { id: tSnap.id, ...tSnap.data() };
-      if (!userGroupIds.includes(t.groupId)) {
-        throw new AppError("not allowed", "firestore/permission-denied");
-      }
+      const t = await loadTournamentInTx(tx, tid, userGroupIds);
 
       const pRef = doc(playersRef(tid), pid);
       const pSnap = await tx.get(pRef);
