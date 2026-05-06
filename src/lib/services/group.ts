@@ -1,4 +1,11 @@
-import { arrayUnion, increment, runTransaction, Timestamp } from "firebase/firestore";
+import {
+  arrayUnion,
+  getDocs,
+  increment,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
 
 import { AppError, getErrorCode } from "@/lib/errors";
 import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
@@ -16,6 +23,14 @@ import {
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
 import {
+  seasonHistoryDocRef,
+} from "@/lib/firebase/repositories/seasonHistory";
+import {
+  seasonStatsRef,
+} from "@/lib/firebase/repositories/seasonStats";
+import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
+import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
+import {
   createJoinCode,
   defaultExpiresAt,
   getJoinCode,
@@ -27,8 +42,12 @@ import {
   getUserProfile,
   removeGroupIdFromUser,
 } from "@/lib/firebase/repositories/users";
-import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import {
+  DISPLAY_NAME_MAX_LENGTH,
+  type GroupDoc,
+} from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
+import { isInProgress, isSeating } from "@/lib/services/tournament-state";
 
 /**
  * group を作成し、作成者の users/{uid}.groupIds に逆引きを追加する。
@@ -335,6 +354,107 @@ export async function setDefaultSeatsPerTable({
   assertOrganizer(group, uid);
   await updateDefaultSeatsPerTable(gid, value);
   logger.info("setDefaultSeatsPerTable ok", { gid, uid, value });
+}
+
+/**
+ * Phase A: 現在シーズンを終了し、新シーズンを開始する。owner / organizer 限定。
+ *
+ * 動作:
+ *   1. **進行中 tournament の有無を pre-check**（seating / running / paused）。
+ *      存在すれば `season/in-progress-tournament` で early throw し、
+ *      `finishTournament` との race window を最小化する（pre-read 後・tx commit 前に
+ *      finishTournament が新規 stats を作ると新シーズンに leak するため、運営者に
+ *      先に終了させる UX を要求する）。
+ *   2. 現在の `seasonStats` 全件を tx 起動前に事前 read（snapshot 用 entries 構築）
+ *   3. tx 内で:
+ *      a. `seasonHistory/{newSeasonId}` に snapshot を append
+ *         （startedAt: 旧 `seasonStartDate`、endedAt: serverTimestamp、entries: 旧 stats）
+ *      b. 旧 `seasonStats/{uid}` 全件を delete
+ *      c. `groups/{gid}.seasonStartDate` を serverTimestamp で更新
+ *   `newSeasonId` は `crypto.randomUUID()`（Web 標準・Node 18+）。
+ *
+ * 注:
+ *   - 旧シーズン参加者 0 件でも `entries: []` で append（操作の事実を記録）
+ *   - 旧 `seasonStartDate` が null（初回開始）でも `startedAt: null` で記録
+ *   - displayName は seasonHistoryEntry rule / schema に合わせ 15 字に切り詰める
+ *     （player schema 側の旧 doc が 15 字超を保持していても history 側で deny されないように）
+ *   - pre-check 後・tx commit 前の race（`finishTournament` 並走）は完全には塞げない。
+ *     完全 race-free は Cloud Functions 化で対応（PRD 02 future）。
+ */
+export async function startNewSeason({
+  gid,
+  uid,
+}: {
+  gid: string;
+  uid: string;
+}): Promise<{ seasonId: string }> {
+  const group = await getGroup(gid);
+  assertOrganizer(group, uid);
+
+  // M-2 防御: 進行中（seating / running / paused）の tournament がある間はシーズン切替を拒否。
+  // finishTournament が tx commit する前に startNewSeason の pre-read が走ると、
+  // 当該 tournament の seasonStats が新シーズンに leak するため、運営者に
+  // 「先に終了処理を済ませてからシーズン切替する」UX を強制する。
+  const tournaments = await listTournamentsByGroup(gid);
+  const blocking = tournaments.find((t) => isInProgress(t) || isSeating(t));
+  if (blocking) {
+    throw new AppError(
+      `進行中のトーナメント「${blocking.name}」があります。先に終了してください。`,
+      "season/in-progress-tournament",
+    );
+  }
+
+  const seasonId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `season-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  // 事前 read: 旧 seasonStats 全件（tx 内では query 不可）
+  const statsSnap = await getDocs(seasonStatsRef(gid));
+  const entries = statsSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      uid: data.uid,
+      // 旧 stats が 15 字超の displayName を持っていても history rule で deny されないよう
+      // 防御的に slice する（schema 側は max 15 を強制するが、tx.set でも rule 整合を保つ）。
+      displayName: data.displayName.slice(0, DISPLAY_NAME_MAX_LENGTH),
+      participations: data.participations,
+      wins: data.wins,
+      finalTables: data.finalTables,
+      totalPoints: data.totalPoints,
+    };
+  });
+
+  await wrapFirestoreWrite(
+    "season/start-failed",
+    "シーズン開始に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        // (A) seasonHistory/{seasonId} を append（startedAt: 旧 seasonStartDate）
+        tx.set(seasonHistoryDocRef(gid, seasonId), {
+          startedAt: group.seasonStartDate ?? null,
+          endedAt: serverTimestamp(),
+          entries,
+        });
+        // (B) 旧 seasonStats を全件 delete
+        for (const d of statsSnap.docs) {
+          tx.delete(d.ref);
+        }
+        // (C) groups/{gid}.seasonStartDate を更新
+        tx.update(groupDocRef(gid), {
+          seasonStartDate: serverTimestamp(),
+        });
+      });
+    },
+    { gid, uid, seasonId, count: entries.length },
+  );
+  logger.info("startNewSeason ok", {
+    gid,
+    uid,
+    seasonId,
+    count: entries.length,
+  });
+  return { seasonId };
 }
 
 /**

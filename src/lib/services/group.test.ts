@@ -18,6 +18,8 @@ vi.mock("firebase/firestore", async () => {
     runTransaction: vi.fn(),
     arrayUnion: vi.fn((...args: unknown[]) => ({ __op: "arrayUnion", args })),
     increment: vi.fn((n: number) => ({ __op: "increment", n })),
+    getDocs: vi.fn(),
+    serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
   };
 });
 
@@ -56,7 +58,29 @@ vi.mock("@/lib/firebase/repositories/users", () => ({
   upsertUserProfile: vi.fn(),
 }));
 
-import { runTransaction } from "firebase/firestore";
+vi.mock("@/lib/firebase/repositories/seasonStats", () => ({
+  seasonStatsRef: vi.fn((gid: string) => ({ __ref: "seasonStats", gid })),
+  seasonStatsDocRef: vi.fn((gid: string, uid: string) => ({
+    __ref: "seasonStatsDoc",
+    gid,
+    uid,
+  })),
+}));
+
+vi.mock("@/lib/firebase/repositories/seasonHistory", () => ({
+  seasonHistoryRef: vi.fn((gid: string) => ({ __ref: "seasonHistory", gid })),
+  seasonHistoryDocRef: vi.fn((gid: string, seasonId: string) => ({
+    __ref: "seasonHistoryDoc",
+    gid,
+    seasonId,
+  })),
+}));
+
+vi.mock("@/lib/firebase/repositories/tournaments", () => ({
+  listTournamentsByGroup: vi.fn().mockResolvedValue([]),
+}));
+
+import { getDocs, runTransaction } from "firebase/firestore";
 
 import {
   createGroup,
@@ -70,6 +94,7 @@ import {
   updateGroupRoles,
 } from "@/lib/firebase/repositories/groups";
 import { createJoinCode, getJoinCode } from "@/lib/firebase/repositories/groupJoinCodes";
+import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import {
   addGroupIdToUser,
   getUserProfile,
@@ -90,6 +115,7 @@ import {
   renameGroup,
   setDefaultSeatsPerTable,
   setFinishedTournamentCount,
+  startNewSeason,
 } from "./group";
 
 const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
@@ -114,7 +140,8 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
       volume: 0.7,
     },
     finishedTournamentCount: 0,
-    defaultSeatsPerTable: 9,
+    defaultSeatsPerTable: 8,
+    seasonStartDate: null,
     createdAt: now,
     ...overrides,
   };
@@ -148,7 +175,9 @@ beforeEach(() => {
   vi.mocked(addGroupIdToUser).mockReset();
   vi.mocked(removeGroupIdFromUser).mockReset();
   vi.mocked(runTransaction).mockReset();
+  vi.mocked(getDocs).mockReset();
   vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+  vi.mocked(listTournamentsByGroup).mockReset().mockResolvedValue([]);
 });
 
 describe("createGroupWithOwner", () => {
@@ -534,6 +563,257 @@ describe("setDefaultSeatsPerTable", () => {
       expect(updateDefaultSeatsPerTable).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("startNewSeason (Phase A)", () => {
+  /** stats snapshot を tx 内で受け取る共通 helper。tx.delete / tx.set / tx.update の呼出を記録する。 */
+  function captureTxOps(stats: Array<{ id: string; data: Record<string, unknown> }> = []) {
+    const setCalls: Array<[unknown, Record<string, unknown>]> = [];
+    const deleteCalls: unknown[] = [];
+    const updateCalls: Array<[unknown, Record<string, unknown>]> = [];
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs: stats.map((s) => ({
+        id: s.id,
+        data: () => s.data,
+        ref: { __ref: "doc", id: s.id },
+      })),
+    } as never);
+    vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const tx = {
+        get: vi.fn(),
+        set: vi.fn((ref, data) => setCalls.push([ref, data as Record<string, unknown>])),
+        delete: vi.fn((ref) => deleteCalls.push(ref)),
+        update: vi.fn((ref, patch) =>
+          updateCalls.push([ref, patch as Record<string, unknown>]),
+        ),
+      };
+      await fn(tx as unknown as Parameters<typeof fn>[0]);
+      return undefined as unknown;
+    });
+    return { setCalls, deleteCalls, updateCalls };
+  }
+
+  it("snapshots current stats to seasonHistory + deletes old stats + updates seasonStartDate (owner)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    const ops = captureTxOps([
+      {
+        id: "u1",
+        data: {
+          uid: "u1",
+          displayName: "A",
+          participations: 5,
+          wins: 1,
+          finalTables: 2,
+          totalPoints: 25.0,
+        },
+      },
+      {
+        id: "u2",
+        data: {
+          uid: "u2",
+          displayName: "B",
+          participations: 3,
+          wins: 0,
+          finalTables: 1,
+          totalPoints: 15.0,
+        },
+      },
+    ]);
+
+    const result = await startNewSeason({ gid: "g1", uid: "uOwner" });
+
+    expect(result.seasonId).toBeTruthy();
+    expect(typeof result.seasonId).toBe("string");
+    // history append: 1 件
+    expect(ops.setCalls).toHaveLength(1);
+    const [, historyData] = ops.setCalls[0];
+    expect((historyData.entries as unknown[]).length).toBe(2);
+    expect(historyData.endedAt).toEqual({ __op: "serverTimestamp" });
+    // 旧 stats 全件 delete
+    expect(ops.deleteCalls).toHaveLength(2);
+    // group.seasonStartDate 更新: 1 件
+    expect(ops.updateCalls).toHaveLength(1);
+    const [, groupPatch] = ops.updateCalls[0];
+    expect(groupPatch.seasonStartDate).toEqual({ __op: "serverTimestamp" });
+  });
+
+  it("succeeds with empty entries when no participants exist (initial season)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    const ops = captureTxOps([]);
+
+    await startNewSeason({ gid: "g1", uid: "uOwner" });
+
+    expect(ops.deleteCalls).toHaveLength(0);
+    expect(ops.setCalls).toHaveLength(1); // history append（entries:[]）
+    const [, historyData] = ops.setCalls[0];
+    expect(historyData.entries).toEqual([]);
+    expect(ops.updateCalls).toHaveLength(1);
+  });
+
+  it("allows organizer (non-owner) to start a new season", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner", "uOrg"],
+        memberUids: ["uOwner", "uOrg"],
+      }),
+    );
+    const ops = captureTxOps([]);
+
+    await startNewSeason({ gid: "g1", uid: "uOrg" });
+
+    expect(ops.updateCalls).toHaveLength(1);
+  });
+
+  it("rejects general member with group/not-organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner", "uMember"],
+      }),
+    );
+    await expect(
+      startNewSeason({ gid: "g1", uid: "uMember" }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    // tx は呼ばれない
+    expect(runTransaction).not.toHaveBeenCalled();
+    expect(getDocs).not.toHaveBeenCalled();
+  });
+
+  it("preserves prior seasonStartDate as startedAt in the history doc", async () => {
+    const prior = Timestamp.fromDate(new Date("2026-04-01T00:00:00Z"));
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+        seasonStartDate: prior,
+      }),
+    );
+    const ops = captureTxOps([]);
+
+    await startNewSeason({ gid: "g1", uid: "uOwner" });
+
+    expect(ops.setCalls).toHaveLength(1);
+    const [, historyData] = ops.setCalls[0];
+    expect(historyData.startedAt).toEqual(prior);
+  });
+
+  /**
+   * H-1: 旧 stats の displayName が 15 字超過のときも history snapshot で 15 字に切り詰める
+   * （seasonHistoryEntry rule / schema deny を防ぎ tx 全体失敗を防ぐ最終ライン防御）。
+   */
+  it("truncates displayName to 15 chars when copying to history entries (Phase A H-1 defense)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    const long = "1234567890ABCDEFGHIJ"; // 20 文字
+    const ops = captureTxOps([
+      {
+        id: "u1",
+        data: {
+          uid: "u1",
+          displayName: long,
+          participations: 3,
+          wins: 1,
+          finalTables: 1,
+          totalPoints: 12.0,
+        },
+      },
+    ]);
+
+    await startNewSeason({ gid: "g1", uid: "uOwner" });
+
+    expect(ops.setCalls).toHaveLength(1);
+    const [, historyData] = ops.setCalls[0];
+    const entries = historyData.entries as Array<{ displayName: string }>;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].displayName.length).toBe(15);
+    expect(entries[0].displayName).toBe(long.slice(0, 15));
+  });
+
+  /**
+   * M-2: 進行中 tournament が当該 group にあれば pre-check で early throw、tx は起動しない。
+   */
+  it("rejects with season/in-progress-tournament when running tournament exists", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(listTournamentsByGroup).mockResolvedValueOnce([
+      // running tournament を 1 件返す。最低限のフィールドのみ（isInProgress は state のみ参照）
+      {
+        id: "t-running",
+        groupId: "g1",
+        name: "Saturday Night",
+        state: "running",
+        // isInProgress / isSeating は state しか見ないため他フィールドは未指定で OK
+      } as never,
+    ]);
+
+    await expect(
+      startNewSeason({ gid: "g1", uid: "uOwner" }),
+    ).rejects.toMatchObject({ code: "season/in-progress-tournament" });
+
+    expect(runTransaction).not.toHaveBeenCalled();
+    expect(getDocs).not.toHaveBeenCalled();
+  });
+
+  it("rejects when seating-state tournament exists (Phase 4 配席中も block する)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(listTournamentsByGroup).mockResolvedValueOnce([
+      { id: "t-seat", groupId: "g1", name: "Seating", state: "seating" } as never,
+    ]);
+
+    await expect(
+      startNewSeason({ gid: "g1", uid: "uOwner" }),
+    ).rejects.toMatchObject({ code: "season/in-progress-tournament" });
+  });
+
+  it("allows when only setup / finished tournaments exist (no race risk)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(listTournamentsByGroup).mockResolvedValueOnce([
+      { id: "t-setup", groupId: "g1", name: "S", state: "setup" } as never,
+      { id: "t-fin", groupId: "g1", name: "F", state: "finished" } as never,
+    ]);
+    const ops = captureTxOps([]);
+
+    await startNewSeason({ gid: "g1", uid: "uOwner" });
+
+    expect(ops.updateCalls).toHaveLength(1);
+  });
 });
 
 describe("promoteToOrganizer", () => {
