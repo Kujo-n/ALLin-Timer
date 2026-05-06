@@ -49,6 +49,7 @@ import {
   assignSeat,
   bustPlayer,
   clearSeat,
+  clonePlayersFromTournament,
   unbustPlayer,
   upsertPlayer,
 } from "./players";
@@ -181,5 +182,126 @@ describe("clearSeat", () => {
     expect(payload.tableNum).toBeNull();
     expect(payload.seatNum).toBeNull();
     expect(payload.lastMovedAt).toEqual({ __op: "serverTimestamp" });
+  });
+});
+
+describe("clonePlayersFromTournament", () => {
+  function setupBatch() {
+    const batchSet = vi.fn();
+    const batchCommit = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(writeBatch).mockReturnValueOnce({
+      set: batchSet,
+      commit: batchCommit,
+    } as never);
+    return { batchSet, batchCommit };
+  }
+
+  function fakePlayerDocs(
+    list: Array<{ id: string; uid: string | null; displayName: string; isBusted?: boolean }>,
+  ) {
+    return {
+      docs: list.map((p) => ({
+        id: p.id,
+        data: () => ({
+          displayName: p.displayName,
+          uid: p.uid,
+          entryAt: ts,
+          isBusted: p.isBusted ?? false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        }),
+      })),
+    };
+  }
+
+  it("happy: src 3 player / 全選択 → batch.set ×3, returns 3", async () => {
+    const { batchSet, batchCommit } = setupBatch();
+    vi.mocked(getDocs).mockResolvedValueOnce(
+      fakePlayerDocs([
+        { id: "u1", uid: "u1", displayName: "alice" },
+        { id: "u2", uid: "u2", displayName: "bob" },
+        { id: "u3", uid: "u3", displayName: "carol" },
+      ]) as never,
+    );
+    const n = await clonePlayersFromTournament("src", "dst", ["u1", "u2", "u3"]);
+    expect(n).toBe(3);
+    expect(batchSet).toHaveBeenCalledTimes(3);
+    expect(batchCommit).toHaveBeenCalledTimes(1);
+    const payload = batchSet.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.uid).toBe("u1");
+    expect(payload.displayName).toBe("alice");
+    expect(payload.isBusted).toBe(false);
+    expect(payload.tableNum).toBeNull();
+    expect(payload.seatNum).toBeNull();
+    expect(payload.lastMovedAt).toBeNull();
+    expect(payload.bustedAt).toBeNull();
+    expect(payload.isPlayingDealer).toBe(false);
+    expect(payload.entryAt).toEqual({ __op: "serverTimestamp" });
+  });
+
+  it("partial select: 2/3 selected → batch.set ×2, returns 2", async () => {
+    const { batchSet } = setupBatch();
+    vi.mocked(getDocs).mockResolvedValueOnce(
+      fakePlayerDocs([
+        { id: "u1", uid: "u1", displayName: "alice" },
+        { id: "u2", uid: "u2", displayName: "bob" },
+        { id: "u3", uid: "u3", displayName: "carol" },
+      ]) as never,
+    );
+    const n = await clonePlayersFromTournament("src", "dst", ["u1", "u3"]);
+    expect(n).toBe(2);
+    expect(batchSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("busted included: payload は isBusted=false で再初期化される", async () => {
+    const { batchSet } = setupBatch();
+    vi.mocked(getDocs).mockResolvedValueOnce(
+      fakePlayerDocs([
+        { id: "u1", uid: "u1", displayName: "busted-alice", isBusted: true },
+      ]) as never,
+    );
+    const n = await clonePlayersFromTournament("src", "dst", ["u1"]);
+    expect(n).toBe(1);
+    const payload = batchSet.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.isBusted).toBe(false);
+  });
+
+  it("uid===null skip: 該当 player は count に含まれない", async () => {
+    const { batchSet } = setupBatch();
+    vi.mocked(getDocs).mockResolvedValueOnce(
+      fakePlayerDocs([
+        { id: "u1", uid: "u1", displayName: "alice" },
+        { id: "guest", uid: null, displayName: "guest" },
+      ]) as never,
+    );
+    const n = await clonePlayersFromTournament("src", "dst", ["u1", "guest"]);
+    expect(n).toBe(1);
+    expect(batchSet).toHaveBeenCalledTimes(1);
+  });
+
+  it("MAX_CLONE_PLAYERS 超過: tournament/clone-too-many を throw", async () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `u${i}`);
+    await expect(
+      clonePlayersFromTournament("src", "dst", ids),
+    ).rejects.toMatchObject({
+      code: "tournament/clone-too-many",
+    });
+  });
+
+  it("count===0: tournament/clone-empty を throw", async () => {
+    setupBatch();
+    vi.mocked(getDocs).mockResolvedValueOnce(
+      fakePlayerDocs([
+        { id: "u1", uid: "u1", displayName: "alice" },
+      ]) as never,
+    );
+    await expect(
+      clonePlayersFromTournament("src", "dst", ["unknown-id"]),
+    ).rejects.toMatchObject({
+      code: "tournament/clone-empty",
+    });
   });
 });

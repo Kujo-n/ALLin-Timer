@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -17,6 +18,7 @@ import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
+import { MAX_CLONE_PLAYERS } from "@/lib/limits";
 import { logger } from "@/lib/logger";
 
 function playersRef(tid: string) {
@@ -224,4 +226,70 @@ export async function clearSeat(tid: string, pid: string): Promise<void> {
     { tid, pid },
   );
   logger.info("player seat clear ok", { tid, pid });
+}
+
+/**
+ * Phase 5.4: src tournament の player を dest tournament に複製する。
+ *  - selectedPlayerIds に含まれる pid だけをコピー
+ *  - uid===null の player（理論上発生しないが防衛的に）は skip
+ *  - dest 側は `setDoc(doc(playersRef(destTid), uid), {...})` で pid==uid invariant を維持
+ *  - isBusted=false / no seat / no PD / entryAt=serverTimestamp() で reset
+ *  - 上限 MAX_CLONE_PLAYERS を超えると tournament/clone-too-many で throw
+ *  - 実コピー件数 0 のときは tournament/clone-empty で throw（空 batch.commit を成功させない）
+ *
+ * 権限の最終防衛は Firestore Rules（Phase 5.4 で追加した organizer-clone create ブランチ）。
+ * client 側の組織者チェックは呼出側 orchestrator が行う前提。
+ *
+ * 戻り値: 実際にコピーされた件数。selectedPlayerIds に含まれていても src に存在しない /
+ * uid===null の人は除外されるため selectedPlayerIds.length と一致しないことがある。
+ */
+export async function clonePlayersFromTournament(
+  srcTid: string,
+  destTid: string,
+  selectedPlayerIds: string[],
+): Promise<number> {
+  if (selectedPlayerIds.length > MAX_CLONE_PLAYERS) {
+    throw new AppError(
+      `clone 対象は ${MAX_CLONE_PLAYERS} 件までです`,
+      "tournament/clone-too-many",
+    );
+  }
+  const selected = new Set(selectedPlayerIds);
+  const count = await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "参加者の複製に失敗しました",
+    async () => {
+      const srcSnap = await getDocs(playersRef(srcTid));
+      const batch = writeBatch(firestore);
+      let n = 0;
+      for (const d of srcSnap.docs) {
+        if (!selected.has(d.id)) continue;
+        const body = d.data();
+        if (body.uid === null) continue;
+        batch.set(doc(playersRef(destTid), body.uid), {
+          displayName: body.displayName,
+          uid: body.uid,
+          entryAt: serverTimestamp(),
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        });
+        n++;
+      }
+      if (n === 0) {
+        throw new AppError(
+          "コピー対象の参加者が見つかりませんでした",
+          "tournament/clone-empty",
+        );
+      }
+      await batch.commit();
+      return n;
+    },
+    { srcTid, destTid },
+  );
+  logger.info("players clone ok", { srcTid, destTid, copied: count });
+  return count;
 }
