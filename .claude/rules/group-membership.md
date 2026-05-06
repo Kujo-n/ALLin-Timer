@@ -192,6 +192,22 @@ Phase 4.16 で 3 分岐すべてに `request.resource.data.diff(resource.data).a
 
 これにより、今後 `groups/{gid}` に新フィールドが追加されても、明示的に許可しない限り self-* 経路から改竄できない設計となる。エミュレータ検証は [scripts/test-rules-finished-count.mjs](../../scripts/test-rules-finished-count.mjs) を `firebase emulators:exec` から起動して実施する（`firebase` CLI が必要）。
 
+### Phase 5.4 で追加: organizer による players 代理 create（同 group 内・setup 限定）
+
+Phase 5.4 「同じ参加者で次のトーナメントを作成」のため、`tournaments/{tid}/players/{pid}` の `allow create` に **organizer-clone ブランチ**を additive で追加した（[firestore.rules](../../firestore.rules) の `match /players/{pid}` 内 `allow create`）。
+
+経路の影響範囲:
+
+- **トリガ**: 終了済み tournament の dashboard で organizer が `<Link href="/tournaments/{tid}/clone">` をクリック → 専用ページで参加者を選び「作成」
+- **書込内容**: 新トーナメント（`state="setup"` で着地）に対する `tournaments/{newTid}/players/{uid}` の bulk setDoc。`MAX_CLONE_PLAYERS = 50` 件まで。invariant（`pid==uid` / `isBusted=false` / no seat / `isPlayingDealer=false`）は self-create と同じ
+- **scope**: 親 tournament が `state="setup"` のとき限定。`isOrganizer(parent.groupId)` が必須（一般 member は不可）
+
+**潜在リスク**: 自分が organizer であるサークルの member の `uid` を流用して、別 setup tournament に「参加してもいない player doc」を勝手に作る攻撃が成立する。被害は「参加者画面に prefill された状態で表示される」のみで、`displayName` も src tournament からのコピーであり攻撃者が自由に決められない。`isPlayingDealer=false` / no seat invariant が rule で強制されるため、PD ポジショニング DoS や席奪取は不可能。
+
+**緩和**: organizer は元々サークル内の structures / tournaments 全 CRUD を持つ信頼ロール（[権限マトリクス](#権限マトリクス) 参照）のため、信頼境界を超えた緩和ではない。`finishedTournamentCount` / `defaultSeatsPerTable` の任意値書換と同方針で、Cloud Functions 化（`cloneTournamentWithPlayers` を Callable 化し、クライアントから直接 `players/{pid}` create を deny に戻す）は将来課題。
+
+⚠ DRIFT WARNING: `players` schema に新フィールドを追加する場合は、self-create / organizer-clone 両ブランチに同じ invariant を反映すること。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs) を `npm run test:rules-clone-players` で起動。
+
 ## 招待コード設計原則（Phase 2.5 以降）
 
 `groupJoinCodes/{code}` による group 加入フローで遵守すること（旧 `security.md` から移管）:

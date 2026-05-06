@@ -149,6 +149,58 @@ rule: `players/{pid}` update branches に additive 拡張のみ:
 
 ⚠ DRIFT WARNING: `players` への新フィールド追加は schema (`schemas/player.ts`) / rule (`firestore.rules` players update branches) / service (`orchestrator.ts` setIsPlayingDealer 等) / UI (SeatingBoard / PlayerList の PD checkbox) の 4 点同時更新が必要。emulator validation script は [scripts/test-rules-pd.mjs](../../scripts/test-rules-pd.mjs)。
 
+### `players/{pid}` の create rule 経路（Phase 5.4 以降）
+
+`tournaments/{tid}/players/{pid}` の `allow create` は **2 系統の OR で分岐**する:
+
+| ブランチ | 条件 | 用途 |
+| --- | --- | --- |
+| **self-create** | `pid == auth.uid` かつ `request.resource.data.uid == auth.uid` | 通常の受付フロー（`/join/[tid]` で参加者本人が登録） |
+| **organizer-clone** | 親 tournament が `exists` かつ `isOrganizer(parent.groupId)` かつ `parent.state == "setup"` かつ `pid == request.resource.data.uid` | Phase 5.4 「同じ参加者で次のトーナメントを作成」（運営者が代理 create） |
+
+両ブランチで共通の invariant:
+
+- `pid == request.resource.data.uid`（pid==uid invariant — `assignSeat` / `bustPlayer` 等の self-key 比較を多用する update rule の前提）
+- `isBusted == false`
+- `tableNum == null` / `seatNum == null`（no seat invariant — 配席は別 update 経路）
+- `isPlayingDealer == false`（`.get('isPlayingDealer', false) == false`）
+
+書込経路:
+
+- self-create — `upsertPlayer(tid, uid, { displayName })`（[repositories/players.ts](../../src/lib/firebase/repositories/players.ts)）
+- organizer-clone — `clonePlayersFromTournament(srcTid, destTid, selectedPlayerIds)`（同 file）の `writeBatch + setDoc`。1 回の clone で `MAX_CLONE_PLAYERS = 50` 件まで。orchestrator は [`tournament-clone.ts`](../../src/lib/services/tournament-clone.ts) の `cloneTournamentWithPlayers`
+
+⚠ DRIFT WARNING: `players` schema への新フィールド追加時は **両ブランチの invariant** に同時反映すること。片方だけ追加すると、organizer-clone 経路で「self では弾かれる値が clone 経由で混入する」抜け道が成立する。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs) を `npm run test:rules-clone-players` で起動（`firebase emulators:exec` 同梱）。
+
+### `tournaments/{tid}` 配下 subcollection の rule 設計原則（Phase 5.4 以降・重要）
+
+**原則**: `tournaments/{tid}` 配下の subcollection は **specific rule の積み上げ** で書く。
+`match /{sub=**}` のような再帰ワイルドカードは **使ってはいけない**。
+
+**理由**: Phase 5.4 で発見した pre-existing バグ — 旧 wildcard `match /tournaments/{tid}/{sub=**}` が
+explicit な `match /players/{pid}` と同時に評価され、Firestore Rules の **OR 評価**により
+「より緩い wildcard 側がそのまま allow を返す」 → Phase 4 organizer-update / Phase 5.1 PD /
+Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴があった
+（emulator validator のケース 3〜6 で deny を期待して 200 が返って発覚。詳細は
+[Phase 5.4 実装レポート](../PRPs/reports/phase-5.4-clone-tournament-with-players-report.md) の
+「Pre-existing rule bug の修正」節）。
+
+**現状の subcollection rule** ([firestore.rules](../../firestore.rules) `match /tournaments/{tid}` 配下):
+
+| Path | 許可 |
+| --- | --- |
+| `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update） |
+| `match /tables/{tableId}` | explicit、organizer のみ書込可（旧 wildcard を specific 化したもの） |
+
+**新規 subcollection を追加する手順**:
+
+1. `match /tournaments/{tid}/{collection}/{docId}` で explicit rule を 1 つ追加（read 条件と write 条件を別々に書く）
+2. nested subcollection があれば同様に explicit（`match /tables/{n}/seats/{m}` 等）
+3. emulator validator を 1 本追加し「想定外 path / 想定外 invariant 違反 write が deny される」ケースを必ず含める
+4. **wildcard 復活は厳禁** — wildcard を 1 行追加すると explicit rule の strict invariants が即座に bypass される
+
+⚠ DRIFT WARNING: 上記設計原則に違反する rule を追加すると、Phase 4 / 5.1 / 5.4 の invariants が再び形骸化する。code review で `match /{...=**}` パターンが入っていないかを必ず確認すること。
+
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
 `firestore.rules` の `groups/{gid}` `allow update` は 6 ブランチに分かれており、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
