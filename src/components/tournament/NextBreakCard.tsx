@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Level } from "@/lib/firebase/schemas/structure";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { getNextBreakInfo } from "@/lib/services/timer";
+import { isBeforeStart as isBeforeStartState } from "@/lib/services/tournament-state";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -51,7 +52,7 @@ function previewBreakInfo(tournament: TournamentDoc): PreviewBreakInfo | null {
  * trace: tmp/10_Phase4.9_memo.md 改善要望#4
  */
 export function NextBreakCard({ tournament, remainingMs, className }: Props) {
-  const isBeforeStart = tournament.state === "setup" || tournament.state === "seating";
+  const isBeforeStart = isBeforeStartState(tournament);
   const info = isBeforeStart ? null : getNextBreakInfo(tournament, remainingMs);
   const preview = isBeforeStart ? previewBreakInfo(tournament) : null;
   return (

@@ -2,6 +2,7 @@
 
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import type { LevelInfo } from "@/lib/services/timer";
+import { isBeforeStart as isBeforeStartState } from "@/lib/services/tournament-state";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -22,7 +23,7 @@ function formatRemaining(ms: number | null): string {
 }
 
 export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: Props) {
-  const isBeforeStart = tournament.state === "setup" || tournament.state === "seating";
+  const isBeforeStart = isBeforeStartState(tournament);
 
   const stateBadge =
     tournament.state === "paused"

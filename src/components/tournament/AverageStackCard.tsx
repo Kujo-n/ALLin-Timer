@@ -3,6 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+import { isBeforeStart as isBeforeStartState } from "@/lib/services/tournament-state";
 
 interface Props {
   tournament: TournamentDoc;
@@ -26,7 +27,7 @@ export function AverageStackCard({ tournament, players, className }: Props) {
   const active = players.filter((p) => !p.isBusted);
   if (active.length === 0) return null;
 
-  const isBeforeStart = tournament.state === "setup" || tournament.state === "seating";
+  const isBeforeStart = isBeforeStartState(tournament);
   const initialStack = tournament.structureSnapshot.initialStack;
   const totalChips = players.length * initialStack;
   const average = Math.floor(totalChips / active.length);
