@@ -34,12 +34,15 @@ import {
   renameGroup,
   setDefaultSeatsPerTable,
   setFinishedTournamentCount,
+  startNewSeason,
 } from "@/lib/services/group";
 
 import { GroupHeaderCard } from "./_components/GroupHeaderCard";
 import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
 import { MemberRoleList, type MemberLine } from "./_components/MemberRoleList";
+import { SeasonCard } from "./_components/SeasonCard";
+import { StartSeasonDialog } from "./_components/StartSeasonDialog";
 
 function shortUid(uid: string): string {
   return uid.slice(0, 4);
@@ -60,6 +63,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
+  const [confirmStartSeasonOpen, setConfirmStartSeasonOpen] = useState(false);
   const [working, setWorking] = useState(false);
 
   const reload = useCallback(async () => {
@@ -240,6 +244,23 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     }
   }
 
+  async function onStartSeason() {
+    if (!user) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await startNewSeason({ gid, uid: user.uid });
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const wrapped = AppError.from(e, "season/start-failed", "シーズン開始に失敗しました");
+      setError(`${wrapped.code}: ${wrapped.message}`);
+    } finally {
+      setConfirmStartSeasonOpen(false);
+      setWorking(false);
+    }
+  }
+
   async function runRoleAction(fn: () => Promise<void>, errorLabel: string) {
     setWorking(true);
     setError(null);
@@ -299,6 +320,14 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         editor={defaultSeatsEditor}
       />
 
+      <SeasonCard
+        gid={gid}
+        seasonStartDate={group.seasonStartDate}
+        isOrganizer={isOrganizer}
+        onRequestStartSeason={() => setConfirmStartSeasonOpen(true)}
+        working={working}
+      />
+
       <MemberRoleList
         group={group}
         members={members}
@@ -349,6 +378,13 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         setConfirmDeleteOpen={setConfirmDeleteOpen}
         onLeave={() => void onLeave()}
         onDelete={() => void onDelete()}
+        working={working}
+      />
+
+      <StartSeasonDialog
+        open={confirmStartSeasonOpen}
+        onOpenChange={setConfirmStartSeasonOpen}
+        onConfirm={() => void onStartSeason()}
         working={working}
       />
     </main>
