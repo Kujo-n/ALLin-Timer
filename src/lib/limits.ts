@@ -49,3 +49,15 @@ export const MAX_LEVEL_DURATION_SEC = 86400;
  * `setLevelDurationSec` と同方針）。将来 Cloud Functions 化する際の参照定数として残す。
  */
 export const MAX_LEVELS_PER_TOURNAMENT = 50;
+
+/**
+ * Phase 5.4: 1 回の clone 操作で新 tournament にコピーする player 件数の上限。値: 50。
+ *
+ * Firestore writeBatch の 500 ops 上限を大きく下回り、20 人 × 6 卓のサークル規模では
+ * 通常 20〜30 件で十分。50 は「悪意・誤操作の防衛線」として設定する。
+ *
+ * 上限到達時は `clonePlayersFromTournament` が `tournament/clone-too-many` を throw し、
+ * UI 側で「{N} 件中 {MAX} 件のみ選択してください」エラーを出す。Phase 5.4 では
+ * rule 側で件数制約を設けない（writeBatch サイズを rule で表現できないため）。
+ */
+export const MAX_CLONE_PLAYERS = 50;
