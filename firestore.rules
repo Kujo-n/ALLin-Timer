@@ -325,13 +325,37 @@ service cloud.firestore {
         //   組織者の同卓 1 PD 制約 (orchestrator.setIsPlayingDealer の tx) を bypass され
         //   `commitInitialSeating` が `TooManyPlayingDealersError` で詰まる DoS を許してしまう。
         //   `.get(..., false)` で field 未送信の legacy client も互換に通す。
+        //
+        // Phase 5.4: organizer による「同じ参加者で次のトーナメントを作成」用 clone 経路を additive 追加。
+        //   - 親 tournament が exists かつ state==="setup" のときのみ
+        //   - groupId の組織者のみ
+        //   - pid == uid invariant・isBusted=false / no seat / no PD は self ブランチと同じ invariant
+        //   - 件数上限（writeBatch サイズ）は rule で表現できないため client/repository 側 (MAX_CLONE_PLAYERS) で enforce
+        // ⚠ DRIFT WARNING: 本ブランチの invariant は self-create / self-update と同期更新すること。
+        //   players schema (`schemas/player.ts`) に新フィールドを追加する場合は両ブランチに反映する。
         allow create: if isSignedIn()
-                      && pid == request.auth.uid
-                      && request.resource.data.uid == request.auth.uid
-                      && request.resource.data.isBusted == false
-                      && request.resource.data.tableNum == null
-                      && request.resource.data.seatNum == null
-                      && request.resource.data.get('isPlayingDealer', false) == false;
+                      && (
+                        (
+                          pid == request.auth.uid
+                          && request.resource.data.uid == request.auth.uid
+                          && request.resource.data.isBusted == false
+                          && request.resource.data.tableNum == null
+                          && request.resource.data.seatNum == null
+                          && request.resource.data.get('isPlayingDealer', false) == false
+                        )
+                        ||
+                        (
+                          exists(/databases/$(database)/documents/tournaments/$(tid))
+                          && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                          && get(/databases/$(database)/documents/tournaments/$(tid)).data.state == "setup"
+                          && pid == request.resource.data.uid
+                          && request.resource.data.uid is string
+                          && request.resource.data.isBusted == false
+                          && request.resource.data.tableNum == null
+                          && request.resource.data.seatNum == null
+                          && request.resource.data.get('isPlayingDealer', false) == false
+                        )
+                      );
         // self-update: displayName のみ変更可。残りフィールドは immutable。
         // organizer-update: organizer なら bust/seat/lastMovedAt 変更可。uid と entryAt は immutable。
         // Phase 4 (M1 fix): organizer 経路でも tableNum / seatNum の型・範囲・整合性を rule で検証する。
@@ -398,8 +422,22 @@ service cloud.firestore {
                       );
       }
 
-      // その他サブコレクションは organizer のみ書込可、認証済みユーザーは読取可
-      match /{sub=**} {
+      // tables: organizer のみ書込可、認証済みユーザーは読取可。
+      //
+      // Phase 5.4: 旧 `match /{sub=**}` 再帰ワイルドカードはここを覆っていたが、
+      // **同時に `/players/{pid}` も match してしまい** (Firestore Rules は OR 評価のため)、
+      // explicit な `match /players/{pid}` 側の create / update invariants
+      // (Phase 4 organizer-update の table/seat 範囲、Phase 5.1 の isPlayingDealer 型、
+      // Phase 5.4 の organizer-clone branch 等) を**全て bypass する pre-existing 重大バグ**だった。
+      // emulator validator [scripts/test-rules-clone-players.mjs](../scripts/test-rules-clone-players.mjs)
+      // のケース 3〜6 が deny を期待して 200 を返していたのが本症状。
+      //
+      // 修正: wildcard を廃止し、実在する subcollection のみに explicit rule を当てる。
+      // 現状の subcollection は `players` と `tables` の 2 つだけ
+      // （PRD で言及されている `events` は未実装、`tables/{n}/seats/{m}` も未実装で
+      // tableNum/seatNum は player doc に inline）。新規 subcollection を増やす場合は
+      // **必ず explicit rule を 1 つ追加** すること（wildcard 復活は厳禁）。
+      match /tables/{tableId} {
         allow read: if isSignedIn();
         allow write: if isSignedIn()
                      && exists(/databases/$(database)/documents/tournaments/$(tid))
