@@ -1,3 +1,5 @@
+import { MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
+
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
 /**
@@ -152,4 +154,17 @@ export function canEditLevelDurations(t: TournamentDoc, levelIndex: number): boo
   if (isFinished(t)) return false;
   if (isSetup(t)) return true;
   return levelIndex >= t.currentLevel - 1;
+}
+
+/**
+ * Phase 5.3: 末尾レベル append が可能か。
+ *  - state === "finished": false（履歴を改竄しない）
+ *  - state === "setup" / "seating" / "running" / "paused":
+ *    levels.length < MAX_LEVELS_PER_TOURNAMENT
+ *
+ * MAX_LEVELS_PER_TOURNAMENT を超える append は repository / UI 双方で deny。
+ */
+export function canAppendLevel(t: TournamentDoc): boolean {
+  if (isFinished(t)) return false;
+  return t.structureSnapshot.levels.length < MAX_LEVELS_PER_TOURNAMENT;
 }

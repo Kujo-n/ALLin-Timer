@@ -36,3 +36,16 @@ export const DEFAULT_SEATS_PER_TABLE = 9;
  * 化する際の参照定数として残す。
  */
 export const MAX_LEVEL_DURATION_SEC = 86400;
+
+/**
+ * Phase 5.3: 1 トーナメントの structureSnapshot.levels 配列の最大要素数。値: 50。
+ *
+ * 運営者が誤って append を連打して Firestore doc 1MiB 上限に近づくことを防ぐ。
+ * 1 level ≈ 80B（zod schema の 5 数値 + 1 boolean）として 50 levels で約 4KB、
+ * doc 全体でも 10KB 程度に収まり余裕がある。実運用は 30 内に収まる前提（NLH トーナメントの
+ * 通常レベル数は 12〜25）で、50 は「異常系の防衛線」として設定する。
+ *
+ * Phase 5.3 では rule 側で範囲制約を設けない（`tournaments/{tid}` update は organizer 信頼経路、
+ * `setLevelDurationSec` と同方針）。将来 Cloud Functions 化する際の参照定数として残す。
+ */
+export const MAX_LEVELS_PER_TOURNAMENT = 50;

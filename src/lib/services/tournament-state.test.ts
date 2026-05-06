@@ -6,8 +6,11 @@ import type {
   TournamentState,
 } from "@/lib/firebase/schemas/tournament";
 
+import { MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
+
 import {
   canAdvanceLevel,
+  canAppendLevel,
   canBeginSeating,
   canCommitInitialSeating,
   canConfirmSeating,
@@ -260,5 +263,58 @@ describe("canEditLevelDurations", () => {
   it("levelIndex が非整数（1.5）なら false", () => {
     const t = tournament({ state: "running", currentLevel: 3 });
     expect(canEditLevelDurations(t, 1.5)).toBe(false);
+  });
+});
+
+describe("canAppendLevel", () => {
+  function makeNLevelLevels(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      level: i + 1,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+      isBreak: false,
+    }));
+  }
+
+  function tournamentWithLevels(
+    state: TournamentDoc["state"],
+    levelCount: number,
+  ): TournamentDoc {
+    return tournament({
+      state,
+      structureSnapshot: {
+        name: "Default",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: makeNLevelLevels(levelCount),
+      },
+    });
+  }
+
+  it.each(["setup", "seating", "running", "paused"] as const)(
+    "state=%s かつ levels.length < MAX なら true",
+    (state) => {
+      expect(canAppendLevel(tournamentWithLevels(state, 3))).toBe(true);
+    },
+  );
+
+  it("state=finished では levels.length に関わらず false", () => {
+    expect(canAppendLevel(tournamentWithLevels("finished", 3))).toBe(false);
+  });
+
+  it("levels.length === MAX_LEVELS_PER_TOURNAMENT で false（上限到達）", () => {
+    expect(
+      canAppendLevel(tournamentWithLevels("running", MAX_LEVELS_PER_TOURNAMENT)),
+    ).toBe(false);
+  });
+
+  it("levels.length === MAX_LEVELS_PER_TOURNAMENT - 1 で true（上限未到達）", () => {
+    expect(
+      canAppendLevel(tournamentWithLevels("running", MAX_LEVELS_PER_TOURNAMENT - 1)),
+    ).toBe(true);
   });
 });
