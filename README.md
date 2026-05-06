@@ -259,6 +259,8 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm test`                               | Vitest 実行（単発、`vitest run`）                                                   |
 | `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                                    |
 | `npm run test:rules-limits`              | `src/lib/limits.ts` と `firestore.rules` のリテラル一致を機械検査                   |
+| `npm run test:rules-clone-players`       | `players` create ルールを emulator 上で検証（Phase 5.4 organizer-clone ブランチ） |
+| `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
 | `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
@@ -288,13 +290,15 @@ src/
 │  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
+│  │                              # / [gid]/season（シーズンランキング、Phase A）
 │  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
 │  ├─ structures/                 # ストラクチャプリセット CRUD（group メンバーで共有）
 │  ├─ templates/                  # Structure Templates（サークル横断のストラクチャ図書館、Phase 4.8）
 │  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
-│  │  └─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知 / Winner バナー）
+│  │  ├─ [tid]/live/              # 参加者ライブビュー（タイマー / 自席表示 / 移動通知 / Winner バナー）
+│  │  └─ [tid]/clone/             # 同じ参加者で次のトーナメントを作成（Phase 5.4）
 │  ├─ globals.css
 │  ├─ layout.tsx                  # AuthProvider + GroupProvider + NavStateProvider でラップし
 │  │                              # HeaderMenuButton + AuthBadge + AppShell を常設（Phase 4.13）
@@ -303,6 +307,7 @@ src/
 │  ├─ audio/                      # SoundUnlockBanner（AudioContext unlock 導線、Phase 4.9）
 │  ├─ auth/                       # RequireAuth / RequireGroup / AuthBadge / GoogleIcon
 │  │                              # / LinkAccountDialog / DisplayNameDialog
+│  ├─ group/                      # InlineNumberEditCard（サークル詳細の inline 数値編集、Phase 4.16+）
 │  ├─ nav/                        # AppShell / HeaderMenuButton / PrimaryNav / nav-state（Phase 4.13 ナビ刷新）
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
 │  ├─ structure/                  # StructureForm / LevelTable
@@ -311,32 +316,45 @@ src/
 │  │                              # / BustButton / SeatingBoard / BalancingInstructionCard
 │  │                              # / AverageStackCard / ConnectionBadge / NextBreakCard
 │  │                              # / PlayersCard / StructureSnapshotCard / SoundToggleButton（Phase 4.13）
+│  │                              # / AppendLevelDialog / EditableLevelDurationCell（動的ブラインド調整）
+│  │                              # / ClonePlayersChecklist（Phase 5.4 同参加者クローン）
 │  └─ ui/                         # shadcn/ui
 ├─ lib/
 │  ├─ errors.ts                   # AppError 基底
 │  ├─ logger.ts                   # レベル制御付きロガー
 │  ├─ utils.ts                    # cn()
+│  ├─ limits.ts                   # 数値リミット定数の単一真実源
 │  ├─ audio/                      # audio-context（Web Audio API ラッパ）/ sound-catalog（既定音源、Phase 4.9）
 │  ├─ firebase/
 │  │  ├─ AuthProvider.tsx
 │  │  ├─ client.ts                # singleton 初期化（languageCode="ja" 固定、E2E 時は Emulator 接続）
 │  │  ├─ converters.ts            # zod ベース withConverter
+│  │  ├─ wrap.ts                  # wrapFirestoreWrite / wrapFirestoreRead（repository error helper、Phase 4 refactor）
+│  │  ├─ tx-helpers.ts            # runTransaction の薄い helper
 │  │  ├─ schemas/                 # 各コレクションの zod schema（Firestore 真実源）
 │  │  │                           # group / groupJoinCode / structure / structureTemplate / templateAdmin
 │  │  │                           # / tournament / player / table / user
+│  │  │                           # / seasonStats / seasonHistory（Phase A）
 │  │  └─ repositories/            # Firestore CRUD 集約（UI から SDK を直接呼ばない）
 │  │                              # groups / groupJoinCodes / structures / structureTemplates
 │  │                              # / templateAdmins / tournaments / players / tables / users
+│  │                              # / playersByUid（collection-group 横断クエリ、Phase 5.1）
+│  │                              # / seasonStats / seasonHistory（Phase A）
 │  ├─ hooks/                      # useTournamentTimer / useSeatingAutoOrchestrator / useIsTemplateAdmin
 │  │                              # / useAudioPlayer（Phase 4.9）/ useGroupRole / useFullscreen
 │  │                              # / useAutoFinish / useImplicitAudioUnlock（Phase 5.1）
-│  │                              # / useInlineNumberEdit
+│  │                              # / useInlineNumberEdit / useManualSeatChange
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
 │                                 # / tournament-state（state ガードの純関数集約、Phase 4 architect-refactor）
+│                                 # / tournament-clone（同参加者クローンの orchestrator、Phase 5.4）
+│                                 # / season-points（シーズンポイント計算の純関数、Phase A）
 │     └─ seating/                 # engine（純粋関数の TDA バランシング + cascade）/ orchestrator（Firestore 副作用）
-│                                 # / pd（PD rotation pure function、Phase 5.1）/ prng
+│                                 # / pd（PD rotation pure function、Phase 5.1）
+│                                 # / same-table（同卓判定 helper）/ prng
 scripts/
-└─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
+├─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
+└─ test-rules-*.mjs               # Firestore Rules emulator validator（limits / clone-players / season /
+                                  # default-seats / finished-count / pd の 6 本。手動 / CI 対象外）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```
