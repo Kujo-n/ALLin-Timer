@@ -15,7 +15,7 @@ import {
 import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
 import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
-import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
+import { loadTournamentInTx, playerFromSnap } from "@/lib/firebase/tx-helpers";
 import { logger } from "@/lib/logger";
 
 import {
@@ -99,10 +99,9 @@ export async function commitInitialSeating(
         players.map((p) => tx.get(doc(playersRef(tid), p.id))),
       );
       const liveActive: PlayerDoc[] = [];
-      for (let i = 0; i < playerSnapshots.length; i++) {
-        const s = playerSnapshots[i];
-        if (!s.exists()) continue;
-        const fresh: PlayerDoc = { id: s.id, ...s.data() };
+      for (const s of playerSnapshots) {
+        const fresh = playerFromSnap(s);
+        if (!fresh) continue;
         if (fresh.isBusted) continue;
         liveActive.push(fresh);
       }
@@ -236,11 +235,11 @@ export async function autoSeatLateEntry(
       }
       const pRef = doc(playersRef(tid), playerId);
       const pSnap = await tx.get(pRef);
-      if (!pSnap.exists()) {
+      const p = playerFromSnap(pSnap);
+      if (!p) {
         skipReason = "missing";
         return;
       }
-      const p: PlayerDoc = { id: pSnap.id, ...pSnap.data() };
       if (p.isBusted) {
         skipReason = "busted";
         return;
@@ -261,8 +260,8 @@ export async function autoSeatLateEntry(
         targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
       );
       for (const snap of freshTargetTable) {
-        if (!snap.exists()) continue;
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        const fresh = playerFromSnap(snap);
+        if (!fresh) continue;
         if (fresh.isBusted) continue;
         if (fresh.tableNum === seat.tableNum && fresh.seatNum === seat.seatNum) {
           skipReason = "seat-taken";
@@ -601,11 +600,11 @@ async function applyCascadeMoves(
         })),
       );
       for (const { move, snap } of freshCascade) {
-        if (!snap.exists()) {
+        const fresh = playerFromSnap(snap);
+        if (!fresh) {
           skipReason = `missing:${move.playerId}`;
           return;
         }
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
         if (fresh.isBusted) {
           skipReason = `busted:${move.playerId}`;
           return;
@@ -637,8 +636,8 @@ async function applyCascadeMoves(
           otherTablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
         );
         for (const snap of freshOthers) {
-          if (!snap.exists()) continue;
-          const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+          const fresh = playerFromSnap(snap);
+          if (!fresh) continue;
           if (fresh.isBusted) continue;
           if (fresh.tableNum === null || fresh.seatNum === null) continue;
           const key = `${fresh.tableNum}-${fresh.seatNum}`;
@@ -714,11 +713,11 @@ async function applySingleMove(
 
       const pRef = doc(playersRef(tid), move.playerId);
       const pSnap = await tx.get(pRef);
-      if (!pSnap.exists()) {
+      const p = playerFromSnap(pSnap);
+      if (!p) {
         skipReason = "missing";
         return;
       }
-      const p: PlayerDoc = { id: pSnap.id, ...pSnap.data() };
       if (p.isBusted) {
         skipReason = "busted";
         return;
@@ -740,8 +739,8 @@ async function applySingleMove(
       );
       let destActiveCount = 0;
       for (const snap of freshTarget) {
-        if (!snap.exists()) continue;
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        const fresh = playerFromSnap(snap);
+        if (!fresh) continue;
         if (fresh.isBusted) continue;
         if (fresh.tableNum !== move.to.tableNum) continue;
         if (fresh.seatNum === move.to.seatNum) {
@@ -761,8 +760,8 @@ async function applySingleMove(
         );
         let sourceActiveCount = 1;
         for (const snap of freshSource) {
-          if (!snap.exists()) continue;
-          const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+          const fresh = playerFromSnap(snap);
+          if (!fresh) continue;
           if (fresh.isBusted) continue;
           if (fresh.tableNum !== move.from.tableNum) continue;
           sourceActiveCount++;
@@ -831,11 +830,11 @@ async function applyTableBreak(
         }),
       );
       for (const { move, snap } of freshPlayers) {
-        if (!snap.exists()) {
+        const fresh = playerFromSnap(snap);
+        if (!fresh) {
           skipReason = `missing:${move.playerId}`;
           return;
         }
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
         if (fresh.isBusted) {
           skipReason = `busted:${move.playerId}`;
           return;
@@ -861,8 +860,8 @@ async function applyTableBreak(
       );
       const occupiedByTable = new Map<number, Set<number>>();
       for (const snap of freshSurvivors) {
-        if (!snap.exists()) continue;
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        const fresh = playerFromSnap(snap);
+        if (!fresh) continue;
         if (fresh.isBusted) continue;
         if (fresh.tableNum === null || fresh.seatNum === null) continue;
         if (!occupiedByTable.has(fresh.tableNum)) {
@@ -950,10 +949,10 @@ export async function setIsPlayingDealer(
 
       const pRef = doc(playersRef(tid), pid);
       const pSnap = await tx.get(pRef);
-      if (!pSnap.exists()) {
+      const p = playerFromSnap(pSnap);
+      if (!p) {
         throw new AppError("not found", "firestore/not-found");
       }
-      const p: PlayerDoc = { id: pSnap.id, ...pSnap.data() };
       if (p.isBusted) {
         throw new AppError(
           "バスト済みプレイヤーは PD 指定できません",
@@ -979,8 +978,8 @@ export async function setIsPlayingDealer(
       );
       const tablePlayers: PlayerDoc[] = [p];
       for (const snap of tableSnaps) {
-        if (!snap.exists()) continue;
-        const fresh: PlayerDoc = { id: snap.id, ...snap.data() };
+        const fresh = playerFromSnap(snap);
+        if (!fresh) continue;
         // 別卓に動いていたら無視（fixture 不一致の防御）。
         if (fresh.tableNum !== p.tableNum) continue;
         tablePlayers.push(fresh);
