@@ -41,7 +41,7 @@ export const structureBodySchema = z.object({
   levels: z.array(levelSchema).min(1),
   createdAt: z.instanceof(Timestamp),
 });
-export type StructureBody = z.infer<typeof structureBodySchema>;
+type StructureBody = z.infer<typeof structureBodySchema>;
 
 /** UI が扱うストラクチャ（body + 合成した id）。 */
 export type StructureDoc = StructureBody & { id: string };
@@ -58,7 +58,6 @@ export const createStructureInputSchema = z.object({
 });
 export type CreateStructureInput = z.infer<typeof createStructureInputSchema>;
 
-export const updateStructureInputSchema = createStructureInputSchema
-  .omit({ groupId: true, createdByUid: true })
-  .partial();
-export type UpdateStructureInput = z.infer<typeof updateStructureInputSchema>;
+export type UpdateStructureInput = Partial<
+  Omit<CreateStructureInput, "groupId" | "createdByUid">
+>;

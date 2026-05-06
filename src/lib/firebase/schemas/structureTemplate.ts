@@ -29,7 +29,7 @@ export const structureTemplateBodySchema = z.object({
   createdByDisplayName: z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH),
   createdAt: z.instanceof(Timestamp),
 });
-export type StructureTemplateBody = z.infer<typeof structureTemplateBodySchema>;
+type StructureTemplateBody = z.infer<typeof structureTemplateBodySchema>;
 export type StructureTemplateDoc = StructureTemplateBody & { id: string };
 
 export const createStructureTemplateInputSchema = z.object({
@@ -45,7 +45,6 @@ export const createStructureTemplateInputSchema = z.object({
 });
 export type CreateStructureTemplateInput = z.infer<typeof createStructureTemplateInputSchema>;
 
-export const updateStructureTemplateInputSchema = createStructureTemplateInputSchema
-  .omit({ createdByUid: true, createdByDisplayName: true })
-  .partial();
-export type UpdateStructureTemplateInput = z.infer<typeof updateStructureTemplateInputSchema>;
+export type UpdateStructureTemplateInput = Partial<
+  Omit<CreateStructureTemplateInput, "createdByUid" | "createdByDisplayName">
+>;

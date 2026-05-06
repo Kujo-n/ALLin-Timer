@@ -11,5 +11,5 @@ export const tableBodySchema = z.object({
   isBroken: z.boolean(),
   createdAt: z.instanceof(Timestamp),
 });
-export type TableBody = z.infer<typeof tableBodySchema>;
+type TableBody = z.infer<typeof tableBodySchema>;
 export type TableDoc = TableBody & { id: string };

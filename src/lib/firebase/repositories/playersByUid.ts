@@ -22,7 +22,7 @@ import { logger } from "@/lib/logger";
  * - schema: legacy doc（`isPlayingDealer` 不在）は zod の `default(false)` で hydrate される。
  * - failure: 個別 doc が schema validate に失敗してもストリーム全体は落とさず、warn のみ。
  */
-export interface JoinedPlayerEntry {
+interface JoinedPlayerEntry {
   tid: string;
   player: PlayerDoc;
 }

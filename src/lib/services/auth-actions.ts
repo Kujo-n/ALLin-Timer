@@ -137,7 +137,7 @@ export class AccountLinkRequired extends AppError {
 }
 
 /** Phase 4.7: signInWithGoogle の戻り値。`isNewUser` は新規アカウント判定（DisplayNameDialog 発火用）。 */
-export interface GoogleSignInResult {
+interface GoogleSignInResult {
   user: User;
   isNewUser: boolean;
   /**
@@ -320,7 +320,7 @@ export async function updateDisplayName(newName: string): Promise<void> {
   }
 }
 
-export interface AnonymousSelfDeleteResult {
+interface AnonymousSelfDeleteResult {
   /** delete が成功したか。false は「匿名でない / delete に失敗」のいずれか。 */
   deleted: boolean;
 }

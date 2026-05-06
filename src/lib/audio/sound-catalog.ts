@@ -6,7 +6,7 @@
  * UI のプルダウンに表示する選択肢もここで定義する。
  */
 
-export interface SoundOption {
+interface SoundOption {
   id: string;
   label: string;
   /** ブラウザが優先的に試行する順序で URL を返す（複数 codec 同梱時に使用）。 */

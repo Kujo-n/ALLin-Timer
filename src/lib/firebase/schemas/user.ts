@@ -12,13 +12,8 @@ export const userProfileBodySchema = z.object({
   groupIds: z.array(z.string().min(1)).default([]),
   createdAt: z.instanceof(Timestamp),
 });
-export type UserProfileBody = z.infer<typeof userProfileBodySchema>;
+type UserProfileBody = z.infer<typeof userProfileBodySchema>;
 
 export type UserProfileDoc = UserProfileBody;
 
-export const upsertUserProfileInputSchema = z.object({
-  uid: z.string().min(1),
-  displayName: z.string().min(1),
-  email: z.string().email().nullable(),
-});
-export type UpsertUserProfileInput = z.infer<typeof upsertUserProfileInputSchema>;
+export type UpsertUserProfileInput = Pick<UserProfileBody, "uid" | "displayName" | "email">;

@@ -15,7 +15,7 @@ export type NavContext = {
   isOrganizer: boolean;
 };
 
-export type NavItem = {
+type NavItem = {
   /** 静的 path、または context から動的に解決する関数（null を返すと隠れる） */
   href: string | ((ctx: NavContext) => string | null);
   label: string;

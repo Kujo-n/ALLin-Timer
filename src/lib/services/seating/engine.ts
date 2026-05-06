@@ -56,7 +56,7 @@ export class TooManyPlayingDealersError extends Error {
   }
 }
 
-export interface Seat {
+interface Seat {
   tableNum: number;
   seatNum: number;
 }
@@ -93,7 +93,7 @@ interface TableBreakPlan {
  * 委ねる。`candidatePlayerIds` は PD（プレイングディーラー）と busted を除外した
  * source 卓の player を seatNum 昇順で並べたヒント。
  */
-export interface BalancingDiagnosis {
+interface BalancingDiagnosis {
   sourceTableNum: number;
   destTableNum: number;
   destSeatNum: number;

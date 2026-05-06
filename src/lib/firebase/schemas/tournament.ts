@@ -5,10 +5,10 @@ import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
 
 import { levelSchema } from "./structure";
 
-export const tournamentStateSchema = z.enum(["setup", "seating", "running", "paused", "finished"]);
+const tournamentStateSchema = z.enum(["setup", "seating", "running", "paused", "finished"]);
 export type TournamentState = z.infer<typeof tournamentStateSchema>;
 
-export const structureSnapshotSchema = z.object({
+const structureSnapshotSchema = z.object({
   name: z.string().min(1),
   initialStack: z.number().int().positive(),
   // Phase 4.7: リバイ／アドオン用のチップ量（任意）。旧 snapshot は default null で受容。
@@ -53,23 +53,15 @@ export const tournamentBodySchema = z.object({
   createdAt: z.instanceof(Timestamp),
   updatedAt: z.instanceof(Timestamp),
 });
-export type TournamentBody = z.infer<typeof tournamentBodySchema>;
+type TournamentBody = z.infer<typeof tournamentBodySchema>;
 
 export type TournamentDoc = TournamentBody & { id: string };
 
-export const createTournamentInputSchema = z.object({
-  groupId: z.string().min(1),
-  createdByUid: z.string().min(1),
-  name: z.string().min(1, "名前を入力してください"),
-  structureSnapshot: structureSnapshotSchema,
-  // Phase 4: UI で 2〜10 を指定（default 9）。
-  seatsPerTable: z.number().int().min(MIN_SEATS_PER_TABLE).max(MAX_SEATS_PER_TABLE),
-});
-export type CreateTournamentInput = z.infer<typeof createTournamentInputSchema>;
+export type CreateTournamentInput = Pick<
+  TournamentBody,
+  "groupId" | "createdByUid" | "name" | "structureSnapshot" | "seatsPerTable"
+>;
 
-export const updateTournamentInputSchema = z.object({
-  name: z.string().min(1).optional(),
-  structureSnapshot: structureSnapshotSchema.optional(),
-  seatsPerTable: z.number().int().min(MIN_SEATS_PER_TABLE).max(MAX_SEATS_PER_TABLE).optional(),
-});
-export type UpdateTournamentInput = z.infer<typeof updateTournamentInputSchema>;
+export type UpdateTournamentInput = Partial<
+  Pick<TournamentBody, "name" | "structureSnapshot" | "seatsPerTable">
+>;

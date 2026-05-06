@@ -98,7 +98,7 @@ export function resolveWinner(
  *
  * 計算: 現在 level の残り時間 + 現在 level の次〜break 直前 level の durationSec の総和。
  */
-export interface NextBreakInfo {
+interface NextBreakInfo {
   /** break レベル本体。 */
   level: Level;
   /** 現在 level（含まず）からの level 数。break level 自身が currentLevel のときは 0。 */

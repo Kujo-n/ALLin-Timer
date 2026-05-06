@@ -6,7 +6,7 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { deriveRole, type GroupDoc, type MemberRole } from "@/lib/firebase/schemas/group";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
-export interface GroupRoleInfo {
+interface GroupRoleInfo {
   /** 渡された `gid` に該当する group オブジェクト。GroupProvider が読込中／非メンバーの場合は null。 */
   group: GroupDoc | null;
   /** ログイン中ユーザーの role（owner / organizer / member）。group が見つからない / 非メンバーの場合は null。 */

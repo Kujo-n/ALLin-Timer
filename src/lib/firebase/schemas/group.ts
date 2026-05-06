@@ -103,11 +103,10 @@ export type GroupBody = z.infer<typeof groupBodySchema>;
 /** UI が扱う group（body + 合成した id）。 */
 export type GroupDoc = GroupBody & { id: string };
 
-export const createGroupInputSchema = z.object({
-  name: z.string().min(1, "名前を入力してください").max(60),
-  ownerUid: z.string().min(1),
-});
-export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
+export type CreateGroupInput = {
+  name: string;
+  ownerUid: string;
+};
 
 export type MemberRole = "owner" | "organizer" | "member";
 

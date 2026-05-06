@@ -18,7 +18,7 @@ export const playerBodySchema = z.object({
   // additive: 旧 doc は default(false) で hydrate（破壊的 migration 不要）。
   isPlayingDealer: z.boolean().default(false),
 });
-export type PlayerBody = z.infer<typeof playerBodySchema>;
+type PlayerBody = z.infer<typeof playerBodySchema>;
 
 /** UI が扱うプレイヤー（body + 合成した id、id は通常 auth.uid と同一）。 */
 export type PlayerDoc = PlayerBody & { id: string };

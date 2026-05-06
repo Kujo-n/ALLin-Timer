@@ -13,14 +13,11 @@ export const groupJoinCodeBodySchema = z.object({
   usesCount: z.number().int().nonnegative(),
   createdAt: z.instanceof(Timestamp),
 });
-export type GroupJoinCodeBody = z.infer<typeof groupJoinCodeBodySchema>;
+type GroupJoinCodeBody = z.infer<typeof groupJoinCodeBodySchema>;
 
 export type GroupJoinCodeDoc = GroupJoinCodeBody & { id: string };
 
-export const createGroupJoinCodeInputSchema = z.object({
-  gid: z.string().min(1),
-  createdByUid: z.string().min(1),
-  expiresAt: z.instanceof(Timestamp),
-  maxUses: z.number().int().positive().nullable(),
-});
-export type CreateGroupJoinCodeInput = z.infer<typeof createGroupJoinCodeInputSchema>;
+export type CreateGroupJoinCodeInput = Pick<
+  GroupJoinCodeBody,
+  "gid" | "createdByUid" | "expiresAt" | "maxUses"
+>;
