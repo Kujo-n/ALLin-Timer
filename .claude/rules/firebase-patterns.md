@@ -82,12 +82,31 @@ export async function updateGroupName(gid: string, name: string): Promise<void> 
 
 数値リミット（最大卓数 / 最小・最大席数 / 既定値等）は **`src/lib/limits.ts`** に集約する。`engine.ts` / `schemas/*.ts` / `service/*.ts` / repositories / components はここから import する。
 
-`firestore.rules` 内のリテラルは Cloud Firestore Security Rules の言語仕様で const 化できないためハードコードのまま、`scripts/test-rules-limits.mjs` で `limits.ts` との一致を機械検査する。新規リミット追加手順:
+ただし `DISPLAY_NAME_MAX_LENGTH` のように **schema 寄りで意味的に group / user の表示名と密結合な定数**は
+[`src/lib/firebase/schemas/group.ts`](../../src/lib/firebase/schemas/group.ts) に置き続ける（移管せずそのまま）。
+drift check スクリプトは limits.ts と group.ts の両方から `export const NAME = N;` 形式で読み出す。
 
-1. `src/lib/limits.ts` に `export const NAME = N;` を追加
-2. schema / service / component を `import { NAME } from "@/lib/limits"` に切替
+`firestore.rules` 内のリテラルは Cloud Firestore Security Rules の言語仕様で const 化できないためハードコードのまま、`scripts/test-rules-limits.mjs` で `limits.ts` / `schemas/group.ts` との一致を機械検査する。
+
+現在 drift check が網羅する rule リテラルは以下:
+
+- 卓・席まわり（limits.ts 由来）— `tableNum >= 1` / `<= MAX_TABLES (6)` /
+  `seatNum >= 1` / `<= MAX_SEATS_PER_TABLE (10)` /
+  `defaultSeatsPerTable >= MIN_SEATS_PER_TABLE (2)` / `<= MAX_SEATS_PER_TABLE (10)`
+- displayName 上限（schemas/group.ts の `DISPLAY_NAME_MAX_LENGTH = 15` 由来、Phase A L-2 で追加）—
+  `groups.memberDisplayNames[uid].size() <= 15` (× 2 箇所: self-add / self-key update) /
+  `structureTemplates.createdByDisplayName.size() <= 15` /
+  `seasonStats.displayName.size() <= 15`
+
+新規リミット追加手順:
+
+1. `src/lib/limits.ts`（または schema 密結合なら schema 側）に `export const NAME = N;` を追加
+2. schema / service / component を import に切替
 3. `firestore.rules` に `>= / <=` 制約を追加（必要なら）
 4. `scripts/test-rules-limits.mjs` の `EXPECTED` と `checks` 配列に追加
+   - `request.resource.data.<field> <op> <num>` 形式は `{ field, op, expected }` で OK
+   - `lhs.size() <= N` のような複雑形は `{ pattern: /.../g, expected, minOccurrences }` を使う
+   - `minOccurrences` を指定すると、想定箇所より少ない match 数のとき FAIL する（drift 削除検出）
 5. `npm run test:rules-limits` で green 確認
 
 ## セキュリティルール
@@ -172,10 +191,12 @@ rule: `players/{pid}` update branches に additive 拡張のみ:
 
 ⚠ DRIFT WARNING: `players` schema への新フィールド追加時は **両ブランチの invariant** に同時反映すること。片方だけ追加すると、organizer-clone 経路で「self では弾かれる値が clone 経由で混入する」抜け道が成立する。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs) を `npm run test:rules-clone-players` で起動（`firebase emulators:exec` 同梱）。
 
-### `tournaments/{tid}` 配下 subcollection の rule 設計原則（Phase 5.4 以降・重要）
+### `tournaments/{tid}` / `groups/{gid}` 配下 subcollection の rule 設計原則（Phase 5.4 以降・重要、Phase A で `groups/{gid}` 配下にも適用拡大）
 
-**原則**: `tournaments/{tid}` 配下の subcollection は **specific rule の積み上げ** で書く。
+**原則**: 親 doc 配下の subcollection は **specific rule の積み上げ** で書く。
 `match /{sub=**}` のような再帰ワイルドカードは **使ってはいけない**。
+本原則は `tournaments/{tid}` 配下で確立され、Phase A で `groups/{gid}` 配下（`seasonStats` /
+`seasonHistory`）にも明示的に拡張した。
 
 **理由**: Phase 5.4 で発見した pre-existing バグ — 旧 wildcard `match /tournaments/{tid}/{sub=**}` が
 explicit な `match /players/{pid}` と同時に評価され、Firestore Rules の **OR 評価**により
@@ -185,12 +206,21 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 [Phase 5.4 実装レポート](../PRPs/reports/phase-5.4-clone-tournament-with-players-report.md) の
 「Pre-existing rule bug の修正」節）。
 
-**現状の subcollection rule** ([firestore.rules](../../firestore.rules) `match /tournaments/{tid}` 配下):
+**現状の subcollection rule**:
+
+`match /tournaments/{tid}` 配下:
 
 | Path | 許可 |
 | --- | --- |
 | `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update） |
 | `match /tables/{tableId}` | explicit、organizer のみ書込可（旧 wildcard を specific 化したもの） |
+
+`match /groups/{gid}` 配下（Phase A で追加）:
+
+| Path | 許可 |
+| --- | --- |
+| `match /seasonStats/{uid}` | read: group メンバー全員 / write: organizer + 数値非負 + uid==docId / delete: organizer（reset 経路）。書込経路は `finishTournament` tx と `startNewSeason` tx の 2 系統 |
+| `match /seasonHistory/{seasonId}` | read: group メンバー全員 / create: organizer のみ + endedAt timestamp + entries list / update-delete: 禁止（履歴改竄を rule で deny） |
 
 **新規 subcollection を追加する手順**:
 
@@ -203,7 +233,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
-`firestore.rules` の `groups/{gid}` `allow update` は 6 ブランチに分かれており、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
+`firestore.rules` の `groups/{gid}` `allow update` は 7 ブランチに分かれており（Phase A で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
 
 | ブランチ | 条件 | 許可される変更キー（`affectedKeys().hasOnly`） |
 | --- | --- | --- |
@@ -214,6 +244,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | **audioSettings update** | organizer | `audioSettings` |
 | **finishedTournamentCount update** | organizer | `finishedTournamentCount` |
 | **defaultSeatsPerTable update** | organizer | `defaultSeatsPerTable` |
+| **seasonStartDate update**（Phase A） | organizer | `seasonStartDate`（`is timestamp`） |
 
 新規フィールドを `groups/{gid}` に追加する場合の手順:
 
@@ -221,7 +252,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 2. 必要な書込経路を決定し、上表に「どのブランチが新フィールドを許可すべきか」を追記
 3. `firestore.rules` 該当ブランチの `affectedKeys().hasOnly([...])` に新キーを追加
 4. 他のブランチでは新キーが含まれないため、それらの経路から触れないことが自動的に保証される
-5. emulator validation スクリプト（[scripts/test-rules-finished-count.mjs](../../scripts/test-rules-finished-count.mjs) / [scripts/test-rules-default-seats.mjs](../../scripts/test-rules-default-seats.mjs) を雛形）に新フィールドの allow / deny ケースを追加し、`firebase emulators:exec` で検証
+5. emulator validation スクリプト（[scripts/test-rules-finished-count.mjs](../../scripts/test-rules-finished-count.mjs) / [scripts/test-rules-default-seats.mjs](../../scripts/test-rules-default-seats.mjs) / [scripts/test-rules-season.mjs](../../scripts/test-rules-season.mjs) を雛形）に新フィールドの allow / deny ケースを追加し、`firebase emulators:exec` で検証
 
 `affectedKeys` 列挙を逆算する（rule 側だけ更新して schema を忘れる）と、書込パスの矛盾で動作不能になりやすい。表 → schema → rule → test の順で更新すること。
 

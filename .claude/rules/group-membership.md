@@ -45,7 +45,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / createdAt / **joinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / createdAt / **joinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
@@ -55,11 +55,21 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
     inline edit（owner / organizer 限定）。新規作成画面のデフォルト名連番（`[サークル名]トーナメント-X`）に使用。
     rule は organizer 以上の任意の非負整数値書換を許可（任意フィールド変更は deny）。空書込攻撃のリスクは
     [既知のセキュリティリスク](#既知のセキュリティリスク) 参照。
-  - `defaultSeatsPerTable`（Phase 4.17 追加・default 9）: トーナメント新規作成画面の「1 Table あたりの席数」初期値。
+  - `defaultSeatsPerTable`（Phase 4.17 追加・Phase A で default 9 → 8 に変更）:
+    トーナメント新規作成画面の「1 Table あたりの席数」初期値。
     値域は 2..10 で `tournament.seatsPerTable` と完全一致（DRIFT WARNING: `firestore.rules` の `players seatNum`
     上限と連動）。書込経路はサークル詳細画面の inline edit（owner / organizer 限定）の 1 系統のみ。
     rule は organizer 以上で `affectedKeys().hasOnly(['defaultSeatsPerTable'])` + `is int` + 2..10 を強制。
-    旧 doc は zod default で 9 として hydrate されるため破壊的 migration なし。
+    旧 doc は zod default で 8 として hydrate されるが、明示的に 9 を保存していた既存 group の値は影響なし
+    （schema default は新規 hydrate 時のみ適用）。Phase A では「シーズンポイント計算式の baseline=8」
+    と整合させるため変更した。
+  - `seasonStartDate`（Phase A 追加・default null）: 現在シーズンの開始時刻 Timestamp。
+    自動経路は `startNewSeason()` の runTransaction で `serverTimestamp()` 経由更新（旧 stats を
+    `seasonHistory/{seasonId}` に snapshot した上で stats を全削除し、新シーズンを開始）。
+    rule は organizer 以上で `affectedKeys().hasOnly(['seasonStartDate'])` + `is timestamp` を強制
+    （null セットは owner branch のフルアクセス経由でのみ可能）。
+    旧 doc は zod default で `null` として hydrate され、初回 startNewSeason まで未設定のまま。
+    UI（サークル詳細・ランキング画面）は null のとき「未設定」と表示する。
 - `groupJoinCodes/{code}` — gid / expiresAt / maxUses / usedCount
 - `users/{uid}.groupIds` — 逆引き
 - `structures/{sid}` / `tournaments/{tid}` — `groupId` + `createdByUid`
@@ -107,6 +117,12 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | 開催数（`finishedTournamentCount`）の修正 | ○ | ○ | × |
 | デフォルト席数（`defaultSeatsPerTable`）の参照 | ○ | ○ | ○ |
 | デフォルト席数（`defaultSeatsPerTable`）の修正 | ○ | ○ | × |
+| シーズン戦績（`seasonStats/{uid}`）の参照 | ○ | ○ | ○ |
+| シーズン戦績（`seasonStats/{uid}`）の更新 | ○ | ○ | ×（`finishTournament` tx 経由のみ自動更新） |
+| シーズン履歴（`seasonHistory/{seasonId}`）の参照 | ○ | ○ | ○ |
+| シーズン履歴（`seasonHistory/{seasonId}`）の更新・削除 | ×（rule で全員 deny） | × | × |
+| シーズン開始（`startNewSeason`） | ○ | ○ | × |
+| シーズン開始日（`seasonStartDate`）の参照 | ○ | ○ | ○ |
 
 ## ロール遷移
 
@@ -139,6 +155,52 @@ const { group: tournamentGroup, role: myRole } = useGroupRole(data?.groupId);
 const tournamentGroup = data ? groups.find((x) => x.id === data.groupId) ?? null : null;
 const myRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) : null;
 ```
+
+### Phase A: シーズン管理（`seasonStats` / `seasonHistory` / `seasonStartDate`）
+
+シーズン累計の参加・優勝・FT・ポイントを集計する基盤。`groups/{gid}` 配下の 2 つの subcollection と、
+`groups/{gid}.seasonStartDate` フィールドの 3 領域で構成される（[firestore.rules](../../firestore.rules) 参照）。
+
+| Path | 用途 | rule |
+| --- | --- | --- |
+| `groups/{gid}.seasonStartDate` | 現在シーズンの開始時刻 Timestamp | organizer 以上が `affectedKeys.hasOnly(['seasonStartDate'])` + `is timestamp` で書換可。owner はフルアクセス経由で null 化可 |
+| `groups/{gid}/seasonStats/{uid}` | 各メンバーのシーズン累計 stats（uid == doc id） | read: group メンバー全員 / create-update: organizer のみ + 数値非負 / displayName 1〜15 / uid==docId / delete: organizer（reset 経路） |
+| `groups/{gid}/seasonHistory/{seasonId}` | 過去シーズンの snapshot（append-only） | read: group メンバー全員 / create: organizer のみ / update-delete: 禁止（履歴改竄を rule で deny） |
+
+書込経路は service 層で 2 系統に固定:
+
+- **自動増分** — `finishTournament(tid, uid, userGroupIds)` の runTransaction
+  ([repositories/tournaments.ts](../../src/lib/firebase/repositories/tournaments.ts))。
+  事前 read で `listPlayers(tid)` から順位を確定し、tx 内で各 player の `seasonStats/{uid}` を
+  `tx.get` → `tx.set` で個別増分する（read-then-write 順序）。`uid === null` の player は skip。
+  ポイント計算は [`calcSeasonPoints(rank, totalParticipants)`](../../src/lib/services/season-points.ts) で
+  `base[rank-1] × sqrt(participants / 8)` を 2 桁丸め。
+  - tx 内 read は **converter 抜きの `seasonStatsRawDocRef`** で行い、過去シーズンに混入した
+    schema mismatch doc 1 件で tx 全体（= トーナメント終了）が止まらないように防御する。
+    数値フィールドは `Number(...)` + `isFinite` + `>= 0` で読み出す（`toPrevStats` helper）。
+    list / subscribe は引き続き converter 経由で schema を強制する。
+  - 書込時の `displayName` は **15 字に切り詰める**（`displayName.slice(0, DISPLAY_NAME_MAX_LENGTH)`）。
+    player schema には max 制約がないため Google 本名等で 15 字超過の値が混入し得るが、
+    seasonStats rule は `<= 15` を強制するため、切り詰めなしだと rule deny で tx 失敗 →
+    トーナメント終了不能になる。受付フロー (`joinInputSchema`) は max を強制するが、
+    `players` repository / schema 全体での max 強制は行っていない（過去 player との互換性のため）。
+- **シーズン切替** — `startNewSeason({ gid, uid })` ([services/group.ts](../../src/lib/services/group.ts))。
+  事前 read で `seasonStats` 全件を取り、tx 内で
+  `seasonHistory/{newSeasonId}` を `set`（snapshot append）→ 旧 stats を `delete` →
+  `groups/{gid}.seasonStartDate` を `update` する。`newSeasonId` は `crypto.randomUUID()`。
+  - **進行中 tournament（`seating` / `running` / `paused`）が当該 group にあると pre-check で
+    `season/in-progress-tournament` を early throw する**。`finishTournament` との race window を
+    最小化する（pre-read 後・tx commit 前の `finishTournament` で新規 stats が新シーズンに leak
+    するのを、運営者に「先に終了させる」UX で予防）。完全 race-free は Cloud Functions 化で対応。
+  - history `entries` の `displayName` も自動増分経路と同じく 15 字に切り詰める
+    （seasonHistoryEntry schema / rule の整合性確保）。
+
+⚠ DRIFT WARNING: `seasonStats` / `seasonHistory` は `groups/{gid}` 配下の subcollection なので
+[firebase-patterns.md](firebase-patterns.md) の「subcollection 設計原則: wildcard 厳禁」に該当する。
+新規 subcollection を `groups/{gid}` 配下に追加する場合は explicit な `match /<path>` を
+追加し、wildcard `match /{sub=**}` は絶対に書かないこと。
+
+emulator validation: [scripts/test-rules-season.mjs](../../scripts/test-rules-season.mjs)（`npm run test:rules-season`）。
 
 ### tournament state ごとの許可判定（Phase 4 architect-refactor 以降・推奨）
 
