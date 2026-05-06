@@ -25,3 +25,14 @@ export const MAX_TABLES = 6;
 
 /** 新規作成画面の `seatsPerTable` 既定値。NLH 標準。 */
 export const DEFAULT_SEATS_PER_TABLE = 9;
+
+/**
+ * Phase 5.2: 1 レベルの最大 durationSec。値: 86400（= 24h）。
+ *
+ * 運営者が誤って `99999999` 等を入れて Firestore の int 上限まで膨らませ、
+ * 進行中端末の数値計算（`durationSec * 1000` ms 換算など）で精度低下や
+ * オーバーフローを起こすことを防ぐ。Phase 5.2 では rule 側で範囲制約を設けない
+ * （`tournaments/{tid}` update は organizer 信頼経路）が、将来 Cloud Functions
+ * 化する際の参照定数として残す。
+ */
+export const MAX_LEVEL_DURATION_SEC = 86400;

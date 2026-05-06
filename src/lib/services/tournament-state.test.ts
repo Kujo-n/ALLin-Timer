@@ -13,6 +13,7 @@ import {
   canConfirmSeating,
   canDelete,
   canEdit,
+  canEditLevelDurations,
   canFinish,
   canPause,
   canResume,
@@ -184,4 +185,80 @@ describe("tournament-state — UI visibility helpers", () => {
       );
     },
   );
+});
+
+describe("canEditLevelDurations", () => {
+  // levels.length === 3, currentLevel は overrides で設定する。
+
+  it("setup 中は全レベル編集可", () => {
+    const t = tournament({ state: "setup", currentLevel: 0 });
+    expect(canEditLevelDurations(t, 0)).toBe(true);
+    expect(canEditLevelDurations(t, 1)).toBe(true);
+    expect(canEditLevelDurations(t, 2)).toBe(true);
+  });
+
+  it("seating 中（currentLevel=0）は全レベル編集可", () => {
+    const t = tournament({ state: "seating", currentLevel: 0 });
+    expect(canEditLevelDurations(t, 0)).toBe(true);
+    expect(canEditLevelDurations(t, 1)).toBe(true);
+    expect(canEditLevelDurations(t, 2)).toBe(true);
+  });
+
+  it("running 中の過去レベルは編集不可", () => {
+    const t = tournament({ state: "running", currentLevel: 3 });
+    expect(canEditLevelDurations(t, 0)).toBe(false);
+    expect(canEditLevelDurations(t, 1)).toBe(false);
+  });
+
+  it("running 中の現在レベル（levelIndex === currentLevel - 1）は編集可", () => {
+    const t = tournament({ state: "running", currentLevel: 3 });
+    expect(canEditLevelDurations(t, 2)).toBe(true);
+  });
+
+  it("paused 中の未来レベルは編集可", () => {
+    // levels.length=5 にしないと未来 lvl 比較できないので拡張
+    const t = tournament({
+      state: "paused",
+      currentLevel: 3,
+      structureSnapshot: {
+        name: "Default",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+          { level: 3, sb: 75, bb: 150, ante: 0, durationSec: 600, isBreak: false },
+          { level: 4, sb: 100, bb: 200, ante: 0, durationSec: 600, isBreak: false },
+          { level: 5, sb: 150, bb: 300, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+    });
+    expect(canEditLevelDurations(t, 3)).toBe(true);
+    expect(canEditLevelDurations(t, 4)).toBe(true);
+  });
+
+  it("finished では全レベル編集不可", () => {
+    const t = tournament({ state: "finished", currentLevel: 3 });
+    expect(canEditLevelDurations(t, 0)).toBe(false);
+    expect(canEditLevelDurations(t, 1)).toBe(false);
+    expect(canEditLevelDurations(t, 2)).toBe(false);
+  });
+
+  it("levelIndex が負なら false", () => {
+    const t = tournament({ state: "running", currentLevel: 3 });
+    expect(canEditLevelDurations(t, -1)).toBe(false);
+  });
+
+  it("levelIndex が levels.length 以上なら false", () => {
+    const t = tournament({ state: "running", currentLevel: 3 });
+    expect(canEditLevelDurations(t, 3)).toBe(false);
+    expect(canEditLevelDurations(t, 100)).toBe(false);
+  });
+
+  it("levelIndex が非整数（1.5）なら false", () => {
+    const t = tournament({ state: "running", currentLevel: 3 });
+    expect(canEditLevelDurations(t, 1.5)).toBe(false);
+  });
 });

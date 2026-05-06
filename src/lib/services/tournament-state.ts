@@ -133,3 +133,23 @@ export function showSeatingBoard(t: TournamentDoc): boolean {
 export function isAcceptingLateSeats(t: TournamentDoc): boolean {
   return isSeating(t) || isInProgress(t);
 }
+
+/**
+ * Phase 5.2: 指定レベルの durationSec を運営者が編集できるか。
+ *  - state === "setup": 全レベル編集可（structureSnapshot 全体の編集経路 /edit が別途
+ *    あるが、こちらでも認める）
+ *  - state === "seating" / "running" / "paused": currentLevel 以降のみ編集可
+ *    （過去レベルは混乱回避で弾く）
+ *  - state === "finished": 編集不可（履歴を改竄しない）
+ *  - levelIndex は 0-based。currentLevel は 1-based のため `levelIndex >= currentLevel - 1`
+ *    で「現在以降」を判定する（seating 中は currentLevel === 0 なので全レベル編集可）。
+ *
+ * 範囲外 levelIndex は false を返す（防衛的）。
+ */
+export function canEditLevelDurations(t: TournamentDoc, levelIndex: number): boolean {
+  if (!Number.isInteger(levelIndex)) return false;
+  if (levelIndex < 0 || levelIndex >= t.structureSnapshot.levels.length) return false;
+  if (isFinished(t)) return false;
+  if (isSetup(t)) return true;
+  return levelIndex >= t.currentLevel - 1;
+}

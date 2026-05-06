@@ -199,6 +199,84 @@ describe("getNextBreakInfo", () => {
   });
 });
 
+/**
+ * Phase 5.2: 進行中レベルの `durationSec` を mutate した直後の残時間が
+ * 新しい値に追従することを documentation する characterization test。
+ *
+ * `getRemainingMs` は `info.current.durationSec * 1000` を毎回再評価するため、
+ * `structureSnapshot.levels[i].durationSec` を書き換えるだけで残時間計算は
+ * 自動的に新値ベースに切り替わる（pure function の数式が状態を持たないため）。
+ * 将来のリファクタがこの性質を壊さないように lock する。
+ */
+describe("getRemainingMs after structureSnapshot.levels[i].durationSec mutation", () => {
+  function withMutatedDuration(
+    base: TournamentDoc,
+    levelIndex: number,
+    newDurationSec: number,
+  ): TournamentDoc {
+    return {
+      ...base,
+      structureSnapshot: {
+        ...base.structureSnapshot,
+        levels: base.structureSnapshot.levels.map((l, i) =>
+          i === levelIndex ? { ...l, durationSec: newDurationSec } : l,
+        ),
+      },
+    };
+  }
+
+  it("running 中に現在 Lv の durationSec を 600s → 900s に増やすと残時間が +300s する", () => {
+    // currentLevel=2, levels[1].durationSec=600, elapsed=300s → 旧残: 300_000ms
+    const t = makeTournament({ currentLevel: 2 });
+    expect(getRemainingMs(t, t0Ms + 300_000)).toBe(300_000);
+    const next = withMutatedDuration(t, 1, 900);
+    // 新残: 900_000 - 300_000 = 600_000ms
+    expect(getRemainingMs(next, t0Ms + 300_000)).toBe(600_000);
+  });
+
+  it("現在 Lv の durationSec を経過時間より短くすると 0 にクランプされ、shouldAutoAdvance が true になる", () => {
+    // elapsed=600s（既に Lv 終了直前）, durationSec を 540s に短縮
+    const t = makeTournament({ currentLevel: 1 });
+    const next = withMutatedDuration(t, 0, 540);
+    expect(getRemainingMs(next, t0Ms + 600_000)).toBe(0);
+    expect(shouldAutoAdvance(next, t0Ms + 600_000)).toBe(true);
+  });
+
+  it("未来 Lv の durationSec 変更は現在 Lv の残時間に影響しない", () => {
+    // currentLevel=1, levels[2].durationSec を変更
+    const t = makeTournament({ currentLevel: 1 });
+    const before = getRemainingMs(t, t0Ms + 5_000);
+    const next = withMutatedDuration(t, 2, 1200);
+    expect(getRemainingMs(next, t0Ms + 5_000)).toBe(before);
+  });
+
+  it("未来 Lv の durationSec 変更は getNextBreakInfo の etaMs を新値ベースで再計算する", () => {
+    // break 含むストラクチャ: Lv1, Lv2, Lv3=break, Lv4
+    const baseLevels = [
+      { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+      { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+      { level: 3, sb: 0, bb: 0, ante: 0, durationSec: 300, isBreak: true },
+      { level: 4, sb: 75, bb: 150, ante: 25, durationSec: 600, isBreak: false },
+    ];
+    const t = makeTournament({
+      currentLevel: 1,
+      structureSnapshot: {
+        name: "with break",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: baseLevels,
+      },
+    });
+    // 旧: 残 500s（Lv1） + 600s（Lv2） = 1_100_000ms
+    expect(getNextBreakInfo(t, 500_000)?.etaMs).toBe(1_100_000);
+    // Lv2 を 900s に延長 → 残 500s + 900s = 1_400_000ms
+    const next = withMutatedDuration(t, 1, 900);
+    expect(getNextBreakInfo(next, 500_000)?.etaMs).toBe(1_400_000);
+  });
+});
+
 describe("shouldAutoAdvance", () => {
   it("returns true when running, remaining is 0 and not on final level", () => {
     const t = makeTournament({ currentLevel: 1 });
