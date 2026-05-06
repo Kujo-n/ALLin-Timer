@@ -51,8 +51,11 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
+import { MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
+
 import {
   advanceLevel,
+  appendLevel,
   beginSeating,
   confirmSeating,
   createTournament,
@@ -826,6 +829,252 @@ describe("setLevelDurationSec", () => {
     vi.mocked(runTransaction).mockRejectedValueOnce(new Error("perm"));
     await expect(
       setLevelDurationSec("t1", "u1", ["g1"], 3, 1020),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
+describe("appendLevel", () => {
+  function makeFiveLevelTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
+    return makeTournament({
+      structureSnapshot: {
+        name: "Default",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+          { level: 3, sb: 75, bb: 150, ante: 0, durationSec: 720, isBreak: false },
+          { level: 4, sb: 100, bb: 200, ante: 0, durationSec: 600, isBreak: false },
+          { level: 5, sb: 150, bb: 300, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+      state: "running",
+      currentLevel: 5,
+      ...overrides,
+    });
+  }
+
+  function makeMaxLevelTournament(): TournamentDoc {
+    const levels = Array.from({ length: MAX_LEVELS_PER_TOURNAMENT }, (_, i) => ({
+      level: i + 1,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+      isBreak: false,
+    }));
+    return makeTournament({
+      structureSnapshot: {
+        name: "Default",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels,
+      },
+      state: "running",
+      currentLevel: MAX_LEVELS_PER_TOURNAMENT,
+    });
+  }
+
+  function mockTransaction(
+    state: TournamentDoc | null,
+    captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void,
+  ) {
+    vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => state !== null,
+          id: state?.id ?? "missing",
+          data: () => (state ? stripId(state) : undefined),
+        }),
+        update: vi.fn((ref, patch) =>
+          captureUpdate?.(ref, patch as Record<string, unknown>),
+        ),
+        set: vi.fn(),
+        delete: vi.fn(),
+      };
+      await fn(tx as unknown as Parameters<typeof fn>[0]);
+      return undefined as unknown;
+    });
+  }
+
+  const happyInput = {
+    sb: 200,
+    bb: 400,
+    ante: 25,
+    durationSec: 900,
+    isBreak: false,
+  };
+
+  it("happy path: pushes new level at end via dot-path update", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await appendLevel("t1", "u1", ["g1"], happyInput);
+
+    expect(captured).not.toBeNull();
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      level: number;
+      sb: number;
+      bb: number;
+      ante: number;
+      durationSec: number;
+      isBreak: boolean;
+    }>;
+    expect(Array.isArray(newLevels)).toBe(true);
+    expect(newLevels).toHaveLength(6);
+    expect(newLevels[5]).toEqual({
+      level: 6,
+      sb: 200,
+      bb: 400,
+      ante: 25,
+      durationSec: 900,
+      isBreak: false,
+    });
+    expect(captured!.updatedAt).toEqual({ __op: "serverTimestamp" });
+  });
+
+  it("preserves all existing levels (sb / bb / ante / durationSec / isBreak) unchanged", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await appendLevel("t1", "u1", ["g1"], happyInput);
+
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      level: number;
+      sb: number;
+      bb: number;
+      ante: number;
+      durationSec: number;
+      isBreak: boolean;
+    }>;
+    expect(newLevels[0]).toEqual({
+      level: 1,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+      isBreak: false,
+    });
+    expect(newLevels[2].durationSec).toBe(720);
+    expect(newLevels[4].sb).toBe(150);
+    expect(newLevels[4].durationSec).toBe(600);
+  });
+
+  it("does not touch currentLevel / levelStartedAt / pausedAt / lastLevelChangeKind", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await appendLevel("t1", "u1", ["g1"], happyInput);
+
+    expect(captured!.currentLevel).toBeUndefined();
+    expect(captured!.levelStartedAt).toBeUndefined();
+    expect(captured!.pausedAt).toBeUndefined();
+    expect(captured!.lastLevelChangeKind).toBeUndefined();
+  });
+
+  it("rejects non-member with permission-denied", async () => {
+    mockTransaction(makeFiveLevelTournament());
+    await expect(
+      appendLevel("t1", "u1", ["g-other"], happyInput),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+  });
+
+  it("rejects when tournament not found in tx", async () => {
+    mockTransaction(null);
+    await expect(
+      appendLevel("t1", "u1", ["g1"], happyInput),
+    ).rejects.toMatchObject({ code: "firestore/not-found" });
+  });
+
+  it("rejects append on finished tournament with tournament/append-not-allowed", async () => {
+    mockTransaction(
+      makeFiveLevelTournament({ state: "finished", finishedAt: t0, currentLevel: 5 }),
+    );
+    await expect(
+      appendLevel("t1", "u1", ["g1"], happyInput),
+    ).rejects.toMatchObject({ code: "tournament/append-not-allowed" });
+  });
+
+  it("rejects when levels.length is at MAX_LEVELS_PER_TOURNAMENT", async () => {
+    mockTransaction(makeMaxLevelTournament());
+    await expect(
+      appendLevel("t1", "u1", ["g1"], happyInput),
+    ).rejects.toMatchObject({ code: "tournament/levels-limit-exceeded" });
+  });
+
+  it.each([
+    { sb: -1, bb: 100, ante: 0, durationSec: 600, isBreak: false }, // sb 負
+    { sb: 100, bb: -5, ante: 0, durationSec: 600, isBreak: false }, // bb 負
+    { sb: 100, bb: 200, ante: -1, durationSec: 600, isBreak: false }, // ante 負
+    { sb: 100, bb: 200, ante: 0, durationSec: 0, isBreak: false }, // durationSec=0
+    { sb: 100, bb: 200, ante: 0, durationSec: -1, isBreak: false }, // durationSec<0
+    { sb: 100, bb: 200, ante: 0, durationSec: 1.5, isBreak: false }, // durationSec 非整数
+    { sb: 100, bb: 200, ante: 0, durationSec: Number.NaN, isBreak: false }, // NaN
+    { sb: 100, bb: 200, ante: 0, durationSec: 86_401, isBreak: false }, // > MAX
+    { sb: 100, bb: 0, ante: 0, durationSec: 600, isBreak: false }, // !isBreak && bb=0
+  ])("rejects invalid input (%j) with validation/level-input-invalid", async (input) => {
+    await expect(appendLevel("t1", "u1", ["g1"], input)).rejects.toMatchObject({
+      code: "validation/level-input-invalid",
+    });
+    // tx は起動されない（早期 throw）
+    expect(vi.mocked(runTransaction)).not.toHaveBeenCalled();
+  });
+
+  it("allows break level with sb=bb=ante=0", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await appendLevel("t1", "u1", ["g1"], {
+      sb: 0,
+      bb: 0,
+      ante: 0,
+      durationSec: 600,
+      isBreak: true,
+    });
+
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      level: number;
+      sb: number;
+      bb: number;
+      isBreak: boolean;
+    }>;
+    expect(newLevels).toHaveLength(6);
+    expect(newLevels[5].isBreak).toBe(true);
+    expect(newLevels[5].sb).toBe(0);
+    expect(newLevels[5].bb).toBe(0);
+  });
+
+  it("allows append during setup state", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(
+      makeFiveLevelTournament({ state: "setup", currentLevel: 0 }),
+      (_ref, patch) => {
+        captured = patch;
+      },
+    );
+
+    await appendLevel("t1", "u1", ["g1"], happyInput);
+
+    const newLevels = captured!["structureSnapshot.levels"] as unknown[];
+    expect(newLevels).toHaveLength(6);
+  });
+
+  it("wraps runTransaction errors as firestore/write_failed", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(new Error("perm"));
+    await expect(
+      appendLevel("t1", "u1", ["g1"], happyInput),
     ).rejects.toMatchObject({ code: "firestore/write_failed" });
   });
 });

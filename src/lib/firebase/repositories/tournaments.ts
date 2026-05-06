@@ -24,10 +24,11 @@ import {
   type UpdateTournamentInput,
 } from "@/lib/firebase/schemas/tournament";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
-import { MAX_LEVEL_DURATION_SEC } from "@/lib/limits";
+import { MAX_LEVEL_DURATION_SEC, MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
 import { logger } from "@/lib/logger";
 import {
   canAdvanceLevel,
+  canAppendLevel,
   canBeginSeating,
   canConfirmSeating,
   canDelete,
@@ -37,6 +38,8 @@ import {
   canRevertLevel,
   isFinished,
 } from "@/lib/services/tournament-state";
+
+import type { Level } from "@/lib/firebase/schemas/structure";
 
 const tournamentsRef = collection(firestore, "tournaments").withConverter(
   zodConverter(tournamentBodySchema, "tournaments"),
@@ -448,6 +451,113 @@ export async function setLevelDurationSec(
     { tid, levelIndex, durationSec },
   );
   logger.info("level duration updated", { tid, uid, levelIndex, durationSec });
+}
+
+/**
+ * Phase 5.3: appendLevel が受け付ける入力 DTO。
+ * `level` 番号は repository が `oldLevels.length + 1` で自動採番するため含めない。
+ */
+export interface AppendLevelInput {
+  sb: number;
+  bb: number;
+  ante: number;
+  durationSec: number;
+  isBreak: boolean;
+}
+
+/**
+ * Phase 5.3: 進行中（または setup 中）のトーナメントの structureSnapshot.levels 末尾に
+ * 新規レベルを 1 つ append する。Phase 5.2 setLevelDurationSec と同じ array-rewrite +
+ * runTransaction パターン。
+ *
+ *  - 権限: `userGroupIds` に対象 tournament の groupId が含まれることを tx 内で再 check。
+ *    最終防衛は Firestore Rules の `isOrganizer(resource.data.groupId)`。
+ *  - 値域: levelInput は AppendLevelInput（sb/bb/ante: nonneg int /
+ *    durationSec: 1..MAX_LEVEL_DURATION_SEC int / isBreak: bool）。
+ *    `!isBreak && bb <= 0` は levelSchema の .refine() と同等条件で早期 throw。
+ *  - state: `canAppendLevel` で finished / 上限到達を弾く。
+ *  - 採番: 新 level 番号は `oldLevels.length + 1`（呼出側で number を作らせない）。
+ *  - 残時間挙動: 現在 Lv は変更されないため `getRemainingMs` は不変。最終 Lv 張り付き
+ *    状態だった場合、次 tick で `shouldAutoAdvance` が `currentLevel < levels.length` を
+ *    満たし auto-advance が発火する（運営者は何もせず新 Lv に進む）。
+ *  - lastLevelChangeKind は touch しない（append は「レベル遷移」ではない）。
+ */
+export async function appendLevel(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  levelInput: AppendLevelInput,
+): Promise<void> {
+  // tx 起動前の早期 validation（zod schema は converter 経由の read 時に評価されるが、
+  // ネットワーク往復を節約するため明白な型 / 値域違反はここで弾く）。
+  if (
+    !Number.isInteger(levelInput.sb) ||
+    levelInput.sb < 0 ||
+    !Number.isInteger(levelInput.bb) ||
+    levelInput.bb < 0 ||
+    !Number.isInteger(levelInput.ante) ||
+    levelInput.ante < 0 ||
+    !Number.isInteger(levelInput.durationSec) ||
+    levelInput.durationSec < 1 ||
+    levelInput.durationSec > MAX_LEVEL_DURATION_SEC ||
+    typeof levelInput.isBreak !== "boolean" ||
+    (!levelInput.isBreak && levelInput.bb <= 0)
+  ) {
+    throw new AppError(
+      "新規レベルの入力値が不正です（SB/BB/Ante は 0 以上の整数、分は 1 以上、プレイレベルは BB > 0）",
+      "validation/level-input-invalid",
+    );
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "レベル追加に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        const ref = doc(tournamentsRef, tid);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) {
+          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+        }
+        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
+        if (!cur.groupId || !userGroupIds.includes(cur.groupId)) {
+          throw new AppError("not allowed", "firestore/permission-denied");
+        }
+        if (isFinished(cur)) {
+          throw new AppError(
+            "終了済みのトーナメントにはレベルを追加できません",
+            "tournament/append-not-allowed",
+          );
+        }
+        if (!canAppendLevel(cur)) {
+          throw new AppError(
+            `レベル数の上限（${MAX_LEVELS_PER_TOURNAMENT}）に達しています`,
+            "tournament/levels-limit-exceeded",
+          );
+        }
+        const oldLevels = cur.structureSnapshot.levels;
+        const newLevel: Level = {
+          level: oldLevels.length + 1,
+          sb: levelInput.sb,
+          bb: levelInput.bb,
+          ante: levelInput.ante,
+          durationSec: levelInput.durationSec,
+          isBreak: levelInput.isBreak,
+        };
+        const newLevels = [...oldLevels, newLevel];
+        tx.update(ref, {
+          "structureSnapshot.levels": newLevels,
+          updatedAt: serverTimestamp(),
+        });
+      });
+    },
+    { tid },
+  );
+  logger.info("level appended", {
+    tid,
+    uid,
+    isBreak: levelInput.isBreak,
+    durationSec: levelInput.durationSec,
+  });
 }
 
 /**
