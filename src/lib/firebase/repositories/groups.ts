@@ -57,6 +57,8 @@ export async function createGroup(
         finishedTournamentCount: 0,
         // Phase 4.17: 新規作成画面の `seatsPerTable` 初期値。schema default と一致させる。
         defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
+        // Phase A: 初回シーズンは未開始なので null。最初の startNewSeason() で serverTimestamp が入る。
+        seasonStartDate: null,
         createdAt: serverTimestamp(),
         joinCodeId: null,
       });

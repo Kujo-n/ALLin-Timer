@@ -1,4 +1,3 @@
-import { Timestamp } from "firebase/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/firebase/client", () => ({
@@ -43,9 +42,6 @@ import {
   updateFinishedTournamentCount,
   updateGroupRoles,
 } from "./groups";
-
-const now = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
-void now;
 
 beforeEach(() => {
   vi.mocked(addDoc).mockReset();

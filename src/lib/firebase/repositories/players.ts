@@ -27,6 +27,25 @@ function playersRef(tid: string) {
   );
 }
 
+/**
+ * Phase A: tournament の参加者一覧を 1 回 read で取得する（subscribe ではなく）。
+ *
+ *  - `finishTournament` の seasonStats 拡張で「tx 起動前に順位確定」のために使う
+ *    （tx 内では Web SDK の制約で query を使えないため）
+ *  - `entryAt asc` で並び、`resolveRanking` 側で active の tiebreak としても利用される
+ */
+export async function listPlayers(tid: string): Promise<PlayerDoc[]> {
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "参加者一覧の取得に失敗しました",
+    async () => {
+      const snap = await getDocs(query(playersRef(tid), orderBy("entryAt", "asc")));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+    { tid },
+  );
+}
+
 export async function getPlayer(tid: string, uid: string): Promise<PlayerDoc | null> {
   return wrapFirestoreRead(
     "firestore/read_failed",
