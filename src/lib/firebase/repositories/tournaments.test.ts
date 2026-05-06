@@ -63,6 +63,7 @@ import {
   pauseTournament,
   resumeTournament,
   revertLevel,
+  setLevelDurationSec,
   subscribeTournament,
   subscribeTournamentsByGroup,
   updateTournament,
@@ -634,6 +635,198 @@ describe("finishTournament", () => {
     await expect(finishTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
+  });
+});
+
+describe("setLevelDurationSec", () => {
+  function makeFiveLevelTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
+    return makeTournament({
+      structureSnapshot: {
+        name: "Default",
+        initialStack: 10000,
+        rebuyStack: null,
+        addOnStack: null,
+        lateEntryDeadlineLevel: 6,
+        levels: [
+          { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+          { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+          { level: 3, sb: 75, bb: 150, ante: 0, durationSec: 720, isBreak: false },
+          { level: 4, sb: 100, bb: 200, ante: 0, durationSec: 600, isBreak: false },
+          { level: 5, sb: 150, bb: 300, ante: 0, durationSec: 600, isBreak: false },
+        ],
+      },
+      state: "running",
+      currentLevel: 3,
+      ...overrides,
+    });
+  }
+
+  function mockTransaction(
+    state: TournamentDoc | null,
+    captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void,
+  ) {
+    vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => state !== null,
+          id: state?.id ?? "missing",
+          data: () => (state ? stripId(state) : undefined),
+        }),
+        update: vi.fn((ref, patch) =>
+          captureUpdate?.(ref, patch as Record<string, unknown>),
+        ),
+        set: vi.fn(),
+        delete: vi.fn(),
+      };
+      await fn(tx as unknown as Parameters<typeof fn>[0]);
+      return undefined as unknown;
+    });
+  }
+
+  it("happy path: replaces only the targeted levelIndex via dot-path update", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await setLevelDurationSec("t1", "u1", ["g1"], 3, 1020);
+
+    expect(captured).not.toBeNull();
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      level: number;
+      durationSec: number;
+    }>;
+    expect(Array.isArray(newLevels)).toBe(true);
+    expect(newLevels[3].durationSec).toBe(1020);
+    expect(captured!.updatedAt).toEqual({ __op: "serverTimestamp" });
+  });
+
+  it("preserves other levels (sb / bb / ante / durationSec) unchanged", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await setLevelDurationSec("t1", "u1", ["g1"], 3, 1020);
+
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      level: number;
+      sb: number;
+      bb: number;
+      ante: number;
+      durationSec: number;
+      isBreak: boolean;
+    }>;
+    expect(newLevels[0]).toEqual({
+      level: 1,
+      sb: 25,
+      bb: 50,
+      ante: 0,
+      durationSec: 600,
+      isBreak: false,
+    });
+    expect(newLevels[2].durationSec).toBe(720);
+    expect(newLevels[4].sb).toBe(150);
+    expect(newLevels[4].durationSec).toBe(600);
+  });
+
+  it("does not touch currentLevel / levelStartedAt / pausedAt / lastLevelChangeKind", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeFiveLevelTournament(), (_ref, patch) => {
+      captured = patch;
+    });
+
+    await setLevelDurationSec("t1", "u1", ["g1"], 3, 1020);
+
+    expect(captured!.currentLevel).toBeUndefined();
+    expect(captured!.levelStartedAt).toBeUndefined();
+    expect(captured!.pausedAt).toBeUndefined();
+    expect(captured!.lastLevelChangeKind).toBeUndefined();
+  });
+
+  it("rejects non-member with permission-denied", async () => {
+    mockTransaction(makeFiveLevelTournament());
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g-other"], 3, 1020),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+  });
+
+  it("rejects when tournament not found in tx", async () => {
+    mockTransaction(null);
+    await expect(setLevelDurationSec("t1", "u1", ["g1"], 0, 600)).rejects.toMatchObject({
+      code: "firestore/not-found",
+    });
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    "rejects invalid durationSec (%s) with validation/level-duration-invalid",
+    async (durationSec) => {
+      await expect(
+        setLevelDurationSec("t1", "u1", ["g1"], 0, durationSec),
+      ).rejects.toMatchObject({ code: "validation/level-duration-invalid" });
+    },
+  );
+
+  it("rejects durationSec exceeding MAX_LEVEL_DURATION_SEC (86400)", async () => {
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g1"], 0, 86_401),
+    ).rejects.toMatchObject({ code: "validation/level-duration-invalid" });
+  });
+
+  it.each([-1, 1.5])(
+    "rejects invalid levelIndex (%s) before tx",
+    async (levelIndex) => {
+      await expect(
+        setLevelDurationSec("t1", "u1", ["g1"], levelIndex, 600),
+      ).rejects.toMatchObject({ code: "tournament/invalid-level-index" });
+    },
+  );
+
+  it("rejects out-of-range levelIndex (>= levels.length) inside tx", async () => {
+    mockTransaction(makeFiveLevelTournament());
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g1"], 5, 600),
+    ).rejects.toMatchObject({ code: "tournament/invalid-level-index" });
+  });
+
+  it("rejects past-level edit (running, currentLevel=3, levelIndex=0)", async () => {
+    mockTransaction(makeFiveLevelTournament({ state: "running", currentLevel: 3 }));
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g1"], 0, 720),
+    ).rejects.toMatchObject({ code: "tournament/level-edit-not-allowed" });
+  });
+
+  it("rejects edit on finished tournament", async () => {
+    mockTransaction(
+      makeFiveLevelTournament({ state: "finished", finishedAt: t0, currentLevel: 3 }),
+    );
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g1"], 4, 720),
+    ).rejects.toMatchObject({ code: "tournament/level-edit-not-allowed" });
+  });
+
+  it("allows edit during setup at any levelIndex", async () => {
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(
+      makeFiveLevelTournament({ state: "setup", currentLevel: 0 }),
+      (_ref, patch) => {
+        captured = patch;
+      },
+    );
+
+    await setLevelDurationSec("t1", "u1", ["g1"], 0, 720);
+
+    const newLevels = captured!["structureSnapshot.levels"] as Array<{
+      durationSec: number;
+    }>;
+    expect(newLevels[0].durationSec).toBe(720);
+  });
+
+  it("wraps runTransaction errors as firestore/write_failed", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(new Error("perm"));
+    await expect(
+      setLevelDurationSec("t1", "u1", ["g1"], 3, 1020),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
   });
 });
 

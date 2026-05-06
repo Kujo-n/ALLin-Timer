@@ -24,12 +24,14 @@ import {
   type UpdateTournamentInput,
 } from "@/lib/firebase/schemas/tournament";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
+import { MAX_LEVEL_DURATION_SEC } from "@/lib/limits";
 import { logger } from "@/lib/logger";
 import {
   canAdvanceLevel,
   canBeginSeating,
   canConfirmSeating,
   canDelete,
+  canEditLevelDurations,
   canPause,
   canResume,
   canRevertLevel,
@@ -369,6 +371,83 @@ export async function revertLevel(tid: string, uid: string, userGroupIds: string
     { tid },
   );
   logger.info("revert level ok", { tid, uid });
+}
+
+/**
+ * Phase 5.2: 進行中（または setup 中）のトーナメントの
+ * `structureSnapshot.levels[levelIndex].durationSec` を単独で書き換える。
+ *
+ * Firestore は配列要素の dot-path addressing（`structureSnapshot.levels.2.durationSec`）に
+ * 非対応のため、`runTransaction` 内で旧 levels 配列を read し、該当 index だけ
+ * 置換した新配列を `structureSnapshot.levels` に dot-path で書き戻す。
+ * `structureSnapshot` 全体を上書きしないことで他フィールド (name / initialStack /
+ * lateEntryDeadlineLevel 等) は保持される。
+ *
+ *  - 権限: `userGroupIds` に対象 tournament の groupId が含まれることを tx 内で再 check。
+ *    最終防衛は Firestore Rules の `isOrganizer(resource.data.groupId)`。
+ *  - 値域: durationSec は 1 秒以上 `MAX_LEVEL_DURATION_SEC` 秒以下の整数。
+ *  - state: `canEditLevelDurations` で過去レベル / finished を弾く。
+ *  - レベル遷移ではないため `levelTransitionUpdates` は呼ばない（`currentLevel` /
+ *    `levelStartedAt` / `pausedAt` / `lastLevelChangeKind` を touch しない）。
+ *  - 残時間挙動: `getRemainingMs` の `duration - elapsed` 数式が新 `durationSec` を
+ *    そのまま採用するため、進行中レベルの編集は約 1 秒で全端末に反映される。
+ */
+export async function setLevelDurationSec(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  levelIndex: number,
+  durationSec: number,
+): Promise<void> {
+  if (
+    !Number.isInteger(durationSec) ||
+    durationSec < 1 ||
+    durationSec > MAX_LEVEL_DURATION_SEC
+  ) {
+    throw new AppError(
+      `レベル時間は 1 秒以上 ${MAX_LEVEL_DURATION_SEC} 秒以下の整数で指定してください`,
+      "validation/level-duration-invalid",
+    );
+  }
+  if (!Number.isInteger(levelIndex) || levelIndex < 0) {
+    throw new AppError("levelIndex が不正です", "tournament/invalid-level-index");
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "レベル時間の更新に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        const ref = doc(tournamentsRef, tid);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) {
+          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
+        }
+        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
+        if (!cur.groupId || !userGroupIds.includes(cur.groupId)) {
+          throw new AppError("not allowed", "firestore/permission-denied");
+        }
+        const oldLevels = cur.structureSnapshot.levels;
+        if (levelIndex >= oldLevels.length) {
+          throw new AppError("levelIndex が範囲外です", "tournament/invalid-level-index");
+        }
+        if (!canEditLevelDurations(cur, levelIndex)) {
+          throw new AppError(
+            "このレベルは編集できません（過去レベルまたは終了済み）",
+            "tournament/level-edit-not-allowed",
+          );
+        }
+        const newLevels = oldLevels.map((l, i) =>
+          i === levelIndex ? { ...l, durationSec } : l,
+        );
+        tx.update(ref, {
+          "structureSnapshot.levels": newLevels,
+          updatedAt: serverTimestamp(),
+        });
+      });
+    },
+    { tid, levelIndex, durationSec },
+  );
+  logger.info("level duration updated", { tid, uid, levelIndex, durationSec });
 }
 
 /**
