@@ -173,7 +173,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 
 | #   | Phase                       | Description                                                                                  | Status      | Parallel | Depends | PRP Plan                                                                                                          |
 | --- | --------------------------- | -------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| A   | Season Stats Foundation     | `seasonStats` / `seasonHistory` schema + finishTournament tx 拡張 + シーズン切替操作         | in-progress | with C   | -       | [phase-a-season-stats-foundation.plan.md](../plans/02-season-stats-and-share/phase-a-season-stats-foundation.plan.md)                       |
+| A   | Season Stats Foundation     | `seasonStats` / `seasonHistory` schema + finishTournament tx 拡張 + シーズン切替操作         | complete | with C   | -       | [phase-a-season-stats-foundation.plan.md](../plans/02-season-stats-and-share/completed/phase-a-season-stats-foundation.plan.md) — [report](../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) |
 | B   | Result Card Generation      | `@vercel/og` 導入 + 優勝カード / シーズン首位カードの SSR 画像 route + ダウンロードボタン UI | pending | -        | A       | -        |
 | C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | pending | with A   | -       | -        |
 | D   | Web Share API & Polish      | Web Share API 統合（Should）+ Color picker UI（Should）+ 成功指標観測                        | pending | -        | B, C    | -        |
