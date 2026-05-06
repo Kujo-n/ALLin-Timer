@@ -23,6 +23,7 @@ import {
   type TournamentDoc,
   type UpdateTournamentInput,
 } from "@/lib/firebase/schemas/tournament";
+import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { MAX_LEVEL_DURATION_SEC, MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
 import { logger } from "@/lib/logger";
@@ -311,15 +312,8 @@ export async function advanceLevel(
       "レベル進行に失敗しました",
       async () => {
         await runTransaction(firestore, async (tx) => {
+          const t = await loadTournamentInTx(tx, tid, userGroupIds);
           const ref = doc(tournamentsRef, tid);
-          const snap = await tx.get(ref);
-          if (!snap.exists()) {
-            throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-          }
-          const t: TournamentDoc = { id: snap.id, ...snap.data() };
-          if (!t.groupId || !userGroupIds.includes(t.groupId)) {
-            throw new AppError("not allowed", "firestore/permission-denied");
-          }
           if (t.currentLevel !== expected) {
             // 別端末が先に進めた。no-op で抜ける。
             logger.info("advance level skipped (race)", {
@@ -420,15 +414,8 @@ export async function setLevelDurationSec(
     "レベル時間の更新に失敗しました",
     async () => {
       await runTransaction(firestore, async (tx) => {
+        const cur = await loadTournamentInTx(tx, tid, userGroupIds);
         const ref = doc(tournamentsRef, tid);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) {
-          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-        }
-        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
-        if (!cur.groupId || !userGroupIds.includes(cur.groupId)) {
-          throw new AppError("not allowed", "firestore/permission-denied");
-        }
         const oldLevels = cur.structureSnapshot.levels;
         if (levelIndex >= oldLevels.length) {
           throw new AppError("levelIndex が範囲外です", "tournament/invalid-level-index");
@@ -513,15 +500,8 @@ export async function appendLevel(
     "レベル追加に失敗しました",
     async () => {
       await runTransaction(firestore, async (tx) => {
+        const cur = await loadTournamentInTx(tx, tid, userGroupIds);
         const ref = doc(tournamentsRef, tid);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) {
-          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-        }
-        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
-        if (!cur.groupId || !userGroupIds.includes(cur.groupId)) {
-          throw new AppError("not allowed", "firestore/permission-denied");
-        }
         if (isFinished(cur)) {
           throw new AppError(
             "終了済みのトーナメントにはレベルを追加できません",
@@ -579,12 +559,8 @@ export async function finishTournament(
     "終了処理に失敗しました",
     async () => {
       await runTransaction(firestore, async (tx) => {
+        const cur = await loadTournamentInTx(tx, tid, userGroupIds);
         const ref = doc(tournamentsRef, tid);
-        const snap = await tx.get(ref);
-        if (!snap.exists()) {
-          throw new AppError(`tournament not found: ${tid}`, "firestore/not-found");
-        }
-        const cur: TournamentDoc = { id: snap.id, ...snap.data() };
         if (isFinished(cur)) {
           // 別端末が先に確定済み。二重 increment を避けるため no-op で抜ける。
           logger.info("tournament finish skipped (race)", { tid, uid });
