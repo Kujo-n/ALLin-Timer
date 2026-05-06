@@ -555,21 +555,57 @@ describe("revertLevel", () => {
 });
 
 describe("finishTournament", () => {
+  /**
+   * Phase A: `finishTournament` は tx 起動前に `listPlayers(tid)` で参加者一覧を 1 回 read する。
+   * 既存の race guard / write_failed 等のテストは players=空で十分なので default で空を返す。
+   * seasonStats 拡張テスト（後段）では明示的に players を渡す。
+   */
+  function mockListPlayers(players: Array<{ id: string; data: Record<string, unknown> }> = []) {
+    vi.mocked(getDocs).mockResolvedValueOnce({
+      docs: players.map((p) => ({ id: p.id, data: () => p.data, ref: { __ref: "doc", id: p.id } })),
+    } as never);
+  }
+
+  /**
+   * Phase A: tx 内で `tx.get(seasonStatsDocRef(...))` を逐次呼ぶため、
+   * 期待 read 件数分の snapshot を順番に返す mock を構築する。
+   */
   function mockFinishTransaction(
     txState: TournamentDoc | null,
-    captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void,
+    options: {
+      captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void;
+      captureSet?: (ref: unknown, data: Record<string, unknown>) => void;
+      seasonStatsReads?: Array<Record<string, unknown> | null>;
+    } = {},
   ) {
     vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const reads = options.seasonStatsReads ?? [];
+      let readIdx = 0;
+      const txGetCalled = { tournamentReadDone: false };
       const tx = {
-        get: vi.fn().mockResolvedValue({
-          exists: () => txState !== null,
-          id: txState?.id ?? "missing",
-          data: () => (txState ? stripId(txState) : undefined),
+        get: vi.fn().mockImplementation(() => {
+          // 1 回目は loadTournamentInTx の tournament read。以降は seasonStats read。
+          if (!txGetCalled.tournamentReadDone) {
+            txGetCalled.tournamentReadDone = true;
+            return Promise.resolve({
+              exists: () => txState !== null,
+              id: txState?.id ?? "missing",
+              data: () => (txState ? stripId(txState) : undefined),
+            });
+          }
+          const r = reads[readIdx];
+          readIdx += 1;
+          return Promise.resolve({
+            exists: () => r !== null && r !== undefined,
+            data: () => r ?? undefined,
+          });
         }),
         update: vi.fn((ref, patch) =>
-          captureUpdate?.(ref, patch as Record<string, unknown>),
+          options.captureUpdate?.(ref, patch as Record<string, unknown>),
         ),
-        set: vi.fn(),
+        set: vi.fn((ref, data) =>
+          options.captureSet?.(ref, data as Record<string, unknown>),
+        ),
         delete: vi.fn(),
       };
       await fn(tx as unknown as Parameters<typeof fn>[0]);
@@ -585,11 +621,11 @@ describe("finishTournament", () => {
 
   it("writes finished state and increments group counter atomically via runTransaction", async () => {
     mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers();
     const updates: Array<[unknown, Record<string, unknown>]> = [];
-    mockFinishTransaction(
-      makeTournament({ state: "running", groupId: "g1" }),
-      (ref, patch) => updates.push([ref, patch]),
-    );
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureUpdate: (ref, patch) => updates.push([ref, patch]),
+    });
 
     await finishTournament("t1", "u1", ["g1"]);
 
@@ -610,10 +646,11 @@ describe("finishTournament", () => {
     // 事前 read（assertCanManage）では running だが、tx 内 read で finished を観測するケース。
     // 二重 increment を防ぐため update は呼ばれない。
     mockGetTournament(makeTournament({ state: "running" }));
+    mockListPlayers();
     const txUpdate = vi.fn();
-    mockFinishTransaction(makeTournament({ state: "finished" }), (_ref, patch) =>
-      txUpdate(patch),
-    );
+    mockFinishTransaction(makeTournament({ state: "finished" }), {
+      captureUpdate: (_ref, patch) => txUpdate(patch),
+    });
 
     await finishTournament("t1", "u1", ["g1"]);
 
@@ -624,6 +661,7 @@ describe("finishTournament", () => {
     // tx 内で `snap.exists() === false` を観測したケース。tx 内 throw した AppError は
     // 既存 code を保持したまま外側に伝播する（AppError.from は AppError 引数を上書きしない）。
     mockGetTournament(makeTournament({ state: "running" }));
+    mockListPlayers();
     mockFinishTransaction(null);
 
     await expect(finishTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
@@ -633,11 +671,282 @@ describe("finishTournament", () => {
 
   it("wraps runTransaction errors as firestore/write_failed", async () => {
     mockGetTournament(makeTournament({ state: "running" }));
+    mockListPlayers();
     vi.mocked(runTransaction).mockRejectedValueOnce(new Error("perm"));
 
     await expect(finishTournament("t1", "u1", ["g1"])).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
+  });
+
+  /**
+   * Phase A: 全参加者の seasonStats を atomic に増分する拡張のテスト。
+   *
+   *   - tx.set 呼出回数 = uid != null の participant 数
+   *   - 順位導出は resolveRanking（active → busted desc）で確定
+   *   - uid==null の player は skip（通常発生しないが防衛的に）
+   */
+  it("writes seasonStats for all participants (uid!=null) with rank-based points", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    // 5 人参加: p1 active(=rank 1) + p5 bust last(=rank 2) + p4 + p3 + p2
+    const baseEntry = t0.toMillis();
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: Timestamp.fromMillis(baseEntry),
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+      {
+        id: "p2",
+        data: {
+          displayName: "Bob",
+          uid: "u2",
+          entryAt: Timestamp.fromMillis(baseEntry + 100),
+          isBusted: true,
+          bustedAt: Timestamp.fromMillis(baseEntry + 5_000),
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+      {
+        id: "p3",
+        data: {
+          displayName: "Carol",
+          uid: "u3",
+          entryAt: Timestamp.fromMillis(baseEntry + 200),
+          isBusted: true,
+          bustedAt: Timestamp.fromMillis(baseEntry + 10_000),
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+      {
+        id: "p4",
+        data: {
+          displayName: "Dave",
+          uid: "u4",
+          entryAt: Timestamp.fromMillis(baseEntry + 300),
+          isBusted: true,
+          bustedAt: Timestamp.fromMillis(baseEntry + 20_000),
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+      {
+        id: "p5",
+        data: {
+          displayName: "Eve",
+          uid: "u5",
+          entryAt: Timestamp.fromMillis(baseEntry + 400),
+          isBusted: true,
+          bustedAt: Timestamp.fromMillis(baseEntry + 30_000),
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      seasonStatsReads: [null, null, null, null, null], // 既存 stats なし（=新規 create）
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    // 5 人分の tx.set が呼ばれる
+    expect(sets).toHaveLength(5);
+    // すべて participations=1, finalTables=1（全員 FT 内）, totalPoints は順位ごとに分布
+    const ranks = sets.map((s) => s[1]);
+    // resolveRanking: rank 1 = active(p1), 2..5 = busted desc(p5, p4, p3, p2)
+    // base[]=[10,7,5,3,1,...], baseline 8 人, 5 人なら factor = sqrt(5/8) ≈ 0.7906...
+    // rank 1 = 10 * 0.7906... ≈ 7.91
+    // rank 2 = 7 * 0.7906... ≈ 5.53
+    // rank 3 = 5 * 0.7906... ≈ 3.95
+    // rank 4 = 3 * 0.7906... ≈ 2.37
+    // rank 5 = 1 * 0.7906... ≈ 0.79
+    const u1 = ranks.find((r) => (r as { uid: string }).uid === "u1") as Record<string, unknown>;
+    expect(u1.participations).toBe(1);
+    expect(u1.wins).toBe(1);
+    expect(u1.finalTables).toBe(1);
+    expect(u1.totalPoints).toBe(7.91);
+  });
+
+  it("accumulates seasonStats from existing values (atomic increment in tx)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      // 既存 stats 1 件（過去 5 戦・優勝 1 回・累計 35.50pt）
+      seasonStatsReads: [
+        {
+          uid: "u1",
+          displayName: "Alice",
+          participations: 5,
+          wins: 1,
+          finalTables: 3,
+          totalPoints: 35.5,
+          lastUpdatedAt: t0,
+        },
+      ],
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    expect(next.participations).toBe(6); // 5 + 1
+    expect(next.wins).toBe(2); // 1 + 1（rank 1 単独参加なので wins）
+    expect(next.finalTables).toBe(4); // 3 + 1
+    // totalPoints = 35.5 + calcSeasonPoints(1, 1) = 35.5 + 10 * sqrt(1/8) = 35.5 + 3.54 = 39.04
+    expect(next.totalPoints).toBe(39.04);
+  });
+
+  /**
+   * H-1: player.displayName が 15 字超でも seasonStats に書く時点で 15 字に切り詰める。
+   * 旧 doc / Google 本名等で 15 字超過したケースで rule deny が tx 全体を落とすのを防ぐ最終ライン防御。
+   */
+  it("truncates player displayName to 15 chars when writing seasonStats (Phase A H-1 defense)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    const long = "1234567890ABCDEFGHIJ"; // 20 文字
+    mockListPlayers([
+      {
+        id: "p-long",
+        data: {
+          displayName: long,
+          uid: "u-long",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    expect((next.displayName as string).length).toBe(15);
+    expect(next.displayName).toBe(long.slice(0, 15));
+  });
+
+  /**
+   * M-1: tx.get で読んだ raw seasonStats data が schema mismatch（型不正・field 欠損）でも
+   * tx 全体を落とさず 0 として扱い増分を継続する（converter 抜き読み + Number 防御）。
+   */
+  it("treats corrupt prev seasonStats as zeros and continues atomic increment (Phase A M-1 defense)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      // 旧 stats の数値フィールドが文字列・null・undefined・NaN・負値で混入したケース。
+      // schema-validate していたら invalid_type / nonneg 違反で落ちる。
+      seasonStatsReads: [
+        {
+          uid: "u1",
+          displayName: "Alice",
+          participations: "broken" as unknown as number,
+          wins: null as unknown as number,
+          finalTables: undefined as unknown as number,
+          totalPoints: -999 as unknown as number,
+        },
+      ],
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    // 全て 0 ベースで再計算。1 人参加 rank 1 なので participations=1 / wins=1 / finalTables=1。
+    expect(next.participations).toBe(1);
+    expect(next.wins).toBe(1);
+    expect(next.finalTables).toBe(1);
+    // points: 10 * sqrt(1/8) ≈ 3.54
+    expect(next.totalPoints).toBe(3.54);
+  });
+
+  it("skips uid==null players (Phase 4 以前互換)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Anonymous",
+          uid: null,
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(0); // uid==null は skip
   });
 });
 

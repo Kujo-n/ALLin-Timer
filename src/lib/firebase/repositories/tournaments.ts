@@ -9,6 +9,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  Timestamp,
   updateDoc,
   where,
   writeBatch,
@@ -17,6 +18,13 @@ import {
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
+import { groupDocRef } from "@/lib/firebase/repositories/groups";
+import { listPlayers } from "@/lib/firebase/repositories/players";
+import {
+  seasonStatsDocRef,
+  seasonStatsRawDocRef,
+} from "@/lib/firebase/repositories/seasonStats";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import {
   tournamentBodySchema,
   type CreateTournamentInput,
@@ -27,6 +35,8 @@ import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { MAX_LEVEL_DURATION_SEC, MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
 import { logger } from "@/lib/logger";
+import { calcSeasonPoints, isFinalTable } from "@/lib/services/season-points";
+import { resolveRanking } from "@/lib/services/timer";
 import {
   canAdvanceLevel,
   canAppendLevel,
@@ -45,6 +55,33 @@ import type { Level } from "@/lib/firebase/schemas/structure";
 const tournamentsRef = collection(firestore, "tournaments").withConverter(
   zodConverter(tournamentBodySchema, "tournaments"),
 );
+
+/**
+ * Phase A: `finishTournament` の tx 内で converter 抜きに読んだ raw `seasonStats` doc を
+ * 必要な数値フィールドだけ防御的に取り出す。schema mismatch（型不正・field 欠損）が
+ * あっても tx 全体を落とさず 0 として扱い、増分ロジックを継続させる。
+ *
+ * `Number(undefined)` は `NaN`、`Number(null)` は 0 になるため、`Number.isFinite` で
+ * 弾いてから返す。負値も「壊れた値」として 0 にクランプ（負累計は意味を持たない）。
+ */
+function toPrevStats(data: unknown): {
+  participations: number;
+  wins: number;
+  finalTables: number;
+  totalPoints: number;
+} {
+  const obj = (data ?? {}) as Record<string, unknown>;
+  const safeNumber = (v: unknown): number => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  return {
+    participations: Math.trunc(safeNumber(obj.participations)),
+    wins: Math.trunc(safeNumber(obj.wins)),
+    finalTables: Math.trunc(safeNumber(obj.finalTables)),
+    totalPoints: safeNumber(obj.totalPoints),
+  };
+}
 
 export async function createTournament(input: CreateTournamentInput): Promise<string> {
   const tid = await wrapFirestoreWrite(
@@ -542,10 +579,16 @@ export async function appendLevel(
 
 /**
  * トーナメントを終了する（state: * → finished）。
+ *
  *  - Phase 4.16: tournament の state 更新と group の `finishedTournamentCount` インクリメントを
  *    runTransaction で atomic に行う。tx 内で state を再 read することで、
  *    複数端末が同時に呼んだ場合でも片方だけが increment し、二重カウントを防ぐ。
  *  - 事前 read で finished を観測した場合は tx を起こさず早期 return（read コスト節約）。
+ *  - Phase A: tx 内で全参加者の `seasonStats/{uid}` を atomic に増分する
+ *    （参加 +1、優勝者は wins +1、FT 内なら finalTables +1、totalPoints += calcSeasonPoints()）。
+ *    tx 内で query は実行できないため事前に `listPlayers` で順位を確定し、
+ *    tx 内では各 doc を `tx.get` → `tx.set` で個別書込する read-then-write 順序を守る。
+ *    `uid === null` の player は skip（pid==uid invariant 以前の互換 player は通常存在しない）。
  */
 export async function finishTournament(
   tid: string,
@@ -554,6 +597,17 @@ export async function finishTournament(
 ): Promise<void> {
   const t = await assertCanManage(tid, userGroupIds);
   if (isFinished(t)) return;
+
+  // Phase A: 事前 read で参加者と順位を確定（tx 内では query 不可）。tx 起動前に評価することで
+  //   複数端末同時 finish の race は tx 内 state 再 read で deny される。
+  const players = await listPlayers(tid);
+  const ranking = resolveRanking(players);
+  const totalParticipants = ranking.length;
+  // serverTimestamp() を tx.set フィールドに渡すと sentinel pending のまま zod の
+  // `instanceof(Timestamp)` validate に倒れるリスクがあるため、client clock の Timestamp.now() で固定する。
+  // 用途は seasonStats.lastUpdatedAt の表示のみ（順位・ポイント計算には影響しない）。
+  const finishedAtClient = Timestamp.now();
+
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "終了処理に失敗しました",
@@ -566,20 +620,78 @@ export async function finishTournament(
           logger.info("tournament finish skipped (race)", { tid, uid });
           return;
         }
+
+        // Phase A: read-then-write 順序を守る。先に全 seasonStats を tx.get、その後で tx.update / tx.set。
+        //
+        // tx.get は `seasonStatsRawDocRef`（converter 抜き）で行う。converter 付きの
+        // `seasonStatsDocRef` で読むと、過去シーズンに schema mismatch を起こした 1 件の
+        // 不整合 doc によって tx 全体が `firestore/invalid-data` で失敗し、
+        // トーナメント終了が止まる。tx 内では invariant 強制を緩め、`Number(...)` で
+        // 数値のみ防御的に取り出す（外側の list / subscribe では converter のまま schema を効かせる）。
+        const reads: Array<{
+          playerUid: string;
+          displayName: string;
+          rank: number;
+          prev:
+            | {
+                participations: number;
+                wins: number;
+                finalTables: number;
+                totalPoints: number;
+              }
+            | null;
+        }> = [];
+        for (const r of ranking) {
+          if (r.uid === null) continue;
+          // eslint-disable-next-line no-await-in-loop -- tx の read-then-write 順序のため逐次評価
+          const existing = await tx.get(seasonStatsRawDocRef(cur.groupId, r.uid));
+          reads.push({
+            playerUid: r.uid,
+            displayName: r.displayName,
+            rank: r.rank,
+            prev: existing.exists() ? toPrevStats(existing.data()) : null,
+          });
+        }
+
         tx.update(ref, {
           state: "finished",
           finishedAt: serverTimestamp(),
           pausedAt: null,
           updatedAt: serverTimestamp(),
         });
-        tx.update(doc(firestore, "groups", cur.groupId), {
+        tx.update(groupDocRef(cur.groupId), {
           finishedTournamentCount: increment(1),
         });
+        for (const e of reads) {
+          const points = calcSeasonPoints(e.rank, totalParticipants);
+          const isWin = e.rank === 1 ? 1 : 0;
+          const isFT = isFinalTable(e.rank) ? 1 : 0;
+          const next = {
+            uid: e.playerUid,
+            // player.displayName は schema 上 max なし（Phase 4.7 join 時のみ 15 文字制約）。
+            // 旧経路で 15 字超過の値が混入しても seasonStats rule の deny で
+            // tx 全体を落とさないよう、書込側で 15 字に切り詰める（最終ライン防御）。
+            displayName: e.displayName.slice(0, DISPLAY_NAME_MAX_LENGTH),
+            participations: (e.prev?.participations ?? 0) + 1,
+            wins: (e.prev?.wins ?? 0) + isWin,
+            finalTables: (e.prev?.finalTables ?? 0) + isFT,
+            // 毎回 2 桁丸めで累積誤差を抑制（calcSeasonPoints の戻り値も 2 桁正規化済み）
+            totalPoints:
+              Math.round(((e.prev?.totalPoints ?? 0) + points) * 100) / 100,
+            lastUpdatedAt: finishedAtClient,
+          };
+          tx.set(seasonStatsDocRef(cur.groupId, e.playerUid), next);
+        }
       });
     },
     { tid },
   );
-  logger.info("tournament finish ok", { tid, uid, gid: t.groupId });
+  logger.info("tournament finish ok", {
+    tid,
+    uid,
+    gid: t.groupId,
+    participants: totalParticipants,
+  });
 }
 
 interface TournamentSnapshotPayload {
