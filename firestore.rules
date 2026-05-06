@@ -218,10 +218,57 @@ service cloud.firestore {
         && request.resource.data.defaultSeatsPerTable is int
         && request.resource.data.defaultSeatsPerTable >= 2
         && request.resource.data.defaultSeatsPerTable <= 10
+      ) || (
+        // Phase A: organizer による seasonStartDate の単独書換。
+        //   `startNewSeason()` の runTransaction で `seasonStartDate = serverTimestamp()` 経由で発火。
+        //   affectedKeys は 'seasonStartDate' のみに限定。他フィールドは触らせない。
+        //   Timestamp 型のみ強制（null セットは startNewSeason では発火させず、
+        //   owner branch のフルアクセス経由でのみ可能）。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['seasonStartDate'])
+        && request.resource.data.seasonStartDate is timestamp
       );
 
       allow delete: if isSignedIn()
                     && request.auth.uid in resource.data.ownerUids;
+
+      // Phase A: groups/{gid}/seasonStats/{uid}
+      //   - 読取: group メンバー全員（owner / organizer / member）
+      //   - 書込: organizer のみ（finishTournament tx と startNewSeason tx の 2 経路で発火）
+      //   - invariants: docId == uid フィールド一致 / 数値の非負 / displayName 1〜15 文字
+      //   - 値域・型は zod schema にも委譲し、rule 側は最低限の防御を担う
+      match /seasonStats/{uid} {
+        allow read: if isGroupMember(gid);
+        allow create, update: if isOrganizer(gid)
+                              && request.resource.data.uid == uid
+                              && request.resource.data.participations is int
+                              && request.resource.data.participations >= 0
+                              && request.resource.data.wins is int
+                              && request.resource.data.wins >= 0
+                              && request.resource.data.finalTables is int
+                              && request.resource.data.finalTables >= 0
+                              && request.resource.data.totalPoints is number
+                              && request.resource.data.totalPoints >= 0
+                              && request.resource.data.displayName is string
+                              && request.resource.data.displayName.size() >= 1
+                              && request.resource.data.displayName.size() <= 15
+                              && request.resource.data.lastUpdatedAt is timestamp;
+        // startNewSeason の reset 経路で全件 delete するため organizer に許可。
+        allow delete: if isOrganizer(gid);
+      }
+
+      // Phase A: groups/{gid}/seasonHistory/{seasonId}
+      //   - 読取: group メンバー全員
+      //   - 作成: organizer のみ（startNewSeason tx の append 経路）
+      //   - 更新・削除: 禁止（履歴改竄を rule 側で deny、append-only）
+      match /seasonHistory/{seasonId} {
+        allow read: if isGroupMember(gid);
+        allow create: if isOrganizer(gid)
+                      && request.resource.data.endedAt is timestamp
+                      && request.resource.data.entries is list;
+        allow update, delete: if false;
+      }
     }
 
     // groupJoinCodes: コード文字列を知るユーザーが `get` できる前提（URL 踏み経由の加入）。
