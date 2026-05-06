@@ -168,6 +168,123 @@ describe("useManualSeatChange", () => {
     expect(result.current.undoBanner).toBeNull();
   });
 
+  it("noop when uid is null (no orchestrator call)", async () => {
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result } = setup({ players: [player], uid: null });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    expect(applyManualSeatChange).not.toHaveBeenCalled();
+  });
+
+  it("noop when player has no current seat (tableNum/seatNum null)", async () => {
+    const noSeatPlayer = p({ id: "alice", tableNum: null, seatNum: null });
+    const { result } = setup({ players: [noSeatPlayer] });
+    await act(async () => {
+      await result.current.handleMoveSeat(noSeatPlayer, { tableNum: 2, seatNum: 3 });
+    });
+    expect(applyManualSeatChange).not.toHaveBeenCalled();
+  });
+
+  it("falls back to single-move banner entries when result.moves is undefined", async () => {
+    vi.mocked(applyManualSeatChange).mockResolvedValueOnce({
+      applied: true,
+      description: "Table 1 / 席 2 → Table 2 / 席 3",
+      // moves omitted — older orchestrator return shape (defensive fallback path)
+    } as never);
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result } = setup({ players: [player] });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    expect(result.current.undoBanner?.moves).toEqual([
+      {
+        playerId: "alice",
+        from: { tableNum: 1, seatNum: 2 },
+        to: { tableNum: 2, seatNum: 3 },
+      },
+    ]);
+    // No "N 名 cascade" suffix when only 1 move
+    expect(result.current.undoBanner?.summary).not.toContain("cascade");
+  });
+
+  it("calls onError with formatted code:message when handleMoveSeat throws", async () => {
+    vi.mocked(applyManualSeatChange).mockRejectedValueOnce(new Error("net down"));
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result, onError } = setup({ players: [player] });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toMatch(/^firestore\/write_failed:/);
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("calls onError when undo result.applied is false", async () => {
+    vi.mocked(applyManualSeatChange).mockResolvedValueOnce({
+      applied: true,
+      description: "ok",
+      moves: [
+        {
+          playerId: "alice",
+          from: { tableNum: 1, seatNum: 2 },
+          to: { tableNum: 2, seatNum: 3 },
+        },
+      ],
+    });
+    vi.mocked(applyManualSeatUndo).mockResolvedValueOnce({
+      applied: false,
+      description: null,
+    });
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result, onError } = setup({ players: [player] });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    await act(async () => {
+      await result.current.handleUndoSeatChange();
+    });
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining("元に戻せませんでした"));
+    // banner should remain (so user can retry)
+    expect(result.current.undoBanner).not.toBeNull();
+  });
+
+  it("calls onError with formatted code:message when handleUndoSeatChange throws", async () => {
+    vi.mocked(applyManualSeatChange).mockResolvedValueOnce({
+      applied: true,
+      description: "ok",
+      moves: [
+        {
+          playerId: "alice",
+          from: { tableNum: 1, seatNum: 2 },
+          to: { tableNum: 2, seatNum: 3 },
+        },
+      ],
+    });
+    vi.mocked(applyManualSeatUndo).mockRejectedValueOnce(new Error("rule deny"));
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result, onError } = setup({ players: [player] });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    await act(async () => {
+      await result.current.handleUndoSeatChange();
+    });
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringMatching(/^firestore\/write_failed:/),
+    );
+    expect(result.current.busy).toBe(false);
+  });
+
+  it("handleUndoSeatChange is a noop when there is no banner / no uid / busy", async () => {
+    const { result } = setup();
+    // No banner yet → noop
+    await act(async () => {
+      await result.current.handleUndoSeatChange();
+    });
+    expect(applyManualSeatUndo).not.toHaveBeenCalled();
+  });
+
   it("clears the undo timeout on unmount", async () => {
     vi.mocked(applyManualSeatChange).mockResolvedValueOnce({
       applied: true,

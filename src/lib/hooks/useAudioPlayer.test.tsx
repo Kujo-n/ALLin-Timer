@@ -81,7 +81,8 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
       volume: 0.5,
     },
     finishedTournamentCount: 0,
-    defaultSeatsPerTable: 9,
+    defaultSeatsPerTable: 8,
+    seasonStartDate: null,
     createdAt: baseTimestamp,
     ...overrides,
   };
