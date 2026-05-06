@@ -180,6 +180,33 @@ export function DashboardClient({ tid }: { tid: string }) {
     }
   }
 
+  // サウンドトグルの inline handler を集約。tournamentGroup が確定していない場合は
+  // TimerControls の audio prop 側で undefined になり呼ばれない。
+  async function onToggleAudioEnabled(next: boolean) {
+    if (!tournamentGroup) return;
+    try {
+      await updateAudioSettings(tournamentGroup.id, {
+        ...tournamentGroup.audioSettings,
+        enabled: next,
+      });
+    } catch (e) {
+      // updateAudioSettings 内で既に AppError wrap + logger.warn 済み。
+      // 二重ログを避けるため unwrapOrFrom で既存 wrap を尊重しつつ
+      // 未 wrap の場合のみ補完して UI 表示する。
+      const err = unwrapOrFrom(
+        e,
+        "firestore/write_failed",
+        "サウンド設定の更新に失敗しました",
+      );
+      setError(`${err.code}: ${err.message}`);
+      return;
+    }
+    // Phase 4.14: GroupProvider は onSnapshot 購読していないため、
+    // 書込み成功後に one-shot 再読込してボタン状態を即時反映する。
+    // best-effort で十分（refreshGroups は内部で warn して握り、reject しない）。
+    void refreshGroups();
+  }
+
   // Phase 5.x: D&D による手動席移動の state / 30 秒 undo banner / cascade 適用は
   // useManualSeatChange hook に集約済み。dashboard 側は busy / undoBanner /
   // 2 つの handler を SeatingBoard と undo banner UI に渡すだけ。
@@ -307,29 +334,7 @@ export function DashboardClient({ tid }: { tid: string }) {
                       enabled: tournamentGroup.audioSettings.enabled,
                       unlocked: audioPlayer.unlocked,
                       onUnlock: audioPlayer.unlock,
-                      onToggleEnabled: async (next: boolean) => {
-                        try {
-                          await updateAudioSettings(tournamentGroup.id, {
-                            ...tournamentGroup.audioSettings,
-                            enabled: next,
-                          });
-                        } catch (e) {
-                          // updateAudioSettings 内で既に AppError wrap + logger.warn 済み。
-                          // 二重ログを避けるため unwrapOrFrom で既存 wrap を尊重しつつ
-                          // 未 wrap の場合のみ補完して UI 表示する。
-                          const err = unwrapOrFrom(
-                            e,
-                            "firestore/write_failed",
-                            "サウンド設定の更新に失敗しました",
-                          );
-                          setError(`${err.code}: ${err.message}`);
-                          return;
-                        }
-                        // Phase 4.14: GroupProvider は onSnapshot 購読していないため、
-                        // 書込み成功後に one-shot 再読込してボタン状態を即時反映する。
-                        // best-effort で十分（refreshGroups は内部で warn して握り、reject しない）。
-                        void refreshGroups();
-                      },
+                      onToggleEnabled: onToggleAudioEnabled,
                     }
                   : undefined
               }
