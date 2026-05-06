@@ -9,7 +9,7 @@ import {
 } from "@/lib/audio/audio-context";
 import { resolveSound } from "@/lib/audio/sound-catalog";
 import { AppError } from "@/lib/errors";
-import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import { isOrganizerRole, type GroupDoc } from "@/lib/firebase/schemas/group";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useImplicitAudioUnlock } from "@/lib/hooks/useImplicitAudioUnlock";
@@ -80,7 +80,7 @@ export function useAudioPlayer({
   // 共有 <audio> インスタンス（unmount 時に破棄）。
   const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  const isOrganizer = role === "owner" || role === "organizer";
+  const isOrganizer = isOrganizerRole(role);
   const enabled = group?.audioSettings.enabled ?? false;
   const volume = group?.audioSettings.volume ?? 0.7;
 

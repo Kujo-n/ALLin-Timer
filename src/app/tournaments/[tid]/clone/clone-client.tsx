@@ -15,6 +15,7 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTournament } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import { isOrganizerRole } from "@/lib/firebase/schemas/group";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { logger } from "@/lib/logger";
@@ -76,7 +77,7 @@ export function CloneClient({ tid }: { tid: string }) {
   }, [tid]);
 
   const { role: myRole } = useGroupRole(src?.groupId);
-  const isOrganizer = myRole === "owner" || myRole === "organizer";
+  const isOrganizer = isOrganizerRole(myRole);
   const targetGroup = useMemo(
     () => (src ? (groups.find((g) => g.id === src.groupId) ?? null) : null),
     [src, groups],

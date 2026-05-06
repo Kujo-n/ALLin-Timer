@@ -29,6 +29,7 @@ import {
 import { AppError, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
+import { isOrganizerRole } from "@/lib/firebase/schemas/group";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import {
@@ -302,7 +303,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   }
 
   // role 判定前 or 非 organizer の場合はローディング表示（useEffect で /live へ redirect 中）。
-  const isOrganizer = myRole === "owner" || myRole === "organizer";
+  const isOrganizer = isOrganizerRole(myRole);
   if (groupsLoading || !isOrganizer) {
     return <main className="mx-auto max-w-4xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }

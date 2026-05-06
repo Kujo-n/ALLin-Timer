@@ -12,6 +12,7 @@ import { getGroup, setMemberDisplayName } from "@/lib/firebase/repositories/grou
 import {
   deriveRole,
   DISPLAY_NAME_MAX_LENGTH,
+  isOrganizerRole,
   type GroupDoc,
 } from "@/lib/firebase/schemas/group";
 import { useInlineNumberEdit } from "@/lib/hooks/useInlineNumberEdit";
@@ -177,7 +178,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
 
   const myRole = deriveRole(group, user.uid);
   const isOwner = myRole === "owner";
-  const isOrganizer = myRole === "owner" || myRole === "organizer";
+  const isOrganizer = isOrganizerRole(myRole);
 
   async function onIssueCode() {
     if (!user) return;
