@@ -54,6 +54,7 @@ import {
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 import {
   canAppendLevel,
+  canClone,
   canDelete as canDeleteTournament,
   canEdit as canEditTournament,
   isInProgress,
@@ -436,6 +437,16 @@ export function DashboardClient({ tid }: { tid: string }) {
       </div>
 
       {winner ? <WinnerBanner winner={winner} /> : null}
+
+      {isOrganizer && canClone(data) ? (
+        <div className="flex justify-center">
+          <Button asChild size="lg">
+            <Link href={`/tournaments/${tid}/clone`}>
+              同じ参加者で次のトーナメントを作成
+            </Link>
+          </Button>
+        </div>
+      ) : null}
 
       {showBalancing ? (
         <BalancingInstructionCard
