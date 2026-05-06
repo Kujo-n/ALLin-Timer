@@ -19,6 +19,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentState } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
+import { getSameTableActivePdOtherIds } from "@/lib/services/seating/same-table";
 
 interface Props {
   tid: string;
@@ -133,22 +134,10 @@ export function PlayerList({
                       tid={tid}
                       pid={p.id}
                       isBusted={p.isBusted}
-                      sameTablePlayerIds={
-                        p.tableNum !== null
-                          ? // 同卓 1 PD 制約のため、bust 時に OFF を伝播すべき相手は同卓 PD だけ。
-                            // 全員に書込んでも冪等だが、9 席満卓で 8 件の余計な write が出るので
-                            // 最大 1 件に絞る（同卓 PD 不在なら自身のみ）。
-                            players
-                              .filter(
-                                (q) =>
-                                  q.id !== p.id &&
-                                  !q.isBusted &&
-                                  q.tableNum === p.tableNum &&
-                                  q.isPlayingDealer,
-                              )
-                              .map((q) => q.id)
-                          : []
-                      }
+                      // 同卓 1 PD 制約のため、bust 時に OFF を伝播すべき相手は同卓 PD だけ。
+                      // 全員に書込んでも冪等だが、9 席満卓で 8 件の余計な write が出るので
+                      // 最大 1 件に絞る（同卓 PD 不在なら空配列）。
+                      sameTablePlayerIds={getSameTableActivePdOtherIds(p, players)}
                       onError={setLocalError}
                     />
                   ) : null}

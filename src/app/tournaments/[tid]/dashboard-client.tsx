@@ -52,6 +52,7 @@ import {
   applyManualSeatUndo,
   setIsPlayingDealer,
 } from "@/lib/services/seating/orchestrator";
+import { getSameTableActiveOtherIds } from "@/lib/services/seating/same-table";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 import {
   canAppendLevel,
@@ -493,17 +494,7 @@ export function DashboardClient({ tid }: { tid: string }) {
               onMoveSeat={handleMoveSeat}
               dndBusy={seatChangeBusy}
               onTogglePd={async (player, value) => {
-                const tableMates =
-                  player.tableNum !== null
-                    ? players
-                        .filter(
-                          (q) =>
-                            q.id !== player.id &&
-                            !q.isBusted &&
-                            q.tableNum === player.tableNum,
-                        )
-                        .map((q) => q.id)
-                    : [];
+                const tableMates = getSameTableActiveOtherIds(player, players);
                 await setIsPlayingDealer(
                   tid,
                   user.uid,
@@ -529,17 +520,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           // tableMates は空配列で済む。ただし将来 visibility を seating 以降に広げた場合の
           // 安全策として、player.tableNum が確定していれば SeatingBoard 経路と同じ
           // 同卓 ID 計算を行う（同卓 1 PD 制約の tx race guard を生かす）。
-          const tableMates =
-            player.tableNum !== null
-              ? players
-                  .filter(
-                    (q) =>
-                      q.id !== player.id &&
-                      !q.isBusted &&
-                      q.tableNum === player.tableNum,
-                  )
-                  .map((q) => q.id)
-              : [];
+          const tableMates = getSameTableActiveOtherIds(player, players);
           await setIsPlayingDealer(
             tid,
             user.uid,
