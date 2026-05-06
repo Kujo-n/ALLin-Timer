@@ -23,8 +23,38 @@ export const MAX_SEATS_PER_TABLE = 10;
 /** 同時開催卓数の上限。TDA 2015 のバランシング許容差（6 卓以下: 1 / 7 卓以上: 2）境界。 */
 export const MAX_TABLES = 6;
 
-/** 新規作成画面の `seatsPerTable` 既定値。NLH 標準。 */
-export const DEFAULT_SEATS_PER_TABLE = 9;
+/**
+ * 新規作成画面の `seatsPerTable` 既定値。
+ *
+ * Phase A (シーズン戦績基盤): 9 → 8 に変更。シーズンポイント計算式の baseline=8 と
+ * 整合させるため。既存 group の保存値は zod default が新規 hydrate 時のみ適用される
+ * ため影響なし。
+ */
+export const DEFAULT_SEATS_PER_TABLE = 8;
+
+/**
+ * Phase A: シーズンポイント計算の基準配列（1 位から N 位までの base ポイント）。
+ *
+ * `calcSeasonPoints(rank, totalParticipants)` は以下の式で算出する:
+ *   `base[rank-1] × sqrt(totalParticipants / SEASON_POINTS_BASELINE_PARTICIPANTS)`
+ *
+ * 配列長を超える順位は 0pt。読み取り専用の参照定数。
+ */
+export const SEASON_POINTS_BASE: readonly number[] = [10, 7, 5, 3, 1, 1, 1, 1, 1];
+
+/**
+ * Phase A: シーズンポイント計算の baseline 参加人数（= 8）。
+ *
+ * `DEFAULT_SEATS_PER_TABLE` と一致させる。NLH の標準的な単一卓運用での参加人数を
+ * 「ポイント倍率 1.0」に対応付けた基準値。drift 検出は `scripts/test-rules-limits.mjs`。
+ */
+export const SEASON_POINTS_BASELINE_PARTICIPANTS = 8;
+
+/**
+ * Phase A: 順位 N 位までを「ファイナルテーブル進出」と見なす上限。
+ * NLH 9 人卓に揃えて 9 位以内を FT 扱いとする。
+ */
+export const SEASON_FINAL_TABLE_THRESHOLD = 9;
 
 /**
  * Phase 5.2: 1 レベルの最大 durationSec。値: 86400（= 24h）。

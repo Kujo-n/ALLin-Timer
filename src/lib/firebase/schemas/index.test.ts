@@ -11,6 +11,8 @@ import {
 } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
 import { playerBodySchema } from "./player";
+import { seasonHistoryBodySchema } from "./seasonHistory";
+import { seasonStatsBodySchema } from "./seasonStats";
 import { levelSchema, structureBodySchema } from "./structure";
 import { structureTemplateBodySchema } from "./structureTemplate";
 import { templateAdminBodySchema } from "./templateAdmin";
@@ -541,7 +543,7 @@ describe("groupBodySchema", () => {
       memberUids: ["u1"],
       createdAt: now,
     });
-    expect(parsed.defaultSeatsPerTable).toBe(9);
+    expect(parsed.defaultSeatsPerTable).toBe(8);
   });
 
   it("preserves explicit defaultSeatsPerTable in [2..10]", () => {
@@ -591,6 +593,190 @@ describe("groupBodySchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("defaults seasonStartDate to null for legacy docs without the field (Phase A)", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.seasonStartDate).toBeNull();
+  });
+
+  it("preserves explicit seasonStartDate Timestamp", () => {
+    const t = Timestamp.fromDate(new Date("2026-04-01T00:00:00Z"));
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonStartDate: t,
+    });
+    expect(parsed.seasonStartDate).toEqual(t);
+  });
+
+  it("accepts explicit null seasonStartDate", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonStartDate: null,
+    });
+    expect(parsed.seasonStartDate).toBeNull();
+  });
+});
+
+describe("seasonStatsBodySchema (Phase A)", () => {
+  it("parses a valid stats doc", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "Alice",
+      participations: 5,
+      wins: 1,
+      finalTables: 3,
+      totalPoints: 28.12,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects negative participations", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "Alice",
+      participations: -1,
+      wins: 0,
+      finalTables: 0,
+      totalPoints: 0,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects non-integer wins", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "Alice",
+      participations: 0,
+      wins: 1.5,
+      finalTables: 0,
+      totalPoints: 0,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects displayName longer than 15 chars", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "1234567890123456",
+      participations: 0,
+      wins: 0,
+      finalTables: 0,
+      totalPoints: 0,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts decimal totalPoints (2 桁丸め前提)", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "A",
+      participations: 1,
+      wins: 0,
+      finalTables: 0,
+      totalPoints: 8.66,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects negative totalPoints", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "u1",
+      displayName: "A",
+      participations: 0,
+      wins: 0,
+      finalTables: 0,
+      totalPoints: -0.5,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects empty uid", () => {
+    const r = seasonStatsBodySchema.safeParse({
+      uid: "",
+      displayName: "A",
+      participations: 0,
+      wins: 0,
+      finalTables: 0,
+      totalPoints: 0,
+      lastUpdatedAt: now,
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("seasonHistoryBodySchema (Phase A)", () => {
+  it("parses a valid history doc with empty entries (initial season)", () => {
+    const r = seasonHistoryBodySchema.safeParse({
+      startedAt: null,
+      endedAt: now,
+      entries: [],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("parses a valid history doc with entries", () => {
+    const r = seasonHistoryBodySchema.safeParse({
+      startedAt: now,
+      endedAt: future,
+      entries: [
+        {
+          uid: "u1",
+          displayName: "A",
+          participations: 5,
+          wins: 1,
+          finalTables: 2,
+          totalPoints: 23.1,
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects entries with negative participations", () => {
+    const r = seasonHistoryBodySchema.safeParse({
+      startedAt: now,
+      endedAt: future,
+      entries: [
+        {
+          uid: "u1",
+          displayName: "A",
+          participations: -1,
+          wins: 0,
+          finalTables: 0,
+          totalPoints: 0,
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects missing endedAt", () => {
+    const r = seasonHistoryBodySchema.safeParse({
+      startedAt: null,
+      entries: [],
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("deriveRole", () => {
@@ -607,7 +793,8 @@ describe("deriveRole", () => {
       volume: 0.7,
     },
     finishedTournamentCount: 0,
-    defaultSeatsPerTable: 9,
+    defaultSeatsPerTable: 8,
+    seasonStartDate: null,
     createdAt: now,
   };
 

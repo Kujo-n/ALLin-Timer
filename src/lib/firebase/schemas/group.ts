@@ -82,13 +82,19 @@ export const groupBodySchema = z
     //   から organizer 以上が更新する。値域は src/lib/firebase/schemas/tournament.ts の
     //   `seatsPerTable.min(2).max(10)` と完全一致させる（DRIFT WARNING: tournaments の
     //   seatsPerTable / players seatNum 上限 10 と連動。同時に変更）。
-    //   旧 doc（Phase 4.16 以前）は default(9) で受容され、未明示なら 9 として hydrate される。
+    //   旧 doc（Phase 4.16 以前）は default(9) で受容され、未明示なら 9 として hydrate される
+    //   （Phase A で 8 に変更済み）。
     defaultSeatsPerTable: z
       .number()
       .int()
       .min(MIN_SEATS_PER_TABLE)
       .max(MAX_SEATS_PER_TABLE)
       .default(DEFAULT_SEATS_PER_TABLE),
+    // Phase A: 現在シーズンの開始時刻。`startNewSeason()` の runTransaction で
+    //   `seasonStartDate = serverTimestamp()` 経由で更新される。
+    //   旧 doc（Phase 4.17 以前）はフィールド不在のため default(null) で hydrate され、
+    //   初回シーズン開始まで null。UI は null のとき「未設定」表示する。
+    seasonStartDate: z.instanceof(Timestamp).nullable().default(null),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),
