@@ -36,9 +36,10 @@ export async function registerOrganizer(page: Page, creds: OrganizerCredentials)
   await page.getByLabel("表示名").fill(creds.displayName);
   await page.getByLabel("メールアドレス").fill(creds.email);
   await page.getByLabel("パスワード").fill(creds.password);
+  // exact: true で「Google で新規登録」と衝突させない（substring match の default を回避）
   await Promise.all([
     page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 }),
-    page.getByRole("button", { name: "新規登録" }).click(),
+    page.getByRole("button", { name: "新規登録", exact: true }).click(),
   ]);
 }
 

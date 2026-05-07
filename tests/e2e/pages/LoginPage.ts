@@ -8,7 +8,12 @@ export class LoginPage extends BasePage {
   readonly emailInput: Locator = this.page.getByLabel("メールアドレス");
   readonly passwordInput: Locator = this.page.getByLabel("パスワード");
   readonly displayNameInput: Locator = this.page.getByLabel("表示名");
-  readonly submitButton: Locator = this.page.getByRole("button", { name: /ログイン|新規登録/ });
+  // Google ボタンが「Google で新規登録」「Google でログイン」というラベルになり、
+  // Playwright の `name` は default で substring match のため exact: true で
+  // form submit ボタンと衝突しないよう絞り込む。
+  readonly submitButton: Locator = this.page.getByRole("button", {
+    name: /^(ログイン|新規登録)$/,
+  });
   readonly emailLinkTab: Locator = this.page.getByRole("tab", { name: "メールリンク" });
 
   async goto() {
@@ -24,7 +29,7 @@ export class LoginPage extends BasePage {
     await this.passwordInput.fill(password);
     await Promise.all([
       this.page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 }),
-      this.page.getByRole("button", { name: "新規登録" }).click(),
+      this.page.getByRole("button", { name: "新規登録", exact: true }).click(),
     ]);
     await this.waitForStable();
   }
@@ -36,7 +41,7 @@ export class LoginPage extends BasePage {
     await this.passwordInput.fill(password);
     await Promise.all([
       this.page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15_000 }),
-      this.page.getByRole("button", { name: "ログイン" }).last().click(),
+      this.page.getByRole("button", { name: "ログイン", exact: true }).click(),
     ]);
     await this.waitForStable();
   }

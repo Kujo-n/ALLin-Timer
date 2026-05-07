@@ -20,6 +20,33 @@ test.describe("Email Link 撤廃", () => {
     await loginPage.expectTabs(["ログイン", "新規登録"], ["メールリンク"]);
   });
 
+  test("/login の Google ボタンは mode 連動でラベルが切り替わる", async ({
+    page,
+    loginPage,
+  }) => {
+    await loginPage.goto();
+    // 初期は login モード
+    await expect(page.getByRole("button", { name: "Google でログイン" })).toBeVisible();
+    // register モードに切替
+    await loginPage.registerTab.click();
+    await expect(page.getByRole("button", { name: "Google で新規登録" })).toBeVisible();
+    // register モードでは表示名 input が tab 直下に存在する
+    await expect(loginPage.displayNameInput).toBeVisible();
+  });
+
+  test("/login の register モードで displayName 未入力のまま Google を押すとエラー表示される", async ({
+    page,
+    loginPage,
+  }) => {
+    await loginPage.goto();
+    await loginPage.registerTab.click();
+    await page.getByRole("button", { name: "Google で新規登録" }).click();
+    // popup は開かれず、field-level error が出る。
+    // Next.js の `__next-route-announcer__` も role="alert" を持つので、
+    // text で当該 error 要素に絞り込む。
+    await expect(page.getByRole("alert").filter({ hasText: "表示名" })).toBeVisible();
+  });
+
   test("/join/[tid] has only guest + login tabs (no email tab)", async ({
     page,
     joinPage,
