@@ -290,7 +290,8 @@ src/
 │  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
-│  │                              # / [gid]/season（シーズンランキング、Phase A）
+│  │                              # / [gid]/season（シーズンランキング、Phase A
+│  │                              #     + Phase D で過去シーズン履歴 accordion + Web Share）
 │  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
@@ -318,6 +319,9 @@ src/
 │  │                              # / PlayersCard / StructureSnapshotCard / SoundToggleButton（Phase 4.13）
 │  │                              # / AppendLevelDialog / EditableLevelDurationCell（動的ブラインド調整）
 │  │                              # / ClonePlayersChecklist（Phase 5.4 同参加者クローン）
+│  │                              # / WinnerCardDownloadButton（Phase B 優勝カード保存）
+│  ├─ share/_share-button/        # Web Share API シェアボタン共通 primitive（Phase D）
+│  │                              # ShareCardButton / useCanShareImage / share-text
 │  └─ ui/                         # shadcn/ui
 ├─ lib/
 │  ├─ errors.ts                   # AppError 基底

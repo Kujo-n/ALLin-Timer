@@ -176,7 +176,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | A   | Season Stats Foundation     | `seasonStats` / `seasonHistory` schema + finishTournament tx 拡張 + シーズン切替操作         | complete | with C   | -       | [phase-a-season-stats-foundation.plan.md](../plans/02-season-stats-and-share/completed/phase-a-season-stats-foundation.plan.md) — [report](../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) |
 | B   | Result Card Generation      | `@vercel/og` 導入 + 優勝カード / シーズン首位カードの SSR 画像 route + ダウンロードボタン UI | in-progress | -        | A       | [phase-b-result-card-generation.plan.md](../plans/02-season-stats-and-share/completed/phase-b-result-card-generation.plan.md) — [report](../reports/02-season-stats-and-share/phase-b-result-card-generation-report.md) |
 | C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | complete | with A   | -       | [phase-c-table-label-color.plan.md](../plans/completed/phase-c-table-label-color.plan.md) — [report](../reports/phase-c-table-label-color-report.md) — [02-02 improvement report](../reports/phase-c-improvement-02-02-report.md) |
-| D   | Web Share API & Polish      | Web Share API 統合（Should）+ Color picker UI（Should）+ 成功指標観測                        | pending | -        | B, C    | -        |
+| D   | Web Share API & Polish      | Web Share API 統合（Should）+ シーズン履歴閲覧 UI 拡充 + 成功指標観測（Color picker は Phase C improvement-02-02 で完了済のため除外） | in-progress | -        | B, C    | [phase-d-web-share-and-polish.plan.md](../plans/phase-d-web-share-and-polish.plan.md) |
 
 ### Phase Details
 
@@ -251,6 +251,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | ポイント保存精度 | 小数 2 桁保持 | 整数 round / 整数 floor / 小数 1 桁 | Q14 回答。8 人 baseline で参加人数が変わると小数が出る（例: 6 人 1 位 = 8.66pt）ため、保存値は小数 2 桁で精度を守り、表示は UI 責務で丸める |
 | シーズン跨ぎ集計 | 現在シーズン + 履歴のみ | all-time 累計併設 | スコープ膨張回避。需要観測後に追加 |
 | PRD 単位 | 優先度高 3 機能を 1 PRD（B 案） | 5 機能統合（A） / 機能ごと 5 PRD（C） | ユーザー選択。⑧ ⑨ の連続実装価値と PRD の保守性を両立 |
+| Phase D の Color picker 取扱い | Phase C improvement-02-02 で完了済のため Phase D scope から除外 | Phase D で再実装 / 新 phase に分離 | 重複作業回避。10 色プリセット + カスタム hex picker + サークル詳細プリセット共有が Wave 1 / Wave 3 で実装済（[phase-c-improvement-02-02-report.md](../reports/phase-c-improvement-02-02-report.md)）。Phase D は Web Share API + シーズン履歴閲覧 + 成功指標観測に集中 |
 
 ---
 
