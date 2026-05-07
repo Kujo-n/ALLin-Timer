@@ -17,7 +17,7 @@ import {
   type User,
 } from "firebase/auth";
 
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
 import {
   deleteUserProfile,
@@ -230,6 +230,83 @@ export async function signInWithGoogle(): Promise<GoogleSignInResult> {
     logger.warn(wrapped.message, { code: wrapped.code });
     throw wrapped;
   }
+}
+
+/**
+ * 新規登録モードでの Google サインアップ。
+ * 表示名を upfront で必須入力させ、新規ユーザー（または `users/{uid}` 不在の Auth-only
+ * legacy ユーザー）なら入力された名前で `users/{uid}` を初期化する。既存ユーザーが
+ * 検出されたときは Phase 4.7 規約に従い `users/{uid}` を上書きせず、`mode:
+ * "already-existing"` を返して UI 側で notice 表示等に使ってもらう。
+ *
+ * `joinViaGoogle`（`receipt.ts`）は引き続き `signInWithGoogle` を直接使う前提のため
+ * 互換性を維持する別経路として追加。
+ */
+interface SignUpWithGoogleResult {
+  user: User;
+  /**
+   * - "created": 入力された displayName を `users/{uid}` に保存した
+   *              （新規ユーザー or `users/{uid}` 不在 / displayName 空の legacy ユーザー）
+   * - "already-existing": 既存ユーザーで `users/{uid}` に有効な displayName があったため
+   *                       上書きを skip した
+   */
+  mode: "created" | "already-existing";
+}
+export async function signUpWithGoogle(
+  displayName: string,
+): Promise<SignUpWithGoogleResult> {
+  const trimmed = validateDisplayName(displayName);
+  const result = await signInWithGoogle();
+  if (result.needsDisplayNameSetup) {
+    // updateDisplayName は内部で Auth.updateProfile + users/{uid} upsert + group propagate を担う
+    await updateDisplayName(trimmed);
+    logger.info("signUpWithGoogle ok created", { uid: result.user.uid });
+    return { user: result.user, mode: "created" };
+  }
+  logger.info("signUpWithGoogle ok existing", { uid: result.user.uid });
+  return { user: result.user, mode: "already-existing" };
+}
+
+/**
+ * ログインモードでの Google サインイン。
+ * `isNewUser === true` を検出した場合は **未登録ユーザーとして弾き**、
+ * Auth ユーザーを `user.delete()` で破棄してから `auth/not-registered-yet`
+ * を throw する。`isNewUser === false` の既存ユーザーは通常通り通過させる
+ * （`needsDisplayNameSetup === true` の legacy 救済は呼出側で DisplayNameDialog
+ * に倒す = `signInWithGoogle` の戻り値をそのまま返す）。
+ *
+ * 設計理由: Auth ユーザーをそのまま残すと再ログインしても同じ判定になり詰む。
+ * `signInWithPopup` 直後の freshly-authenticated 状態で `user.delete()` を
+ * 呼べるため `auth/requires-recent-login` には原則ならない。
+ * 失敗時は signOut にフォールバックして best-effort で片付ける。
+ */
+export async function loginWithGoogle(): Promise<GoogleSignInResult> {
+  const result = await signInWithGoogle();
+  if (result.isNewUser) {
+    try {
+      await result.user.delete();
+      logger.info("loginWithGoogle rolled back new user", { uid: result.user.uid });
+    } catch (e) {
+      const wrapped = AppError.from(
+        e,
+        "auth/rollback-failed",
+        "サインインの取り消しに失敗しました",
+      );
+      logger.warn(wrapped.message, { code: wrapped.code, uid: result.user.uid });
+      try {
+        await signOut(firebaseAuth);
+      } catch (signOutErr) {
+        logger.warn("loginWithGoogle signOut fallback failed", {
+          code: getErrorCode(signOutErr),
+        });
+      }
+    }
+    throw new AppError(
+      "このアカウントはまだ登録されていません。「新規登録」タブから登録してください。",
+      "auth/not-registered-yet",
+    );
+  }
+  return result;
 }
 
 /**

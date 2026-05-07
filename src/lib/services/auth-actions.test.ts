@@ -79,11 +79,13 @@ import {
   AccountLinkRequired,
   linkGoogleWithPassword,
   loginWithEmail,
+  loginWithGoogle,
   logout,
   reauthenticateAccount,
   registerWithEmail,
   signInAsGuest,
   signInWithGoogle,
+  signUpWithGoogle,
   updateDisplayName,
 } from "./auth-actions";
 
@@ -593,6 +595,185 @@ describe("normalizeAuthCode (default branch)", () => {
     await expect(loginWithEmail("a", "b")).rejects.toMatchObject({
       code: "auth/some-unknown",
     });
+  });
+});
+
+describe("signUpWithGoogle", () => {
+  it("rejects blank displayName before calling Firebase popup", async () => {
+    await expect(signUpWithGoogle("  ")).rejects.toMatchObject({
+      code: "validation/display-name-required",
+    });
+    expect(signInWithPopup).not.toHaveBeenCalled();
+  });
+
+  it("rejects too-long displayName before calling Firebase popup", async () => {
+    await expect(signUpWithGoogle("1234567890123456")).rejects.toMatchObject({
+      code: "validation/display-name-too-long",
+    });
+    expect(signInWithPopup).not.toHaveBeenCalled();
+  });
+
+  it("creates user and saves displayName for new user", async () => {
+    const { getAdditionalUserInfo } = await import("firebase/auth");
+    vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
+    const user = makeUser({ displayName: null });
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    mockAuthState.currentUser = user;
+
+    const result = await signUpWithGoogle("  Alice  ");
+
+    expect(result).toEqual({ user, mode: "created" });
+    // updateDisplayName 内部の updateProfile が trim 済み name で呼ばれる
+    expect(updateProfile).toHaveBeenCalledWith(user, { displayName: "Alice" });
+    expect(upsertUserProfile).toHaveBeenCalledWith({
+      uid: "u1",
+      displayName: "Alice",
+      email: "alice@example.com",
+    });
+  });
+
+  it("skips updateDisplayName for existing user with profile", async () => {
+    const user = makeUser({ displayName: "Existing" });
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u1",
+      displayName: "Existing",
+      email: "alice@example.com",
+      groupIds: [],
+      createdAt: { toMillis: () => 0 } as never,
+    });
+
+    const result = await signUpWithGoogle("New Name");
+
+    expect(result).toEqual({ user, mode: "already-existing" });
+    expect(updateProfile).not.toHaveBeenCalled();
+    expect(upsertUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("treats existing Auth user with empty profile as needing displayName setup", async () => {
+    // isNewUser=false だが users/{uid} が無い → needsDisplayNameSetup=true → mode=created
+    const user = makeUser();
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    mockAuthState.currentUser = user;
+    // getUserProfile は default で null
+
+    const result = await signUpWithGoogle("Alice");
+
+    expect(result.mode).toBe("created");
+    expect(updateProfile).toHaveBeenCalled();
+    expect(upsertUserProfile).toHaveBeenCalled();
+  });
+
+  it("propagates AccountLinkRequired without calling updateDisplayName", async () => {
+    const fbErr = new FirebaseError("auth/account-exists-with-different-credential", "conflict");
+    (fbErr as unknown as { customData: { email: string } }).customData = {
+      email: "alice@example.com",
+    };
+    vi.mocked(signInWithPopup).mockRejectedValue(fbErr);
+    vi.mocked(GoogleAuthProvider.credentialFromError).mockReturnValue({
+      providerId: "google.com",
+    } as never);
+
+    await expect(signUpWithGoogle("Alice")).rejects.toBeInstanceOf(AccountLinkRequired);
+    expect(updateProfile).not.toHaveBeenCalled();
+    expect(upsertUserProfile).not.toHaveBeenCalled();
+  });
+
+  // displayName が valid な状態で popup が閉じられた場合は、
+  // signInWithGoogle 内で normalize された AppError がそのまま透過する。
+  it("propagates auth/popup-closed without calling updateDisplayName", async () => {
+    vi.mocked(signInWithPopup).mockRejectedValue(
+      new FirebaseError("auth/popup-closed-by-user", "x"),
+    );
+
+    await expect(signUpWithGoogle("Alice")).rejects.toMatchObject({
+      code: "auth/popup-closed",
+    });
+    expect(updateProfile).not.toHaveBeenCalled();
+    expect(upsertUserProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe("loginWithGoogle", () => {
+  it("passes through existing user with completed profile", async () => {
+    const user = makeUser();
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    vi.mocked(getUserProfile).mockResolvedValue({
+      uid: "u1",
+      displayName: "Alice",
+      email: "alice@example.com",
+      groupIds: [],
+      createdAt: { toMillis: () => 0 } as never,
+    });
+
+    const result = await loginWithGoogle();
+
+    expect(result.user).toBe(user);
+    expect(result.isNewUser).toBe(false);
+    expect(result.needsDisplayNameSetup).toBe(false);
+    expect(user.delete).not.toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("rolls back new Google user via user.delete and throws auth/not-registered-yet", async () => {
+    const { getAdditionalUserInfo } = await import("firebase/auth");
+    vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
+    const user = makeUser();
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+
+    await expect(loginWithGoogle()).rejects.toMatchObject({
+      code: "auth/not-registered-yet",
+    });
+    expect(user.delete).toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("falls back to signOut when user.delete fails for new user", async () => {
+    const { getAdditionalUserInfo } = await import("firebase/auth");
+    vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
+    const user = makeUser({
+      delete: vi.fn().mockRejectedValue(new FirebaseError("auth/requires-recent-login", "x")),
+    });
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+
+    await expect(loginWithGoogle()).rejects.toMatchObject({
+      code: "auth/not-registered-yet",
+    });
+    expect(user.delete).toHaveBeenCalled();
+    expect(signOut).toHaveBeenCalled();
+  });
+
+  it("passes through legacy user with empty profile (DisplayNameDialog fallback)", async () => {
+    // isNewUser=false だが users/{uid} が無い legacy ケース。
+    // 呼出側で DisplayNameDialog 救済に倒すためそのまま返す。
+    const user = makeUser({ displayName: "" });
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    // getUserProfile は default で null
+
+    const result = await loginWithGoogle();
+
+    expect(result.user).toBe(user);
+    expect(result.isNewUser).toBe(false);
+    expect(result.needsDisplayNameSetup).toBe(true);
+    expect(user.delete).not.toHaveBeenCalled();
+  });
+
+  // delete + signOut の二重失敗パスでも、最終的に auth/not-registered-yet を
+  // throw する契約は崩さない（zombie auth user の救済は UI 側で行う）。
+  it("still throws auth/not-registered-yet when both user.delete and signOut fail", async () => {
+    const { getAdditionalUserInfo } = await import("firebase/auth");
+    vi.mocked(getAdditionalUserInfo).mockReturnValueOnce({ isNewUser: true } as never);
+    const user = makeUser({
+      delete: vi.fn().mockRejectedValue(new FirebaseError("auth/requires-recent-login", "x")),
+    });
+    vi.mocked(signInWithPopup).mockResolvedValue({ user } as never);
+    vi.mocked(signOut).mockRejectedValue(new FirebaseError("auth/network-request-failed", "x"));
+
+    await expect(loginWithGoogle()).rejects.toMatchObject({
+      code: "auth/not-registered-yet",
+    });
+    expect(user.delete).toHaveBeenCalled();
+    expect(signOut).toHaveBeenCalled();
   });
 });
 
