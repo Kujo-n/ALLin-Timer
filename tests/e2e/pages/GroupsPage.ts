@@ -62,7 +62,7 @@ export class GroupDetailPage extends BasePage {
     await expect(this.page.getByText("メンバー", { exact: true })).toBeVisible();
   }
 
-  // Phase C: 「テーブル呼称デフォルト」カード（GroupDefaultTableLabelsCard）。
+  // Phase C: 「Table 名デフォルト」カード（GroupDefaultTableLabelsCard）。
   //   - 表示モードでは「未設定」or 番号付きリスト + 「編集」ボタン
   //   - 編集モードでは aria-label="default-table-label-N" の Input × 行数 + 追加 / 保存
   //   - Card root に `aria-label="default-table-labels-card"` を付与しているため

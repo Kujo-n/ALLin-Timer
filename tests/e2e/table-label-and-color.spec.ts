@@ -10,7 +10,7 @@ import {
 } from "./fixtures/flows";
 
 /**
- * Phase C: テーブル呼称（label）/ 色（color）カスタム機能のユーザー観測点。
+ * Phase C: Table 名（label）/ 色（color）カスタム機能のユーザー観測点。
  *
  * 検証する振る舞い:
  *   1. organizer がサークル詳細画面で `defaultTableLabels` を登録 → 新規 tournament を
@@ -191,7 +191,7 @@ test.describe("Phase C: Table Label & Color", () => {
 
       await memberPage.goto(`/groups/${gid}`);
       // カード自体は read-only で表示される（label "赤卓" は見える）が、編集ボタンは無い。
-      await expect(memberPage.getByText("テーブル呼称デフォルト")).toBeVisible({
+      await expect(memberPage.getByText("Table 名デフォルト")).toBeVisible({
         timeout: 15_000,
       });
       await expect(memberPage.getByText("赤卓")).toBeVisible();

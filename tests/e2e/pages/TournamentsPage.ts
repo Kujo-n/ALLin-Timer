@@ -77,15 +77,21 @@ export class TournamentDashboardPage extends BasePage {
   tableLabelInput(tableNum: number): Locator {
     return this.page.getByLabel(`table-label-input-${tableNum}`);
   }
+  // Phase C improvement (02-02): カスタム hex picker は「詳細設定」折りたたみの中に
+  // 移動した。アクセスするには tableColorAdvancedToggleButton をクリックして展開する必要がある。
   tableColorInput(tableNum: number): Locator {
     return this.page.getByLabel(`table-color-input-${tableNum}`);
   }
+  readonly tableColorAdvancedToggleButton: Locator = this.page
+    .getByRole("dialog")
+    .getByRole("button", { name: /詳細設定/ });
+  // Phase C improvement (02-02): プリセット色のうち「色なし」タイル（aria-label="色：なし"）。
+  readonly tableColorPresetNoneButton: Locator = this.page
+    .getByRole("dialog")
+    .getByRole("radio", { name: "色：なし" });
   readonly tableLabelDialogSaveButton: Locator = this.page
     .getByRole("dialog")
     .getByRole("button", { name: /^保存$/ });
-  readonly tableLabelDialogClearColorButton: Locator = this.page
-    .getByRole("dialog")
-    .getByRole("button", { name: /^色なし$/ });
 
   /**
    * Phase C: dashboard 卓ヘッダから label を編集する 1 操作 helper。
