@@ -135,3 +135,90 @@ export function formatDateForFilename(d: Date): string {
 export function formatDateForLabel(d: Date): string {
   return d.toLocaleDateString("ja-JP");
 }
+
+/**
+ * Phase D follow-up: ShareCardButton と Download ボタンが共有する純関数。
+ *
+ * download / share 両経路で「同じ url / 同じ filenameStem」を返すことを担保する。
+ * ここで集約することで、`tournamentName` のサニタイズや日付フォーマットの規約が
+ * drift して share と download で別ファイルになる事故を防ぐ。
+ */
+export interface ShareCardInputs {
+  /** OG image route の絶対パス（`/api/og/...?...` 形式 / same-origin）。 */
+  url: string;
+  /** Content-Disposition / `<a download>` 共通の filename stem（拡張子なし）。 */
+  filenameStem: string;
+}
+
+export interface WinnerShareInputsParams {
+  winnerName: string;
+  tournamentName: string;
+  participants: number;
+  finishedAt: Date;
+}
+
+export function buildWinnerShareInputs(
+  tid: string,
+  params: WinnerShareInputsParams,
+): ShareCardInputs {
+  const datePart = formatDateForFilename(params.finishedAt);
+  const filenameStem = sanitizeFilename(
+    `winner-${params.tournamentName}-${datePart}`,
+  );
+  const url = buildWinnerCardUrl(tid, {
+    winnerName: params.winnerName,
+    tournamentName: params.tournamentName,
+    participants: params.participants,
+    finishedAtLabel: formatDateForLabel(params.finishedAt),
+    filename: filenameStem,
+  });
+  return { url, filenameStem };
+}
+
+/**
+ * SeasonTopCard の入力に必要な group の最小フィールド。
+ *
+ * 呼出側は `GroupDoc` をそのまま渡せる（structural typing）。引数として narrow しておくことで
+ * テスト fixture の構築コストを抑えつつ、将来 `GroupDoc` に無関係なフィールドが増えても
+ * helper のシグネチャに波及しない。
+ */
+export interface SeasonShareInputsGroup {
+  name: string;
+  seasonStartDate: { toDate: () => Date } | null;
+}
+
+/** 同様に SeasonStatsDoc の必要フィールドだけに narrow した型。 */
+export interface SeasonShareInputsStats {
+  displayName: string;
+  totalPoints: number;
+}
+
+/**
+ * stats が空配列の場合は null を返す（呼出側で render gating）。
+ * top1〜top3 抽出は内部で行う（呼出側はソート済み配列を渡す）。
+ */
+export function buildSeasonShareInputs(
+  gid: string,
+  group: SeasonShareInputsGroup,
+  stats: readonly SeasonShareInputsStats[],
+): ShareCardInputs | null {
+  if (stats.length === 0) return null;
+  const top1 = stats[0];
+  const top2 = stats.at(1);
+  const top3 = stats.at(2);
+  const startDate = group.seasonStartDate ? group.seasonStartDate.toDate() : null;
+  const datePart = startDate ? formatDateForFilename(startDate) : "open";
+  const filenameStem = sanitizeFilename(`season-${group.name}-${datePart}`);
+  const url = buildSeasonCardUrl(gid, {
+    groupName: group.name,
+    seasonStartDateLabel: startDate ? formatDateForLabel(startDate) : null,
+    top1Name: top1.displayName,
+    top1Points: top1.totalPoints,
+    top2Name: top2?.displayName,
+    top2Points: top2?.totalPoints,
+    top3Name: top3?.displayName,
+    top3Points: top3?.totalPoints,
+    filename: filenameStem,
+  });
+  return { url, filenameStem };
+}

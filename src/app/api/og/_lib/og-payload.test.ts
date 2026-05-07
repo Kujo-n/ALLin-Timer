@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSeasonCardUrl,
+  buildSeasonShareInputs,
   buildWinnerCardUrl,
+  buildWinnerShareInputs,
   formatDateForFilename,
   formatDateForLabel,
   readSeasonCardQuery,
@@ -312,5 +314,155 @@ describe("formatDateForFilename / formatDateForLabel", () => {
     const d = new Date("2026-05-06T12:00:00.000Z");
     const out = formatDateForLabel(d);
     expect(out).toMatch(/^\d{4}\/\d{1,2}\/\d{1,2}$/);
+  });
+});
+
+describe("buildWinnerShareInputs", () => {
+  const finishedAt = new Date("2026-05-06T12:00:00.000Z");
+  const datePart = formatDateForFilename(finishedAt);
+
+  it("filenameStem は sanitize 済みで `winner-<tname>-<datePart>` を含む", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday-Cup",
+      participants: 8,
+      finishedAt,
+    });
+    expect(r.filenameStem).toBe(`winner-Saturday-Cup-${datePart}`);
+  });
+
+  it("tournamentName に日本語が混じれば sanitize されて _ に置換される", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: 8,
+      finishedAt,
+    });
+    // 4 文字の日本語は 4 つの _ に変換され、collapse で 1 つにまとまる：
+    //   "winner-サタデー-<date>" → "winner-____-<date>" → "winner-_-<date>"
+    // 先頭末尾の _ ではないため trim はかからない。
+    expect(r.filenameStem).toBe(`winner-_-${datePart}`);
+  });
+
+  it("url は buildWinnerCardUrl と同じ形式 + filenameStem を filename クエリに含む", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday",
+      participants: 8,
+      finishedAt,
+    });
+    expect(r.url.startsWith("/api/og/winner/t-1?")).toBe(true);
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.get("winnerName")).toBe("Alice");
+    expect(sp.get("tournamentName")).toBe("Saturday");
+    expect(sp.get("participants")).toBe("8");
+    expect(sp.get("finishedAtLabel")).toBe(formatDateForLabel(finishedAt));
+    expect(sp.get("filename")).toBe(r.filenameStem);
+  });
+
+  it("download / share helper の出力は同一（drift しない）", () => {
+    // download ボタン内の手書き計算と本 helper が同型を返すことを characterize する
+    const datePart2 = formatDateForFilename(finishedAt);
+    const expectedFilename = sanitizeFilename(`winner-Saturday-${datePart2}`);
+    const expectedUrl = buildWinnerCardUrl("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday",
+      participants: 8,
+      finishedAtLabel: formatDateForLabel(finishedAt),
+      filename: expectedFilename,
+    });
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday",
+      participants: 8,
+      finishedAt,
+    });
+    expect(r).toEqual({ url: expectedUrl, filenameStem: expectedFilename });
+  });
+});
+
+describe("buildSeasonShareInputs", () => {
+  const startedDate = new Date("2026-04-01T15:00:00.000Z");
+  const fakeStart = { toDate: () => startedDate };
+
+  it("stats が空配列なら null を返す", () => {
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "G", seasonStartDate: null },
+      [],
+    );
+    expect(r).toBeNull();
+  });
+
+  it("seasonStartDate=null のとき datePart は `open` で url に seasonStartDateLabel が出ない", () => {
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "Saturday-Circle", seasonStartDate: null },
+      [{ displayName: "Alice", totalPoints: 10 }],
+    );
+    expect(r).not.toBeNull();
+    if (!r) return;
+    expect(r.filenameStem).toBe("season-Saturday-Circle-open");
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.has("seasonStartDateLabel")).toBe(false);
+    expect(sp.get("groupName")).toBe("Saturday-Circle");
+    expect(sp.get("top1Name")).toBe("Alice");
+    expect(sp.get("filename")).toBe(r.filenameStem);
+  });
+
+  it("seasonStartDate あり + top1〜top3 を全部 url に展開する", () => {
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "G", seasonStartDate: fakeStart },
+      [
+        { displayName: "Alice", totalPoints: 47.83 },
+        { displayName: "Bob", totalPoints: 28.12 },
+        { displayName: "Carol", totalPoints: 19.66 },
+      ],
+    );
+    expect(r).not.toBeNull();
+    if (!r) return;
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.get("groupName")).toBe("G");
+    expect(sp.get("seasonStartDateLabel")).toBe(formatDateForLabel(startedDate));
+    expect(sp.get("top1Name")).toBe("Alice");
+    expect(sp.get("top1Points")).toBe("47.83");
+    expect(sp.get("top2Name")).toBe("Bob");
+    expect(sp.get("top2Points")).toBe("28.12");
+    expect(sp.get("top3Name")).toBe("Carol");
+    expect(sp.get("top3Points")).toBe("19.66");
+    expect(sp.get("filename")).toBe(r.filenameStem);
+  });
+
+  it("stats が 1 件のみのときは top2/top3 key を url に出さない", () => {
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "G", seasonStartDate: fakeStart },
+      [{ displayName: "Alice", totalPoints: 10 }],
+    );
+    expect(r).not.toBeNull();
+    if (!r) return;
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.has("top2Name")).toBe(false);
+    expect(sp.has("top3Name")).toBe(false);
+  });
+
+  it("download / share helper の出力は同一（drift しない）", () => {
+    const startDate = startedDate;
+    const datePart = formatDateForFilename(startDate);
+    const expectedFilename = sanitizeFilename(`season-G-${datePart}`);
+    const expectedUrl = buildSeasonCardUrl("g-1", {
+      groupName: "G",
+      seasonStartDateLabel: formatDateForLabel(startDate),
+      top1Name: "Alice",
+      top1Points: 10,
+      filename: expectedFilename,
+    });
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "G", seasonStartDate: fakeStart },
+      [{ displayName: "Alice", totalPoints: 10 }],
+    );
+    expect(r).toEqual({ url: expectedUrl, filenameStem: expectedFilename });
   });
 });
