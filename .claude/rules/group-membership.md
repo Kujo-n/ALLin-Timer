@@ -127,6 +127,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | Table 名デフォルト（`defaultTableLabels`）の更新 | ○ | ○ | × |
 | 卓 label / color（`tables/{n}.label` / `.color`）の参照 | ○ | ○ | ○ |
 | 卓 label / color の更新 | ○ | ○ | × |
+| アカウント自己削除（`/settings`） | ○（sole-owner サークルがあれば block） | ○ | ○ |
 
 ## ロール遷移
 
@@ -136,6 +137,27 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
   - `organizer` ↔ `owner`（`promoteToOwner` / `demoteOwner`）
   - 直接 `member` → `owner` は禁止（先に `organizer` に昇格）
 - 最後のオーナーは降格 / 脱退不可（rule + service の二重防御）
+
+### アカウント自己削除（通常アカウント）
+
+通常アカウント（Google / Email+Password）ユーザーが `/settings` から自分のアカウントを完全削除する経路。匿名アカウントは対象外で、引き続き `attemptAnonymousSelfDelete`（`logout` / `cancelOwnEntry` / `live-client.finish`）で削除される。
+
+- service: [`deleteAccount`](../../src/lib/services/account-delete.ts) の orchestrator
+  1. **sole-owner pre-check** — `users/{uid}.groupIds` + `listMyGroups` で
+     `isSoleOwner(group, uid)` を評価。1 件でも該当があれば
+     `AccountDeleteSoleOwnerBlocked` を throw して UI に block dialog を出させる
+  2. **全 group 脱退** — 残った group から `Promise.allSettled` で順次 `leaveGroup`
+     （per-gid 失敗は warn ログ、user.delete は best-effort で続行）
+  3. **users/{uid} 削除** — `deleteUserProfile` 経由（best-effort）
+  4. **`user.delete()`** — `auth/requires-recent-login` のときは throw せず
+     `needsReauth: true` を返し、UI の reauth dialog → `reauthenticateAccount`
+     ([auth-actions.ts](../../src/lib/services/auth-actions.ts)) → 削除再試行に倒す
+- rule: 変更なし。既存の `users/{uid}` self-delete と `groups/{gid}` self-leave
+  経路のみで成立する。新ブランチ・新フィールドは追加していない
+- 過去 tournament の `players/{pid}` と `seasonStats/{uid}` は意図的に残す
+  （履歴の継続性のため。`displayName` は脱退時の値を保持し、UI は orphan として扱える）
+
+「自分が唯一のオーナー」の正準判定は [`isSoleOwner(group, uid)`](../../src/lib/firebase/schemas/group.ts)（pure 関数）。新規 callsite はこの helper を経由すること。
 
 ## 実装上の注意
 
