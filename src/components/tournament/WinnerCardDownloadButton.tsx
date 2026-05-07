@@ -9,6 +9,7 @@ import {
   sanitizeFilename,
 } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
+import { logger } from "@/lib/logger";
 
 interface Props {
   tid: string;
@@ -49,7 +50,19 @@ export function WinnerCardDownloadButton({
 
   return (
     <Button asChild size="sm" variant="default" className={className}>
-      <a href={url} download={filename} data-testid="winner-card-download">
+      <a
+        href={url}
+        download={filename}
+        data-testid="winner-card-download"
+        onClick={() =>
+          // click telemetry は debug に降格（本番 default level=info では出力されない）
+          logger.debug("share-card click", {
+            kind: "winner",
+            action: "download",
+            success: true,
+          })
+        }
+      >
         <Download aria-hidden />
         画像を保存
       </a>

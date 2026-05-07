@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { SeasonStatsDoc } from "@/lib/firebase/schemas/seasonStats";
+import { logger } from "@/lib/logger";
 
 interface Props {
   gid: string;
@@ -62,7 +63,19 @@ export function SeasonTopCardDownloadButton({
 
   return (
     <Button asChild size="sm" variant="default" className={className}>
-      <a href={url} download={filename} data-testid="season-top-card-download">
+      <a
+        href={url}
+        download={filename}
+        data-testid="season-top-card-download"
+        onClick={() =>
+          // click telemetry は debug に降格（本番 default level=info では出力されない）
+          logger.debug("share-card click", {
+            kind: "season",
+            action: "download",
+            success: true,
+          })
+        }
+      >
         <Download aria-hidden />
         シーズン首位カードを保存
       </a>
