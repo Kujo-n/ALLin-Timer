@@ -228,6 +228,19 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['seasonStartDate'])
         && request.resource.data.seasonStartDate is timestamp
+      ) || (
+        // Phase C: organizer による defaultTableLabels の単独書換。
+        //   サークル詳細画面 inline edit から `setDefaultTableLabels({ gid, uid, labels })` 経由で発火。
+        //   affectedKeys は 'defaultTableLabels' のみに限定。他フィールドは触らせない。
+        //   配列であること + 最大 6 件（MAX_TABLES）を rule で強制。
+        //   各要素の string 長 (1〜10 文字) は Cloud Firestore Rules の言語仕様で list 内の
+        //   element validate を表現できないため、application 層 (zod / service) に委譲する。
+        //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['defaultTableLabels'])
+        && request.resource.data.defaultTableLabels is list
+        && request.resource.data.defaultTableLabels.size() <= 6
       );
 
       allow delete: if isSignedIn()
@@ -484,11 +497,52 @@ service cloud.firestore {
       // （PRD で言及されている `events` は未実装、`tables/{n}/seats/{m}` も未実装で
       // tableNum/seatNum は player doc に inline）。新規 subcollection を増やす場合は
       // **必ず explicit rule を 1 つ追加** すること（wildcard 復活は厳禁）。
+      //
+      // Phase C: 旧 `allow write` を `allow create / update` に分割し、update branch を
+      // 「label / color に触らない経路」と「label / color のみを単独で書換える inline edit 経路」の
+      // 2 ブランチで OR 表現する。前者は `commitInitialSeating` の tx.update（label 補完経路）
+      // と将来的な isBroken 単独書換、後者は dashboard SeatingBoard の `✎` ボタンから発火する
+      // `updateTableLabel(tid, tableNum, { label, color })` を想定。
+      // 値域: label は 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字、color は #RRGGBB hex。
+      // ⚠ DRIFT WARNING: TABLE_LABEL_MAX_LENGTH は src/lib/limits.ts の同名定数と一致させる。
+      //   drift 検出は `scripts/test-rules-limits.mjs`（`npm run test:rules-limits`）で機械的に行う。
       match /tables/{tableId} {
         allow read: if isSignedIn();
-        allow write: if isSignedIn()
-                     && exists(/databases/$(database)/documents/tournaments/$(tid))
-                     && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
+        allow create: if isSignedIn()
+                      && exists(/databases/$(database)/documents/tournaments/$(tid))
+                      && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
+        allow update: if isSignedIn()
+                      && exists(/databases/$(database)/documents/tournaments/$(tid))
+                      && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                      && (
+                        // 経路 A: label / color に触れない既存 update（isBroken 単独書換 / commitInitialSeating の label 補完経路は経路 B 側で扱う）
+                        !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['label', 'color'])
+                        ||
+                        (
+                          // 経路 B: label / color の単独書換（dashboard inline edit + 補完経路）
+                          request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['label', 'color'])
+                          && (
+                            request.resource.data.get('label', null) == null
+                            || (
+                              request.resource.data.label is string
+                              && request.resource.data.label.size() >= 1
+                              && request.resource.data.label.size() <= 10
+                            )
+                          )
+                          && (
+                            request.resource.data.get('color', null) == null
+                            || (
+                              request.resource.data.color is string
+                              && request.resource.data.color.matches('^#[0-9a-fA-F]{6}$')
+                            )
+                          )
+                        )
+                      );
+        allow delete: if isSignedIn()
+                      && exists(/databases/$(database)/documents/tournaments/$(tid))
+                      && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
       }
     }
 

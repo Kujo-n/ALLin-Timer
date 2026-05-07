@@ -59,6 +59,11 @@ const EXPECTED = {
   MIN_SEATS_PER_TABLE: parseConstFromText(limitsText, "MIN_SEATS_PER_TABLE", "src/lib/limits.ts"),
   MAX_SEATS_PER_TABLE: parseConstFromText(limitsText, "MAX_SEATS_PER_TABLE", "src/lib/limits.ts"),
   MAX_TABLES: parseConstFromText(limitsText, "MAX_TABLES", "src/lib/limits.ts"),
+  TABLE_LABEL_MAX_LENGTH: parseConstFromText(
+    limitsText,
+    "TABLE_LABEL_MAX_LENGTH",
+    "src/lib/limits.ts",
+  ),
   DISPLAY_NAME_MAX_LENGTH: parseConstFromText(
     groupSchemaText,
     "DISPLAY_NAME_MAX_LENGTH",
@@ -125,6 +130,22 @@ const checks = [
     label: "seasonStats.displayName upper bound (<= DISPLAY_NAME_MAX_LENGTH)",
     pattern: /(?<![A-Za-z])displayName\.size\(\)\s*<=\s*(\d+)/g,
     expected: EXPECTED.DISPLAY_NAME_MAX_LENGTH,
+    minOccurrences: 1,
+  },
+  // Phase C: 卓 label / 卓呼称デフォルト一覧の drift 検出。
+  // - tables/{n}.label.size() <= TABLE_LABEL_MAX_LENGTH (= 10)
+  // - groups/{gid}.defaultTableLabels.size() <= MAX_TABLES (= 6)
+  //   (defaultTableLabels の各要素 string 長は rule で表現困難なため schema / service が enforce)
+  {
+    label: "tables.label upper bound (<= TABLE_LABEL_MAX_LENGTH)",
+    pattern: /(?<![A-Za-z])label\.size\(\)\s*<=\s*(\d+)/g,
+    expected: EXPECTED.TABLE_LABEL_MAX_LENGTH,
+    minOccurrences: 1,
+  },
+  {
+    label: "groups.defaultTableLabels upper bound (<= MAX_TABLES)",
+    pattern: /defaultTableLabels\.size\(\)\s*<=\s*(\d+)/g,
+    expected: EXPECTED.MAX_TABLES,
     minOccurrences: 1,
   },
 ];

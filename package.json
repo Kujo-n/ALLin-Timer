@@ -16,6 +16,7 @@
     "test:rules-limits": "node scripts/test-rules-limits.mjs",
     "test:rules-clone-players": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-clone-players.mjs\"",
     "test:rules-season": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-season.mjs\"",
+    "test:rules-table-labels": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-table-labels.mjs\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
