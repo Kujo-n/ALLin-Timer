@@ -32,10 +32,12 @@ async function readFontFile(weight: Weight): Promise<ArrayBuffer> {
     // Buffer は SharedArrayBuffer 互換ではないため slice で safe ArrayBuffer に copy。
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   } catch (e) {
+    // 本番（Vercel serverless）で再発した場合に、どの絶対 path で ENOENT したか
+    // ログから即特定できるよう、message に絶対 path / cwd を含める。
     throw AppError.from(
       e,
       "og/font-load-failed",
-      `フォントファイルの読込に失敗しました (${weight})`,
+      `フォント読込失敗 weight=${weight} cwd=${process.cwd()} abs=${abs}`,
     );
   }
 }
