@@ -123,8 +123,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | シーズン履歴（`seasonHistory/{seasonId}`）の更新・削除 | ×（rule で全員 deny） | × | × |
 | シーズン開始（`startNewSeason`） | ○ | ○ | × |
 | シーズン開始日（`seasonStartDate`）の参照 | ○ | ○ | ○ |
-| テーブル呼称デフォルト（`defaultTableLabels`）の参照 | ○ | ○ | ○ |
-| テーブル呼称デフォルト（`defaultTableLabels`）の更新 | ○ | ○ | × |
+| Table 名デフォルト（`defaultTableLabels`）の参照 | ○ | ○ | ○ |
+| Table 名デフォルト（`defaultTableLabels`）の更新 | ○ | ○ | × |
 | 卓 label / color（`tables/{n}.label` / `.color`）の参照 | ○ | ○ | ○ |
 | 卓 label / color の更新 | ○ | ○ | × |
 

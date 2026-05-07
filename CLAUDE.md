@@ -35,7 +35,7 @@ PRD と plan は **2 桁ゼロパディング sequential 番号** で対応付�
 
 - **PRD**: [.claude/PRPs/](.claude/PRPs/) 配下の `<NN>-<slug>/prds/<NN>-<slug>.prd.md` に生成。各 PRD 内 Phase 進捗表が最新状況の真実源
   - **01**: [01-allin-timer.prd.md](.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) — Foundation 〜 Phase 5.x（基盤・席決め・タイマー・サークル管理）
-  - **02**: [02-season-stats-and-share.prd.md](.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) — シーズン戦績・結果カード・テーブル呼称カスタム（Phase A〜D）
+  - **02**: [02-season-stats-and-share.prd.md](.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) — シーズン戦績・結果カード・Table 名カスタム（Phase A〜D）
 - **実装計画**: [.claude/PRPs/<NN>-<slug>/plans/](.claude/PRPs/) に PRD 別フォルダで生成
   - 進行中: `<NN>-<slug>/plans/<phase>.plan.md`
   - 完了: `<NN>-<slug>/plans/completed/<phase>.plan.md` に移動

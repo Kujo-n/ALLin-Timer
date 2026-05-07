@@ -1,4 +1,4 @@
-# シーズン戦績・結果カード・テーブル呼称カスタム
+# シーズン戦績・結果カード・Table 名カスタム
 
 ## Problem Statement
 
@@ -18,17 +18,17 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 
 1. **⑧ シーズン戦績**: `groups/{gid}/seasonStats/{uid}` を新設し、`finishTournament` の runTransaction に相乗りする形で参加・優勝・FT・累計ポイントを atomic に増分。シーズン区切りは運営者の手動切替（`groups/{gid}.seasonStartDate` 更新 + 旧 stats を `seasonHistory/{seasonId}` に snapshot）。
 2. **⑨ 結果カード生成**: `@vercel/og` で「優勝カード」と「シーズン首位カード」の 2 種を SSR 生成し、画像ダウンロードボタンで提供。Web Share API は Should（実装工数次第で MVP 後）。
-3. **⑫ テーブル呼称カスタム**: `tournaments/{tid}/tables/{n}.label` を additive 追加（カスタム文字列必須）、`color` は補助。`groups/{gid}.defaultTableLabels[]` で group 単位の既定値を持たせる。
+3. **⑫ Table 名カスタム**: `tournaments/{tid}/tables/{n}.label` を additive 追加（カスタム文字列必須）、`color` は補助。`groups/{gid}.defaultTableLabels[]` で group 単位の既定値を持たせる。
 
 採用理由: 3 機能とも既存パターン（`finishedTournamentCount` 増分 / `defaultSeatsPerTable` の group default / `affectedKeys` 強制）の純粋な拡張で、技術的リスクが低くスコープも明確。
 
 ## Key Hypothesis
 
-我々は「**シーズンランキングと結果カードを LINE / X に貼れる導線、およびテーブル呼称のカスタム化**」が「**サークルの継続意欲低下と会場運用ミス**」を「**月 1〜2 開催のサークル運営者・参加者**」に対して解決すると信じている。
+我々は「**シーズンランキングと結果カードを LINE / X に貼れる導線、および Table 名のカスタム化**」が「**サークルの継続意欲低下と会場運用ミス**」を「**月 1〜2 開催のサークル運営者・参加者**」に対して解決すると信じている。
 我々が正しかったと判断するのは、以下が観測されたとき:
 
 - **結果カードの「画像保存」ボタンが実サークル運用で複数回押下される**こと（運営者・参加者問わず）
-- **開発者がサークル参加時に、テーブル No の確認がアプリ上で完結したことを目視確認**できること（テーブル呼称カスタムが口頭伝達ミスを実用上無くしたか）
+- **開発者がサークル参加時に、テーブル No の確認がアプリ上で完結したことを目視確認**できること（Table 名カスタムが口頭伝達ミスを実用上無くしたか）
 
 ## What We're NOT Building
 
@@ -45,7 +45,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | Metric | Target | How Measured |
 | ---- | ---- | ---- |
 | 結果カード「画像保存」ボタンの押下発生 | 実サークル運用で**複数回**観測 | 開発者がサークル参加時に運用観測（暫定）／将来は logger.info 経由で集計可 |
-| テーブル呼称のアプリ上完結 | サークル参加時に「Table 1」呼称が消え、カスタム呼称で口頭伝達が完結 | 開発者がサークル参加時に目視確認（Q4 で本人検証と明示） |
+| Table 名のアプリ上完結 | サークル参加時に「Table 1」表示が消え、カスタム Table 名で口頭伝達が完結 | 開発者がサークル参加時に目視確認（Q4 で本人検証と明示） |
 | シーズン首位カードのシェア発生 | 月 1 回以上、サークル LINE / X で共有される | 運営者からの定性的フィードバック（暫定）|
 
 ## Open Questions
@@ -66,12 +66,12 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 - **Who**: ALLin-PokerTimer を月 1〜2 回利用するサークルの **member（参加者）**および **organizer / owner（運営者）**。シーズン首位の LINE / X 投稿は参加者誰でも実施可能（Q6 b 回答）
 - **Current behavior**: トーナメント終了後にスマホで Winner 画面を確認するが、「結果を共有したい」要望に対しスクリーンショット手動撮影で対応せざるを得ない。シーズンを跨いだ戦績の積み上げは個人の記憶頼り
 - **Trigger**: トーナメント終了直後に Winner 画面を見た瞬間、または月初に「先月のシーズン首位は誰だったか」を運営者が告知したいタイミング
-- **Success state**: 1 タップで「優勝カード PNG」「シーズン首位カード PNG」が保存され、各々が LINE / X にアップロードして盛り上がる。会場では「赤卓」「青卓」「初心者卓」のような呼称で運営側 / 参加側双方の認知が一致
+- **Success state**: 1 タップで「優勝カード PNG」「シーズン首位カード PNG」が保存され、各々が LINE / X にアップロードして盛り上がる。会場では「赤卓」「青卓」「初心者卓」のような Table 名で運営側 / 参加側双方の認知が一致
 
 **Job to Be Done**
 
 - 参加者: 「**トーナメントが終わった瞬間**、自分または優勝者の結果を **LINE / X で共有したい**ので、**手動スクリーンショット無しで見栄えの良い画像を即取得**したい」
-- 運営者: 「**会場で複数卓を運営している**最中、参加者に **席案内を口頭で伝える**ので、**機械的な番号でなく独自の呼称で誤認なく案内**したい」
+- 運営者: 「**会場で複数卓を運営している**最中、参加者に **席案内を口頭で伝える**ので、**機械的な番号でなく独自の Table 名で誤認なく案内**したい」
 - 運営者: 「**月 1〜2 回しか開催できない中**、参加者の **継続意欲を維持したい**ので、**シーズン首位を可視化してサークル LINE で素材として貼りたい**」
 
 **Non-Users**
@@ -120,7 +120,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 1. トーナメント終了 → Winner 画面 → 「優勝カード保存」ボタン押下 → PNG ダウンロード → 各自 LINE にアップロード
 2. 後日、サークル詳細 → シーズンランキング画面 → 「シーズン首位カード保存」ボタン押下 → PNG ダウンロード → LINE / X に貼付
 
-**テーブル呼称カスタム（運営者が会場で）**:
+**Table 名カスタム（運営者が会場で）**:
 1. トーナメント新規作成 → group の `defaultTableLabels[]` から各卓 label が auto-fill
 2. 必要に応じて tournament 単位で label を inline 編集
 3. SeatingBoard に「赤卓」「青卓」のように label が表示され、口頭伝達で「赤卓 3 番に座って」が成立
@@ -175,7 +175,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | --- | --------------------------- | -------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | A   | Season Stats Foundation     | `seasonStats` / `seasonHistory` schema + finishTournament tx 拡張 + シーズン切替操作         | complete | with C   | -       | [phase-a-season-stats-foundation.plan.md](../plans/02-season-stats-and-share/completed/phase-a-season-stats-foundation.plan.md) — [report](../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) |
 | B   | Result Card Generation      | `@vercel/og` 導入 + 優勝カード / シーズン首位カードの SSR 画像 route + ダウンロードボタン UI | in-progress | -        | A       | [phase-b-result-card-generation.plan.md](../plans/02-season-stats-and-share/completed/phase-b-result-card-generation.plan.md) — [report](../reports/02-season-stats-and-share/phase-b-result-card-generation-report.md) |
-| C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | complete | with A   | -       | [phase-c-table-label-color.plan.md](../plans/completed/phase-c-table-label-color.plan.md) — [report](../reports/phase-c-table-label-color-report.md) |
+| C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | complete | with A   | -       | [phase-c-table-label-color.plan.md](../plans/completed/phase-c-table-label-color.plan.md) — [report](../reports/phase-c-table-label-color-report.md) — [02-02 improvement report](../reports/phase-c-improvement-02-02-report.md) |
 | D   | Web Share API & Polish      | Web Share API 統合（Should）+ Color picker UI（Should）+ 成功指標観測                        | pending | -        | B, C    | -        |
 
 ### Phase Details
@@ -208,7 +208,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 
 **Phase C: Table Label & Color**
 
-- **Goal**: テーブル呼称のカスタム化で会場運用精度を向上
+- **Goal**: Table 名のカスタム化で会場運用精度を向上
 - **Scope**:
   - `tournaments/{tid}/tables/{n}.label` / `.color` を additive 追加（schema + rule の affectedKeys 拡張）
   - `groups/{gid}.defaultTableLabels[]`（配列長 <= MAX_TABLES、各要素 string 長制限）schema + rule + service
@@ -216,7 +216,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
   - SeatingBoard / TableCard / 各卓表示の label 反映（label 未設定時は `Table {n}` フォールバック）
   - サークル詳細画面の `defaultTableLabels` inline edit UI
   - tournament テーブル管理画面の label / color inline edit UI
-- **Success signal**: 開発者がサークル参加時に「Table 1 / 2 / 3」呼称が消え、カスタム呼称で口頭伝達が完結したことを目視確認
+- **Success signal**: 開発者がサークル参加時に「Table 1 / 2 / 3」表示が消え、カスタム Table 名で口頭伝達が完結したことを目視確認
 
 **Phase D: Web Share API & Polish**
 
@@ -258,7 +258,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 
 **Market Context**
 
-ALLin-PokerTimer は「小規模サークル特化 + MIT OSS」のニッチで、商用ポーカー運営ソフトウェア（PokerTH / Poker Mavens 等）はサークル LINE 共有のような UX を提供していない。SNS シェア導線を内蔵するスポーツ・ゲーム系サークルアプリ（一般的な参加型イベント管理 SaaS）でも、「シーズン首位の自動可視化」「会場呼称のカスタム化」を同時に持つ事例は調査範囲では確認できず。本 PRD のスコープは ALLin-PokerTimer の「サークル継続支援基盤」というポジションで差別化要素になる。
+ALLin-PokerTimer は「小規模サークル特化 + MIT OSS」のニッチで、商用ポーカー運営ソフトウェア（PokerTH / Poker Mavens 等）はサークル LINE 共有のような UX を提供していない。SNS シェア導線を内蔵するスポーツ・ゲーム系サークルアプリ（一般的な参加型イベント管理 SaaS）でも、「シーズン首位の自動可視化」「会場の Table 名カスタム化」を同時に持つ事例は調査範囲では確認できず。本 PRD のスコープは ALLin-PokerTimer の「サークル継続支援基盤」というポジションで差別化要素になる。
 
 **Technical Context**
 
