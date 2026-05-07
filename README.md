@@ -292,7 +292,8 @@ src/
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
 │  │                              # / [gid]/season（シーズンランキング、Phase A
-│  │                              #     + Phase D で過去シーズン履歴 accordion + Web Share）
+│  │                              #     + Phase D で過去シーズン履歴一覧 + Web Share
+│  │                              #     + improvement で /history/[seasonId] 詳細ページ）
 │  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
