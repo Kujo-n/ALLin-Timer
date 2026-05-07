@@ -15,6 +15,7 @@ import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
+import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
@@ -59,6 +60,9 @@ export function subscribeTables(
  * 指定された tableNum のテーブルを upsert する（新規は createdAt をサーバ時刻で初期化）。
  * 既存ドキュメントがある場合は createdAt も上書きされる単純実装。
  * 初回席決め時のみ呼ばれるため再 upsert は事故ケース。
+ *
+ * Phase C: `label` / `color` を null で初期化（commitInitialSeating の orchestrator は
+ * 別経路で defaultTableLabels から auto-fill するため、本関数は legacy / fallback 用途）。
  */
 export async function upsertTables(tid: string, tableNums: number[]): Promise<void> {
   await wrapFirestoreWrite(
@@ -68,7 +72,13 @@ export async function upsertTables(tid: string, tableNums: number[]): Promise<vo
       const batch = writeBatch(firestore);
       for (const n of tableNums) {
         const ref = doc(tablesRef(tid), String(n));
-        batch.set(ref, { tableNum: n, isBroken: false, createdAt: serverTimestamp() });
+        batch.set(ref, {
+          tableNum: n,
+          isBroken: false,
+          createdAt: serverTimestamp(),
+          label: null,
+          color: null,
+        });
       }
       await batch.commit();
     },
@@ -102,9 +112,61 @@ export async function upsertTable(tid: string, tableNum: number): Promise<void> 
         tableNum,
         isBroken: false,
         createdAt: serverTimestamp(),
+        label: null,
+        color: null,
       });
     },
     { tid, tableNum },
   );
   logger.info("table upsert ok", { tid, tableNum });
+}
+
+/**
+ * Phase C: 卓の label / color を inline edit で更新する。
+ *   - 空文字 / 空白のみの label は null に正規化（Firestore で空文字保存しない）
+ *   - color は #RRGGBB hex 形式 or null。それ以外は AppError で client 早期失敗
+ *   - rule は `affectedKeys().hasOnly(['label', 'color'])` で他フィールド汚染を deny
+ *   - 呼び出し経路は dashboard の SeatingBoard 卓ヘッダ「✎」のみ（organizer 限定）
+ */
+export async function updateTableLabel(
+  tid: string,
+  tableNum: number,
+  patch: { label: string | null; color: string | null },
+): Promise<void> {
+  const trimmedLabel = typeof patch.label === "string" ? patch.label.trim() : null;
+  const normalizedLabel: string | null =
+    trimmedLabel && trimmedLabel.length > 0 ? trimmedLabel : null;
+  if (
+    normalizedLabel !== null &&
+    normalizedLabel.length > TABLE_LABEL_MAX_LENGTH
+  ) {
+    throw new AppError(
+      `テーブル呼称は ${TABLE_LABEL_MAX_LENGTH} 文字以内で指定してください`,
+      "validation/table-label-invalid",
+    );
+  }
+  const color = patch.color;
+  if (color !== null && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+    throw new AppError(
+      "色は #RRGGBB 形式で指定してください",
+      "validation/table-color-invalid",
+    );
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル呼称の更新に失敗しました",
+    async () => {
+      await updateDoc(doc(tablesRef(tid), String(tableNum)), {
+        label: normalizedLabel,
+        color,
+      });
+    },
+    { tid, tableNum },
+  );
+  logger.info("table label updated", {
+    tid,
+    tableNum,
+    hasLabel: normalizedLabel !== null,
+    hasColor: color !== null,
+  });
 }

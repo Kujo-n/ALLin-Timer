@@ -11,7 +11,13 @@ import {
 } from "firebase/firestore";
 
 import { AppError, getErrorCode } from "@/lib/errors";
-import { DEFAULT_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
+import {
+  DEFAULT_SEATS_PER_TABLE,
+  MAX_SEATS_PER_TABLE,
+  MAX_TABLES,
+  MIN_SEATS_PER_TABLE,
+  TABLE_LABEL_MAX_LENGTH,
+} from "@/lib/limits";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
@@ -59,6 +65,8 @@ export async function createGroup(
         defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
         // Phase A: 初回シーズンは未開始なので null。最初の startNewSeason() で serverTimestamp が入る。
         seasonStartDate: null,
+        // Phase C: テーブル呼称デフォルトは空配列で開始。`setDefaultTableLabels` で運営者が登録する。
+        defaultTableLabels: [],
         createdAt: serverTimestamp(),
         joinCodeId: null,
       });
@@ -294,6 +302,58 @@ export async function updateDefaultSeatsPerTable(
     { gid },
   );
   logger.info("group defaultSeatsPerTable updated", { gid, value });
+}
+
+/**
+ * Phase C: groups/{gid}.defaultTableLabels を最大 MAX_TABLES (= 6) 件の文字列配列で上書きする。
+ *   - サークル詳細画面 inline edit からのみ呼ばれる（organizer / owner 限定。assertOrganizer は service 層）。
+ *   - rule は `affectedKeys().hasOnly(['defaultTableLabels'])` + `is list` + `size() <= 6` で
+ *     他フィールド汚染を deny。
+ *   - 各要素の string 長検査は本関数 + service 層で二重防御（rule 言語仕様で list element の
+ *     string 長制約を表現できないため、application 層が最終ライン）。
+ *   - 配列丸ごと上書きで部分更新しない（`arrayUnion` / `arrayRemove` は使わない。
+ *     rule の affectedKeys と整合しないため）。
+ */
+export async function updateDefaultTableLabels(
+  gid: string,
+  labels: string[],
+): Promise<void> {
+  if (!Array.isArray(labels)) {
+    throw new AppError(
+      "テーブル呼称デフォルトは配列で指定してください",
+      "validation/default-table-labels-invalid",
+    );
+  }
+  if (labels.length > MAX_TABLES) {
+    throw new AppError(
+      `テーブル呼称デフォルトは最大 ${MAX_TABLES} 件までです`,
+      "validation/default-table-labels-invalid",
+    );
+  }
+  for (const label of labels) {
+    if (typeof label !== "string") {
+      throw new AppError(
+        "テーブル呼称デフォルトは文字列の配列で指定してください",
+        "validation/default-table-labels-invalid",
+      );
+    }
+    const trimmed = label.trim();
+    if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
+      throw new AppError(
+        `テーブル呼称は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
+        "validation/default-table-labels-invalid",
+      );
+    }
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル呼称デフォルトの更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { defaultTableLabels: labels });
+    },
+    { gid },
+  );
+  logger.info("group defaultTableLabels updated", { gid, count: labels.length });
 }
 
 export async function deleteGroup(gid: string): Promise<void> {
