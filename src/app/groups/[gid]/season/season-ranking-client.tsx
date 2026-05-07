@@ -6,13 +6,7 @@ import { useEffect, useState } from "react";
 import { SeasonTopCardDownloadButton } from "@/components/group/SeasonTopCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
 import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
-import {
-  buildSeasonCardUrl,
-  formatDateForFilename,
-  formatDateForLabel,
-  sanitizeFilename,
-  type SeasonCardQuery,
-} from "@/app/api/og/_lib/og-payload";
+import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -116,34 +110,12 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
         <>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {(() => {
-              // Phase D: ShareCardButton 用に URL / filenameStem / shareText を派生。
-              // SeasonTopCardDownloadButton 内部と同形の計算を持つ（最小差分優先で許容）。
+              // ShareCardButton と SeasonTopCardDownloadButton で同じ url / filenameStem を
+              // 使うため helper を 1 度呼んで両方に渡す（Phase D follow-up: og-payload に集約済）。
+              // stats が空でないことは外側 .length === 0 分岐で確定、helper は null を返さない。
+              const shareInputs = buildSeasonShareInputs(gid, group, stats);
+              if (!shareInputs) return null;
               const top1 = stats[0];
-              const top2 = stats.at(1);
-              const top3 = stats.at(2);
-              const startDateObj = group.seasonStartDate
-                ? group.seasonStartDate.toDate()
-                : null;
-              const datePart = startDateObj
-                ? formatDateForFilename(startDateObj)
-                : "open";
-              const filenameStem = sanitizeFilename(
-                `season-${group.name}-${datePart}`,
-              );
-              const query: SeasonCardQuery = {
-                groupName: group.name,
-                seasonStartDateLabel: startDateObj
-                  ? formatDateForLabel(startDateObj)
-                  : null,
-                top1Name: top1.displayName,
-                top1Points: top1.totalPoints,
-                top2Name: top2?.displayName,
-                top2Points: top2?.totalPoints,
-                top3Name: top3?.displayName,
-                top3Points: top3?.totalPoints,
-                filename: filenameStem,
-              };
-              const url = buildSeasonCardUrl(gid, query);
               const shareText = formatSeasonShareText({
                 groupName: group.name,
                 top1Name: top1.displayName,
@@ -151,8 +123,8 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
               });
               return (
                 <ShareCardButton
-                  url={url}
-                  filenameStem={filenameStem}
+                  url={shareInputs.url}
+                  filenameStem={shareInputs.filenameStem}
                   shareText={shareText}
                   kind="season"
                   label="首位をシェア"

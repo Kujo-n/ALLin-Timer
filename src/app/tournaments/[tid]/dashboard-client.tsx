@@ -19,12 +19,7 @@ import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
 import { formatWinnerShareText } from "@/components/share/_share-button/share-text";
-import {
-  buildWinnerCardUrl,
-  formatDateForFilename,
-  formatDateForLabel,
-  sanitizeFilename,
-} from "@/app/api/og/_lib/og-payload";
+import { buildWinnerShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -360,49 +355,44 @@ export function DashboardClient({ tid }: { tid: string }) {
       </div>
 
       {winner ? (
-        <>
-          <WinnerBanner winner={winner} />
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {(() => {
-              // Phase D: ShareCardButton 用に URL / filenameStem / shareText を派生。
-              // 二重計算は WinnerCardDownloadButton 内部と重複するが、最小差分優先で許容。
-              const finishedAtDate = data.finishedAt?.toDate() ?? new Date();
-              const datePart = formatDateForFilename(finishedAtDate);
-              const filenameStem = sanitizeFilename(
-                `winner-${data.name}-${datePart}`,
-              );
-              const url = buildWinnerCardUrl(tid, {
-                winnerName: winner.displayName,
-                tournamentName: data.name,
-                participants: players.length,
-                finishedAtLabel: formatDateForLabel(finishedAtDate),
-                filename: filenameStem,
-              });
-              const shareText = formatWinnerShareText({
-                tournamentName: data.name,
-                winnerName: winner.displayName,
-                participants: players.length,
-              });
-              return (
+        (() => {
+          // ShareCardButton と WinnerCardDownloadButton で同じ url / filenameStem を使うため
+          // helper を 1 度呼んで両方に渡す（Phase D follow-up: og-payload に集約済）。
+          const finishedAtDate = data.finishedAt?.toDate() ?? new Date();
+          const shareInputs = buildWinnerShareInputs(tid, {
+            winnerName: winner.displayName,
+            tournamentName: data.name,
+            participants: players.length,
+            finishedAt: finishedAtDate,
+          });
+          const shareText = formatWinnerShareText({
+            tournamentName: data.name,
+            winnerName: winner.displayName,
+            participants: players.length,
+          });
+          return (
+            <>
+              <WinnerBanner winner={winner} />
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <ShareCardButton
-                  url={url}
-                  filenameStem={filenameStem}
+                  url={shareInputs.url}
+                  filenameStem={shareInputs.filenameStem}
                   shareText={shareText}
                   kind="winner"
                   label="シェア"
                   dataTestId="winner-card-share"
                 />
-              );
-            })()}
-            <WinnerCardDownloadButton
-              tid={tid}
-              winnerName={winner.displayName}
-              tournamentName={data.name}
-              participants={players.length}
-              finishedAt={data.finishedAt?.toDate() ?? new Date()}
-            />
-          </div>
-        </>
+                <WinnerCardDownloadButton
+                  tid={tid}
+                  winnerName={winner.displayName}
+                  tournamentName={data.name}
+                  participants={players.length}
+                  finishedAt={finishedAtDate}
+                />
+              </div>
+            </>
+          );
+        })()
       ) : null}
 
       {isOrganizer && canClone(data) ? (
