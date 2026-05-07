@@ -65,8 +65,10 @@ export async function createGroup(
         defaultSeatsPerTable: DEFAULT_SEATS_PER_TABLE,
         // Phase A: 初回シーズンは未開始なので null。最初の startNewSeason() で serverTimestamp が入る。
         seasonStartDate: null,
-        // Phase C: テーブル呼称デフォルトは空配列で開始。`setDefaultTableLabels` で運営者が登録する。
+        // Phase C / 02-02: Table 名 / Table 色デフォルトは空配列で開始。
+        // `setDefaultTableSettings` で運営者が atomic に登録する。
         defaultTableLabels: [],
+        defaultTableColors: [],
         createdAt: serverTimestamp(),
         joinCodeId: null,
       });
@@ -305,55 +307,78 @@ export async function updateDefaultSeatsPerTable(
 }
 
 /**
- * Phase C: groups/{gid}.defaultTableLabels を最大 MAX_TABLES (= 6) 件の文字列配列で上書きする。
+ * Phase C / 02-02: groups/{gid}.defaultTableLabels と defaultTableColors を atomic に上書きする。
  *   - サークル詳細画面 inline edit からのみ呼ばれる（organizer / owner 限定。assertOrganizer は service 層）。
- *   - rule は `affectedKeys().hasOnly(['defaultTableLabels'])` + `is list` + `size() <= 6` で
- *     他フィールド汚染を deny。
- *   - 各要素の string 長検査は本関数 + service 層で二重防御（rule 言語仕様で list element の
- *     string 長制約を表現できないため、application 層が最終ライン）。
+ *   - rule は `affectedKeys().hasOnly(['defaultTableLabels', 'defaultTableColors'])` + `is list`
+ *     + `size() <= 6` の組合せで他フィールド汚染と長さ違反を deny。
+ *   - colors 配列の長さは labels と一致させる service-side invariant（service 層が null パディング）。
+ *   - 各要素 string 長と color hex 形式の検査は本関数 + service 層で二重防御
+ *     （rule 言語仕様で list element の string 制約を表現できないため、application 層が最終ライン）。
  *   - 配列丸ごと上書きで部分更新しない（`arrayUnion` / `arrayRemove` は使わない。
  *     rule の affectedKeys と整合しないため）。
  */
-export async function updateDefaultTableLabels(
+export async function updateDefaultTableSettings(
   gid: string,
-  labels: string[],
+  payload: { labels: string[]; colors: (string | null)[] },
 ): Promise<void> {
+  const { labels, colors } = payload;
   if (!Array.isArray(labels)) {
     throw new AppError(
-      "テーブル呼称デフォルトは配列で指定してください",
+      "Table 名デフォルトは配列で指定してください",
       "validation/default-table-labels-invalid",
     );
   }
   if (labels.length > MAX_TABLES) {
     throw new AppError(
-      `テーブル呼称デフォルトは最大 ${MAX_TABLES} 件までです`,
+      `Table 名デフォルトは最大 ${MAX_TABLES} 件までです`,
       "validation/default-table-labels-invalid",
+    );
+  }
+  if (!Array.isArray(colors) || colors.length !== labels.length) {
+    throw new AppError(
+      "Table 色デフォルトは Table 名デフォルトと同じ要素数で指定してください",
+      "validation/default-table-colors-invalid",
     );
   }
   for (const label of labels) {
     if (typeof label !== "string") {
       throw new AppError(
-        "テーブル呼称デフォルトは文字列の配列で指定してください",
+        "Table 名デフォルトは文字列の配列で指定してください",
         "validation/default-table-labels-invalid",
       );
     }
     const trimmed = label.trim();
     if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
       throw new AppError(
-        `テーブル呼称は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
+        `Table 名は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
         "validation/default-table-labels-invalid",
+      );
+    }
+  }
+  for (const color of colors) {
+    if (color !== null && (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))) {
+      throw new AppError(
+        "Table 色は #RRGGBB 形式で指定してください",
+        "validation/default-table-colors-invalid",
       );
     }
   }
   await wrapFirestoreWrite(
     "firestore/write_failed",
-    "テーブル呼称デフォルトの更新に失敗しました",
+    "Table 名デフォルトの更新に失敗しました",
     async () => {
-      await updateDoc(groupDocRef(gid), { defaultTableLabels: labels });
+      await updateDoc(groupDocRef(gid), {
+        defaultTableLabels: labels,
+        defaultTableColors: colors,
+      });
     },
     { gid },
   );
-  logger.info("group defaultTableLabels updated", { gid, count: labels.length });
+  logger.info("group defaultTableSettings updated", {
+    gid,
+    count: labels.length,
+    colored: colors.filter((c) => c !== null).length,
+  });
 }
 
 export async function deleteGroup(gid: string): Promise<void> {

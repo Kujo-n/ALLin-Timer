@@ -229,18 +229,21 @@ service cloud.firestore {
              .hasOnly(['seasonStartDate'])
         && request.resource.data.seasonStartDate is timestamp
       ) || (
-        // Phase C: organizer による defaultTableLabels の単独書換。
-        //   サークル詳細画面 inline edit から `setDefaultTableLabels({ gid, uid, labels })` 経由で発火。
-        //   affectedKeys は 'defaultTableLabels' のみに限定。他フィールドは触らせない。
-        //   配列であること + 最大 6 件（MAX_TABLES）を rule で強制。
-        //   各要素の string 長 (1〜10 文字) は Cloud Firestore Rules の言語仕様で list 内の
-        //   element validate を表現できないため、application 層 (zod / service) に委譲する。
+        // Phase C / 02-02: organizer による defaultTableLabels + defaultTableColors の atomic 書換。
+        //   サークル詳細画面 inline edit から `setDefaultTableSettings({ gid, uid, labels, colors })` 経由で発火。
+        //   affectedKeys は 'defaultTableLabels' / 'defaultTableColors' のみに限定。他フィールドは触らせない。
+        //   双方とも list 型 + 最大 6 件（MAX_TABLES）を rule で強制。
+        //   各要素の string 長 (label 1〜10 文字) と hex 形式 (color #RRGGBB) は Cloud Firestore Rules の
+        //   言語仕様で list 内の element validate を表現できないため、application 層 (zod / service) に委譲する。
         //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        //   labels と colors の長さ一致は service-side invariant（rule では検査しない）。
         isOrganizer(gid)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['defaultTableLabels'])
+             .hasOnly(['defaultTableLabels', 'defaultTableColors'])
         && request.resource.data.defaultTableLabels is list
         && request.resource.data.defaultTableLabels.size() <= 6
+        && request.resource.data.defaultTableColors is list
+        && request.resource.data.defaultTableColors.size() <= 6
       );
 
       allow delete: if isSignedIn()

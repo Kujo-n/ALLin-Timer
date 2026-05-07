@@ -234,43 +234,85 @@ async function main() {
   // groups.defaultTableLabels
   // ────────────────────────────────────────────────
 
-  // (1) organizer が defaultTableLabels に 2 件セット — allow
-  await expectAllow("(1) organizer set defaultTableLabels = ['赤','青']", () =>
-    patchDoc(org.idToken, `groups/${gid}`, {
-      defaultTableLabels: ["赤", "青"],
-    }),
+  // 02-02 改修以降は labels と colors を atomic に書く前提のため、
+  // 各ケースで両方を同時に PATCH する。
+  //
+  // (1) organizer が defaultTableLabels + defaultTableColors を 2 件セット — allow
+  await expectAllow(
+    "(1) organizer set defaultTableLabels=['赤','青'] + colors=[red,blue]",
+    () =>
+      patchDoc(org.idToken, `groups/${gid}`, {
+        defaultTableLabels: ["赤", "青"],
+        defaultTableColors: ["#ef4444", "#3b82f6"],
+      }),
   );
 
-  // (2) organizer が defaultTableLabels = [] (空配列) — allow
-  await expectAllow("(2) organizer set defaultTableLabels = []", () =>
+  // (2) organizer が両方を空配列にリセット — allow
+  await expectAllow("(2) organizer set both = []", () =>
     patchDoc(org.idToken, `groups/${gid}`, {
       defaultTableLabels: [],
+      defaultTableColors: [],
     }),
   );
 
-  // (3) 7 件（MAX_TABLES=6 超過）— deny
-  await expectDeny("(3) organizer set 7 labels (deny: size > MAX_TABLES)", () =>
-    patchDoc(org.idToken, `groups/${gid}`, {
-      defaultTableLabels: ["a", "b", "c", "d", "e", "f", "g"],
-    }),
-  );
-
-  // (4) defaultTableLabels + name の同時変更 — deny（affectedKeys 違反）
+  // (3) labels 7 件（MAX_TABLES=6 超過）— deny
   await expectDeny(
-    "(4) organizer set labels + name (deny: affectedKeys)",
+    "(3) organizer set 7 labels (deny: size > MAX_TABLES)",
+    () =>
+      patchDoc(org.idToken, `groups/${gid}`, {
+        defaultTableLabels: ["a", "b", "c", "d", "e", "f", "g"],
+        defaultTableColors: [null, null, null, null, null, null, null],
+      }),
+  );
+
+  // (4) colors 7 件（MAX_TABLES=6 超過）— deny
+  await expectDeny(
+    "(4) organizer set 7 colors (deny: size > MAX_TABLES)",
+    () =>
+      patchDoc(org.idToken, `groups/${gid}`, {
+        defaultTableLabels: ["a", "b", "c", "d", "e", "f"],
+        defaultTableColors: [
+          "#ef4444",
+          "#ef4444",
+          "#ef4444",
+          "#ef4444",
+          "#ef4444",
+          "#ef4444",
+          "#ef4444",
+        ],
+      }),
+  );
+
+  // (5) defaultTableLabels + name の同時変更 — deny（affectedKeys 違反）
+  await expectDeny(
+    "(5) organizer set labels + name (deny: affectedKeys)",
     () =>
       patchDoc(org.idToken, `groups/${gid}`, {
         defaultTableLabels: ["赤"],
+        defaultTableColors: [null],
         name: "Hacked",
       }),
   );
 
-  // (5) member による defaultTableLabels 書換 — deny
+  // (6) labels 単独 update — allow（rule の affectedKeys は subset 判定 hasOnly のため、
+  //     labels のみ / colors のみの書換も rule 上は許容される）。labels と colors の長さ整合は
+  //     service-side invariant として `setDefaultTableSettings` が enforce する。
+  //     本ケースは「rule が atomic 要求していないこと」を明示する確認用。
+  await expectAllow(
+    "(6) organizer set labels only (allow: subset of [labels, colors])",
+    () =>
+      patchDoc(org.idToken, `groups/${gid}`, {
+        defaultTableLabels: ["solo"],
+      }),
+  );
+
+  // (7) member による書換 — deny（not organizer）
   await expectDeny(
-    "(5) member set defaultTableLabels (deny: not organizer)",
+    "(7) member set defaultTableSettings (deny: not organizer)",
     () =>
       patchDoc(member.idToken, `groups/${gid}`, {
         defaultTableLabels: ["x"],
+        defaultTableColors: [null],
       }),
   );
 
