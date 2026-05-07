@@ -184,21 +184,34 @@ export function SeatingBoard({
         return (
           <Card
             key={table.id}
-            className={cn(table.isBroken && "opacity-60")}
+            className={cn("overflow-hidden", table.isBroken && "opacity-60")}
             aria-label={`table-${table.tableNum}`}
-            // Phase C: color が設定されていれば左端 6px の帯で表示。
-            // border-left は Tailwind class で 8px width が JIT 確定する組合せが少ないため
-            // inline style で指定。null のときは付与しない。
+            // Phase C improvement (02-02): 旧 6px 左帯では色とテーブルの紐付きが弱かったため、
+            // 上端 8px 帯 + ヘッダ左の丸ドットの二重表現に変更。border-top は Tailwind class
+            // で width 8px の JIT 組合せが少ないため inline style で指定。
             style={
               table.color
-                ? { borderLeft: `6px solid ${table.color}` }
+                ? {
+                    borderTopWidth: 8,
+                    borderTopStyle: "solid",
+                    borderTopColor: table.color,
+                  }
                 : undefined
             }
           >
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-sm">
-                <span>
-                  {formatTableLabel(table)}（{tableSeated.length} 人）
+                <span className="flex items-center gap-2">
+                  {table.color ? (
+                    <span
+                      aria-hidden
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
+                      style={{ backgroundColor: table.color }}
+                    />
+                  ) : null}
+                  <span>
+                    {formatTableLabel(table)}（{tableSeated.length} 人）
+                  </span>
                 </span>
                 <span className="flex items-center gap-2">
                   {table.isBroken ? (
