@@ -4,14 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { StructureForm } from "@/components/structure/StructureForm";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import {
   getStructureTemplate,
   updateStructureTemplate,
 } from "@/lib/firebase/repositories/structureTemplates";
 import type { StructureTemplateDoc } from "@/lib/firebase/schemas/structureTemplate";
-import { logger } from "@/lib/logger";
 
 export function TemplateEditClient({ tid }: { tid: string }) {
   const { user, loading: authLoading } = useAuthUser();
@@ -35,13 +34,13 @@ export function TemplateEditClient({ tid }: { tid: string }) {
         }
         setData(d);
       } catch (e) {
-        const wrapped = AppError.from(e, "firestore/read_failed", "取得失敗");
-        logger.warn(wrapped.message, { code: wrapped.code, tid });
+        // getStructureTemplate は内部で warn 済み。UI 表示のみここで担当する。
+        const err = unwrapOrFrom(e, "firestore/read_failed", "取得失敗");
         if (!cancelled) {
-          if (wrapped.code === "firestore/not-found") {
+          if (err.code === "firestore/not-found") {
             setNotFound(true);
           } else {
-            setError(`${wrapped.code}: ${wrapped.message}`);
+            setError(`${err.code}: ${err.message}`);
           }
         }
       }
@@ -103,10 +102,11 @@ export function TemplateEditClient({ tid }: { tid: string }) {
             });
             router.push("/templates");
           } catch (e) {
-            const wrapped = AppError.from(e, "firestore/write_failed", "更新失敗");
-            logger.warn(wrapped.message, { code: wrapped.code, tid });
-            setError(`${wrapped.code}: ${wrapped.message}`);
-            throw wrapped;
+            // updateStructureTemplate は内部で warn 済み。UI 表示と StructureForm 側の
+            // エラー伝搬のため re-throw する。
+            const err = unwrapOrFrom(e, "firestore/write_failed", "更新失敗");
+            setError(`${err.code}: ${err.message}`);
+            throw err;
           }
         }}
         onCancel={() => router.push("/templates")}

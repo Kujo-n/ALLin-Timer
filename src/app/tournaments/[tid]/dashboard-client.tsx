@@ -30,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError, unwrapOrFrom } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { isOrganizerRole } from "@/lib/firebase/schemas/group";
@@ -177,9 +177,9 @@ export function DashboardClient({ tid }: { tid: string }) {
       await deleteTournament(tid, user.uid, groupIds);
       router.push("/tournaments");
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "削除失敗");
-      logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      // deleteTournament は内部で warn 済み。UI 表示のみここで担当する。
+      const err = unwrapOrFrom(e, "firestore/write_failed", "削除失敗");
+      setError(`${err.code}: ${err.message}`);
       setConfirmOpen(false);
     }
   }

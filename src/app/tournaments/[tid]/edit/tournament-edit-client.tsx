@@ -4,12 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { TournamentForm } from "@/components/tournament/TournamentForm";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getTournament, updateTournament } from "@/lib/firebase/repositories/tournaments";
 import { deriveRole } from "@/lib/firebase/schemas/group";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
-import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
 export function TournamentEditClient({ tid }: { tid: string }) {
@@ -26,9 +25,9 @@ export function TournamentEditClient({ tid }: { tid: string }) {
         const t = await getTournament(tid);
         if (!cancelled) setData(t);
       } catch (e) {
-        const wrapped = AppError.from(e, "firestore/read_failed", "取得失敗");
-        logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        // getTournament は内部で warn 済み。UI 表示のみここで担当する。
+        const err = unwrapOrFrom(e, "firestore/read_failed", "取得失敗");
+        if (!cancelled) setError(`${err.code}: ${err.message}`);
       }
     })();
     return () => {

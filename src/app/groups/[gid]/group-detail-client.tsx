@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { InlineNumberEditCard } from "@/components/group/InlineNumberEditCard";
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
+import { AppError, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup, setMemberDisplayName } from "@/lib/firebase/repositories/groups";
 import {
@@ -109,18 +109,24 @@ export function GroupDetailClient({ gid }: { gid: string }) {
             ),
           );
         } catch (e) {
-          const wrapped = AppError.from(
+          // setMemberDisplayName は内部で warn 済み。ここでは self-backfill の
+          // UX 文脈を debug 1 行で残すのみ（warn 二重出力を避ける）。
+          const err = unwrapOrFrom(
             e,
             "group/self-backfill-failed",
             "自分の表示名の補完に失敗しました",
           );
-          logger.warn(wrapped.message, { code: wrapped.code, gid, uid: user.uid });
+          logger.debug("self-backfill skipped", {
+            code: err.code,
+            gid,
+            uid: user.uid,
+          });
         }
       }
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得失敗");
-      logger.warn(wrapped.message, { code: wrapped.code, gid });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      // getGroup は内部で warn 済み。UI 表示のみここで担当する。
+      const err = unwrapOrFrom(e, "firestore/read_failed", "サークル取得失敗");
+      setError(`${err.code}: ${err.message}`);
     }
   }, [gid, user]);
 
@@ -193,8 +199,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       const code = await generateJoinCode({ gid, createdByUid: user.uid });
       setIssuedCode(code);
     } catch (e) {
-      const wrapped = AppError.from(e, "group/code-failed", "招待コード発行に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      const err = unwrapOrFrom(e, "group/code-failed", "招待コード発行に失敗しました");
+      setError(`${err.code}: ${err.message}`);
     } finally {
       setWorking(false);
     }
@@ -221,8 +227,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await refreshGroups();
       router.push("/groups");
     } catch (e) {
-      const wrapped = AppError.from(e, "group/leave-failed", "サークル脱退に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      const err = unwrapOrFrom(e, "group/leave-failed", "サークル脱退に失敗しました");
+      setError(`${err.code}: ${err.message}`);
     } finally {
       setConfirmLeaveOpen(false);
       setWorking(false);
@@ -238,8 +244,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await refreshGroups();
       router.push("/groups");
     } catch (e) {
-      const wrapped = AppError.from(e, "group/delete-failed", "サークル削除に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      const err = unwrapOrFrom(e, "group/delete-failed", "サークル削除に失敗しました");
+      setError(`${err.code}: ${err.message}`);
     } finally {
       setConfirmDeleteOpen(false);
       setWorking(false);
@@ -255,8 +261,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await reload();
       await refreshGroups();
     } catch (e) {
-      const wrapped = AppError.from(e, "season/start-failed", "シーズン開始に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      const err = unwrapOrFrom(e, "season/start-failed", "シーズン開始に失敗しました");
+      setError(`${err.code}: ${err.message}`);
     } finally {
       setConfirmStartSeasonOpen(false);
       setWorking(false);
@@ -271,8 +277,8 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await reload();
       await refreshGroups();
     } catch (e) {
-      const wrapped = AppError.from(e, "group/role-change-failed", errorLabel);
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      const err = unwrapOrFrom(e, "group/role-change-failed", errorLabel);
+      setError(`${err.code}: ${err.message}`);
     } finally {
       setWorking(false);
     }

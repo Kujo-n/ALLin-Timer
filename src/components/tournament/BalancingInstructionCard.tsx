@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
@@ -88,9 +88,9 @@ export function BalancingInstructionCard({
         logger.info("balancing instruction skipped (race)", { tid });
       }
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "テーブル閉鎖に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code, tid });
-      if (mounted.current) onError?.(`${wrapped.code}: ${wrapped.message}`);
+      // applyBalancingOnce は内部で warn 済み。UI 表示のみここで担当する。
+      const err = unwrapOrFrom(e, "firestore/write_failed", "テーブル閉鎖に失敗しました");
+      if (mounted.current) onError?.(`${err.code}: ${err.message}`);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -118,9 +118,9 @@ export function BalancingInstructionCard({
         }
       }
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "バランシング適用に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code, tid, playerId });
-      if (mounted.current) onError?.(`${wrapped.code}: ${wrapped.message}`);
+      // applyManualBalancingMove は内部で warn 済み。UI 表示のみここで担当する。
+      const err = unwrapOrFrom(e, "firestore/write_failed", "バランシング適用に失敗しました");
+      if (mounted.current) onError?.(`${err.code}: ${err.message}`);
     } finally {
       if (mounted.current) setBusy(false);
     }

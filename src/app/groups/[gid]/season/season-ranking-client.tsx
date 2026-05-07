@@ -8,13 +8,12 @@ import { ShareCardButton } from "@/components/share/_share-button/ShareCardButto
 import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
 import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup } from "@/lib/firebase/repositories/groups";
 import { subscribeSeasonStats } from "@/lib/firebase/repositories/seasonStats";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { SeasonStatsDoc } from "@/lib/firebase/schemas/seasonStats";
-import { logger } from "@/lib/logger";
 
 import { SeasonHistoryList } from "./_components/SeasonHistoryList";
 
@@ -39,9 +38,9 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
         const g = await getGroup(gid);
         if (!canceled) setGroup(g);
       } catch (e) {
-        const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得失敗");
-        logger.warn(wrapped.message, { code: wrapped.code, gid });
-        if (!canceled) setError(`${wrapped.code}: ${wrapped.message}`);
+        // getGroup は内部で warn 済み。UI 表示のみここで担当する。
+        const err = unwrapOrFrom(e, "firestore/read_failed", "サークル取得失敗");
+        if (!canceled) setError(`${err.code}: ${err.message}`);
       }
     })();
     return () => {
