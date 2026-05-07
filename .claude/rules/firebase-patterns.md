@@ -213,7 +213,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | Path | 許可 |
 | --- | --- |
 | `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update） |
-| `match /tables/{tableId}` | explicit、organizer のみ書込可（旧 wildcard を specific 化したもの） |
+| `match /tables/{tableId}` | explicit、organizer のみ書込可。Phase C で `allow write` を `allow create / update / delete` に分割し、update は「label / color に触れない経路」と「`affectedKeys.hasOnly(['label', 'color'])` で `label.size() <= TABLE_LABEL_MAX_LENGTH` / `color matches /^#[0-9a-fA-F]{6}$/` を強制する経路」の OR で構成 |
 
 `match /groups/{gid}` 配下（Phase A で追加）:
 
@@ -233,7 +233,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
-`firestore.rules` の `groups/{gid}` `allow update` は 7 ブランチに分かれており（Phase A で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
+`firestore.rules` の `groups/{gid}` `allow update` は 8 ブランチに分かれており（Phase A で 1 ブランチ / Phase C で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
 
 | ブランチ | 条件 | 許可される変更キー（`affectedKeys().hasOnly`） |
 | --- | --- | --- |
@@ -245,6 +245,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | **finishedTournamentCount update** | organizer | `finishedTournamentCount` |
 | **defaultSeatsPerTable update** | organizer | `defaultSeatsPerTable` |
 | **seasonStartDate update**（Phase A） | organizer | `seasonStartDate`（`is timestamp`） |
+| **defaultTableLabels update**（Phase C） | organizer | `defaultTableLabels`（`is list` + `size() <= 6`、各要素 string 長は service / schema 側で enforce） |
 
 新規フィールドを `groups/{gid}` に追加する場合の手順:
 

@@ -175,7 +175,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | --- | --------------------------- | -------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | A   | Season Stats Foundation     | `seasonStats` / `seasonHistory` schema + finishTournament tx 拡張 + シーズン切替操作         | complete | with C   | -       | [phase-a-season-stats-foundation.plan.md](../plans/02-season-stats-and-share/completed/phase-a-season-stats-foundation.plan.md) — [report](../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) |
 | B   | Result Card Generation      | `@vercel/og` 導入 + 優勝カード / シーズン首位カードの SSR 画像 route + ダウンロードボタン UI | in-progress | -        | A       | [phase-b-result-card-generation.plan.md](../plans/02-season-stats-and-share/completed/phase-b-result-card-generation.plan.md) — [report](../reports/02-season-stats-and-share/phase-b-result-card-generation-report.md) |
-| C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | pending | with A   | -       | -        |
+| C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | complete | with A   | -       | [phase-c-table-label-color.plan.md](../plans/completed/phase-c-table-label-color.plan.md) — [report](../reports/phase-c-table-label-color-report.md) |
 | D   | Web Share API & Polish      | Web Share API 統合（Should）+ Color picker UI（Should）+ 成功指標観測                        | pending | -        | B, C    | -        |
 
 ### Phase Details
