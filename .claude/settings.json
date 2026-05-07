@@ -234,7 +234,9 @@
       "Bash(firebase emulators:start*)",
       "Bash(firebase emulators:exec*)",
       "Bash(firebase firestore:indexes*)",
-      "Bash(npx shadcn*)"
+      "Bash(npx shadcn*)",
+
+      "Bash(npx playwright test tests/e2e/*)"
     ],
     "ask": [
       "WebSearch",
