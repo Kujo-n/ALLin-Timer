@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { AccountDeleteSection } from "@/components/auth/AccountDeleteSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -130,6 +131,8 @@ export function SettingsClient() {
               </Link>
             </div>
           </form>
+          <hr className="my-6 border-border" />
+          <AccountDeleteSection user={user} />
         </CardContent>
       </Card>
     </main>
