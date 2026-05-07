@@ -5,7 +5,8 @@ scope: トーナメントの新規作成・参加者受付・運営ダッシュ�
 audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
-targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）
+  - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
+targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）/ 優勝カードの画像保存・Web Share API は Phase B・D 完了時点
 lastUpdated: 2026-05-07
 status: stable
 ---
@@ -162,7 +163,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
   - 受付中: 「トーナメント開始」/ 編集 / 削除
   - 進行中: 一時停止 / 次レベル / 巻戻し / バストボタン / 全画面表示 / Table 名編集
   - 一時停止中: 再開
-  - 終了: Winner 演出 / 「同じ参加者で次のトーナメントを作る」/ 削除
+  - 終了: Winner 演出 / **「画像を保存」ボタン**（優勝カード PNG ダウンロード）/ Web Share API 対応端末では **「シェア」ボタン**が並列表示 / 「同じ参加者で次のトーナメントを作る」/ 削除
 - ヘッダーにトーナメント名がページタイトルとして表示される
 
 #### 3.4.2 誰が・いつ使うか
@@ -189,7 +190,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 
 - 参加者・観戦者向けの全画面表示
 - タイマー / ブラインド / 自席（参加者の場合）/ 残人数 / 次の休憩までの時間 を表示
-- 操作ボタンは表示されない（読み取り専用）
+- 操作ボタンは原則表示されない（読み取り専用）。例外として **トーナメント終了後は Winner 演出の直下に「画像を保存」ボタン**（優勝カード PNG ダウンロード）が表示され、Web Share API 対応端末では **「シェア」ボタン**が並列表示される
 - 自分の席が変わると「席が移動しました」というバナーが出る
 - ゲスト匿名は受付完了後はこの画面に来ない設計（受付完了画面のみ）
 
@@ -345,8 +346,10 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 | 「トーナメント開始 / 一時停止 / 終了」操作 | ○ | ○ | × | × |
 | 同じ参加者で次のトーナメントを作る（複製） | ○ | ○ | × | × |
 | トーナメント削除（準備中 or 終了） | ○ | ○ | × | × |
+| 優勝カード（Winner 画面）の画像保存 | ○ | ○ | ○ | △ |
+| 優勝カード（Winner 画面）の Web Share シェア | ○ | ○ | ○ | △ |
 
-凡例: ○ 可 / × 不可 / △ ゲスト匿名は受付完了画面に留め、live 画面には進まない設計
+凡例: ○ 可 / × 不可 / △ ゲスト匿名は受付完了画面に留め、live 画面には進まないため Winner 演出に到達せず実質的にダウンロード / シェアできない
 
 ### 4.2 ロール定義（spec 内の文脈で）
 
@@ -424,8 +427,9 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - 関連: 席決め・卓編成・PD・Table 名カスタム は [05-seating-and-balancing.spec.md](05-seating-and-balancing.spec.md)
 - 関連: タイマー・ブラインド進行・全画面表示・接続切断 UI は [06-timer-and-blinds.spec.md](06-timer-and-blinds.spec.md)
 - 関連: 音声通知は [07-audio-notifications.spec.md](07-audio-notifications.spec.md)
-- 関連: シーズン戦績への自動加算は [08-season-stats.spec.md](08-season-stats.spec.md)
+- 関連: シーズン戦績への自動加算・優勝カードの画像保存 / Web Share API シェアの詳細は [08-season-stats.spec.md](08-season-stats.spec.md)（3.7 / 3.8）
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 2（受付 / CRUD）/ Phase 4.5（自動終了 / Winner 演出）/ Phase 4.14（削除 cascade）/ Phase 5.1〜5.4（PD / レベル時間動的変更 / レベル末尾追加 / 複製）
+- 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase B（優勝カード PNG）/ Phase D（Web Share API）— Winner 演出の画像保存・シェアボタンの提供元
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -433,7 +437,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
 - 画面: [/tournaments](/tournaments) / [/tournaments/new](/tournaments/new) / [/tournaments/[tid]](/tournaments/%5Btid%5D) / [/tournaments/[tid]/edit](/tournaments/%5Btid%5D/edit) / [/tournaments/[tid]/clone](/tournaments/%5Btid%5D/clone) / [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live) / [/join/[tid]](/join/%5Btid%5D)
-- 主な操作: 新規作成 / 編集（準備中）/ 受付（3 択フロー）/ 自分のキャンセル / 「席を決定」/ 開始 / 一時停止 / 巻戻し / 次レベル / 終了 / 複製 / 削除（準備中 or 終了）
+- 主な操作: 新規作成 / 編集（準備中）/ 受付（3 択フロー）/ 自分のキャンセル / 「席を決定」/ 開始 / 一時停止 / 巻戻し / 次レベル / 終了 / 複製 / 削除（準備中 or 終了）/ 優勝カード（Winner 画面）の画像保存・Web Share
 - 設定項目: 名前 / ストラクチャ / 1 Table あたりの席数 / 参加者選択（複製時）
-- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止 / 終了時の自動 Winner 演出 / 削除 cascade
+- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止 / 終了時の自動 Winner 演出 / 終了直後の優勝カード共有 / 削除 cascade
 - 関連 PRD: 上記参照

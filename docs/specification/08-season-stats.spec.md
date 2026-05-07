@@ -5,7 +5,7 @@ scope: シーズン累計（参加・優勝・FT・ポイント）の自動集�
 audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
-targetPhase: Phase A 完了時点（基盤・切替・ランキング）/ シーズン首位カードは Phase B 進行中（暫定で利用可能）/ 過去シーズン履歴閲覧 UI と Web Share API シェアボタンは Phase D で追加
+targetPhase: Phase A・B・D 完了時点（基盤・切替・ランキング・結果カード PNG・Web Share API・過去シーズン履歴閲覧 UI）
 lastUpdated: 2026-05-07
 status: stable
 ---
@@ -378,7 +378,7 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 - 全体像: [00-overview.spec.md](00-overview.spec.md)
 - 関連: トーナメント終了時の自動加算は [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: サークル単位のシーズン開始操作は [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md)
-- 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase A（基盤）/ Phase B（結果カード）/ Phase D（Web Share API・履歴 polish 候補）
+- 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase A（基盤）/ Phase B（結果カード PNG）/ Phase D（Web Share API・過去シーズン履歴閲覧 UI）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック

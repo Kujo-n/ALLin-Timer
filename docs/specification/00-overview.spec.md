@@ -6,7 +6,7 @@ audience: サークル運営者・経営判断者・新メンバー・外部レ�
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
-targetPhase: 01-allin-timer は Phase 5.4 まで完了（フィールドテスト中）/ 02-season-stats-and-share は Phase A・C 完了、Phase B 進行中、Phase D 未着手
+targetPhase: 01-allin-timer は Phase 5.4 まで完了（フィールドテスト中）/ 02-season-stats-and-share は Phase A・B・C・D 完了（基盤・結果カード PNG・Table 名カスタム・Web Share API・履歴閲覧 UI）
 lastUpdated: 2026-05-07
 status: stable
 ---
@@ -145,12 +145,12 @@ PRD は計画 / 意図、spec は現状記録。両者は補完関係で、片�
 - **観戦モード URL は未実装**: トーナメントを外部の観客が見るための URL はまだ提供しない
 - **リバイ・アドオンの実行操作は未実装**: ストラクチャに量フィールドはあるが、実行 UI はない
 - **賞金計算（ICM 含む）は未実装**
-- **シーズン戦績の結果カード PNG ダウンロード**: シーズン首位カード・優勝カードは現在開発中（暫定で利用可能）。Web Share API（OS シェアシート）への統合は未実装で、画像保存後に手動で SNS にアップロードする運用
 - **音声通知のカスタム音源アップロードは未実装**: デフォルト音源 2 種類のみ
 - **招待リンクの最大利用回数 UI は未実装**: 現状は上限なしで運用
 - **テンプレート管理者の付与・剥奪 UI は未実装**: 運営チームが直接データベース上で設定する必要がある
 - **ポイント計算式の運営者カスタマイズは未実装**: 順位ベース × 平方根スケールで固定
-- **シーズン履歴の閲覧 UI は限定的**: 過去 N シーズンの一覧表示は polish phase で拡充予定
+- **Web Share API は対応端末のみ**: 結果カード（優勝カード / シーズン首位カード）は全端末で「画像を保存」が使えるが、OS シェアシート経由の 1 タップ送信は iOS Safari / Android Chrome 等の Web Share API 対応端末のみ。非対応端末では画像保存後に手動で SNS にアップロード
+- **過去シーズン側の結果カードは未提供**: 履歴は閲覧のみ。過去シーズンの首位カード PNG ダウンロードは現状提供していない（現在シーズンのみ）
 - **シーズン自動切替（毎月 1 日 / 4 月 1 日 など）は未実装**: 運営者の手動操作のみ
 
 詳細は各個別 spec の「6. 既知の制約・未対応事項」を参照。
