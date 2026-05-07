@@ -33,7 +33,7 @@ import {
   promoteToOwner,
   renameGroup,
   setDefaultSeatsPerTable,
-  setDefaultTableLabels,
+  setDefaultTableSettings,
   setFinishedTournamentCount,
   startNewSeason,
 } from "@/lib/services/group";
@@ -324,9 +324,10 @@ export function GroupDetailClient({ gid }: { gid: string }) {
 
       <GroupDefaultTableLabelsCard
         labels={group.defaultTableLabels ?? []}
+        colors={group.defaultTableColors ?? []}
         canEdit={isOrganizer}
-        onSave={async (labels) => {
-          await setDefaultTableLabels({ gid, uid: user.uid, labels });
+        onSave={async (labels, colors) => {
+          await setDefaultTableSettings({ gid, uid: user.uid, labels, colors });
           await reload();
           await refreshGroups();
         }}

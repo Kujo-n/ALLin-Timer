@@ -12,59 +12,88 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  TABLE_COLOR_PRESETS,
+} from "@/components/tournament/_table-label-edit/table-color-presets";
 import { AppError } from "@/lib/errors";
 import { MAX_TABLES, TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import { logger } from "@/lib/logger";
+import { cn } from "@/lib/utils";
 
 interface Props {
   /**
-   * 表示モードで使う現状の卓呼称デフォルト一覧。空配列なら「未設定」を表示。
+   * 表示モードで使う現状の Table 名デフォルト一覧。空配列なら「未設定」を表示。
    * 編集モード切替時に内部 state にコピーしてから編集する。
    */
   labels: readonly string[];
+  /**
+   * `labels` と index 1:1 で対応する Table 色デフォルト。null は色未設定。
+   * 旧 doc では colors が空配列のため、`labels.length` より短い場合は表示時に null パディング扱い。
+   */
+  colors: readonly (string | null)[];
   /** organizer 以上のみ「編集」ボタンを出す。member は表示モード固定。 */
   canEdit: boolean;
   /**
-   * 保存 handler。`setDefaultTableLabels({ gid, uid, labels })` を呼ぶ wrapper。
-   * 失敗時は throw して onError で表示。
+   * 保存 handler。`setDefaultTableSettings({ gid, uid, labels, colors })` を呼ぶ wrapper。
+   * 失敗時は throw して onError で表示。labels と colors は同じ長さで渡す。
    */
-  onSave: (labels: string[]) => Promise<void>;
+  onSave: (labels: string[], colors: (string | null)[]) => Promise<void>;
   onError?: (message: string) => void;
 }
 
 /**
- * Phase C: サークル詳細画面の「テーブル呼称デフォルト」inline edit カード。
+ * Phase C / 02-02: サークル詳細画面の「Table 名デフォルト」inline edit カード。
  *
- *  - 表示モード: `1) 赤卓 / 2) 青卓 / ...` の番号付きリスト。0 件なら「未設定」
- *  - 編集モード（organizer のみ）: 各行 Input + 削除ボタン、最下部に「+ 追加」と保存/キャンセル
+ * 02-02 改修で「色も一緒に登録できる」運用要望に対応。卓マットの色は買い替えるまで
+ * 固定なので、トーナメント開催の度に設定する手間を省く。
+ *
+ *  - 表示モード: 各行に色チップ + Table 名。0 件なら「未設定」
+ *  - 編集モード（organizer のみ）: 各行 [Table 名 Input + 色プリセット tile + 削除] / 「+ 追加」/「保存・キャンセル」
  *  - 並び替えは MVP 範囲外（削除→再追加で対応）
- *  - 各 Input は maxLength=TABLE_LABEL_MAX_LENGTH (= 10) で UI 側でも制限
+ *  - Input は maxLength=TABLE_LABEL_MAX_LENGTH (= 10) で UI 側でも制限
  *  - 配列長は MAX_TABLES (= 6) まで（追加ボタンは到達時 disabled）
+ *  - 色プリセットは TableLabelEditPopover と共通の TABLE_COLOR_PRESETS を使用
+ *    （カスタム hex picker は本カードには出さない。詳細色は Popover で個別設定する）
  *
- * 新規 tournament 作成時に index 順でコピーされる旨をヘルプテキストで示す。
+ * 新規 tournament 作成時に index 順で labels / colors の両方がコピーされる。
  */
 export function GroupDefaultTableLabelsCard({
   labels,
+  colors,
   canEdit,
   onSave,
   onError,
 }: Props) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string[]>([]);
+  const [labelDraft, setLabelDraft] = useState<string[]>([]);
+  const [colorDraft, setColorDraft] = useState<(string | null)[]>([]);
   const [saving, setSaving] = useState(false);
 
   function startEdit() {
-    setDraft([...labels]);
+    setLabelDraft([...labels]);
+    // colors が短い旧 doc に対しても labels.length に揃える形で hydrate。
+    setColorDraft(
+      labels.map((_, i) => (i < colors.length ? colors[i] : null)),
+    );
     setEditing(true);
   }
 
   function cancelEdit() {
-    setDraft([]);
+    setLabelDraft([]);
+    setColorDraft([]);
     setEditing(false);
   }
 
   function setLabelAt(idx: number, value: string) {
-    setDraft((prev) => {
+    setLabelDraft((prev) => {
+      const next = [...prev];
+      next[idx] = value;
+      return next;
+    });
+  }
+
+  function setColorAt(idx: number, value: string | null) {
+    setColorDraft((prev) => {
       const next = [...prev];
       next[idx] = value;
       return next;
@@ -72,29 +101,38 @@ export function GroupDefaultTableLabelsCard({
   }
 
   function removeAt(idx: number) {
-    setDraft((prev) => prev.filter((_, i) => i !== idx));
+    setLabelDraft((prev) => prev.filter((_, i) => i !== idx));
+    setColorDraft((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function addRow() {
-    if (draft.length >= MAX_TABLES) return;
-    setDraft((prev) => [...prev, ""]);
+    if (labelDraft.length >= MAX_TABLES) return;
+    setLabelDraft((prev) => [...prev, ""]);
+    setColorDraft((prev) => [...prev, null]);
   }
 
   async function handleSave() {
     setSaving(true);
     try {
       // 空文字 / 空白のみの行は保存前に除外（service / repo は空文字を弾くため UX 配慮）。
-      const cleaned = draft
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      await onSave(cleaned);
+      // labels と colors は同 index で対応するので、空行を落とすときは両方落とす。
+      const cleanedLabels: string[] = [];
+      const cleanedColors: (string | null)[] = [];
+      labelDraft.forEach((s, i) => {
+        const t = s.trim();
+        if (t.length === 0) return;
+        cleanedLabels.push(t);
+        cleanedColors.push(colorDraft[i] ?? null);
+      });
+      await onSave(cleanedLabels, cleanedColors);
       setEditing(false);
-      setDraft([]);
+      setLabelDraft([]);
+      setColorDraft([]);
     } catch (e) {
       const wrapped = AppError.from(
         e,
         "firestore/write_failed",
-        "テーブル呼称デフォルトの更新に失敗しました",
+        "Table 名デフォルトの更新に失敗しました",
       );
       logger.warn(wrapped.message, { code: wrapped.code });
       onError?.(`${wrapped.code}: ${wrapped.message}`);
@@ -103,48 +141,95 @@ export function GroupDefaultTableLabelsCard({
     }
   }
 
+  // 表示モードで colors が短い旧 doc のときも index で参照できるようにヘルパー化。
+  function colorAt(i: number): string | null {
+    return i < colors.length ? colors[i] : null;
+  }
+
   return (
     <Card aria-label="default-table-labels-card">
       <CardHeader>
-        <CardTitle>テーブル呼称デフォルト</CardTitle>
+        <CardTitle>Table 名デフォルト</CardTitle>
         <CardDescription>
-          新規トーナメント作成時、上から順に各卓へ自動でコピーされます（最大{" "}
+          新規トーナメント作成時、上から順に各卓へ Table 名と色が自動でコピーされます（最大{" "}
           {MAX_TABLES} 件 / 各 {TABLE_LABEL_MAX_LENGTH} 文字）。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {editing ? (
-          <div className="space-y-2">
-            {draft.length === 0 ? (
+          <div className="space-y-3">
+            {labelDraft.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                呼称が登録されていません。下のボタンで追加してください。
+                Table 名が登録されていません。下のボタンで追加してください。
               </p>
             ) : (
-              <ol className="space-y-2">
-                {draft.map((value, idx) => (
-                  <li key={idx} className="flex items-center gap-2">
-                    <span className="w-6 text-sm text-muted-foreground">
-                      {idx + 1})
-                    </span>
-                    <Input
-                      value={value}
-                      onChange={(e) => setLabelAt(idx, e.target.value)}
-                      maxLength={TABLE_LABEL_MAX_LENGTH}
-                      placeholder="赤卓"
-                      disabled={saving}
-                      aria-label={`default-table-label-${idx + 1}`}
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      disabled={saving}
-                      onClick={() => removeAt(idx)}
-                      aria-label={`remove-default-table-label-${idx + 1}`}
+              <ol className="space-y-3">
+                {labelDraft.map((value, idx) => (
+                  <li key={idx} className="space-y-2 rounded-md border p-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 text-sm text-muted-foreground">
+                        {idx + 1})
+                      </span>
+                      <Input
+                        value={value}
+                        onChange={(e) => setLabelAt(idx, e.target.value)}
+                        maxLength={TABLE_LABEL_MAX_LENGTH}
+                        placeholder="赤卓"
+                        disabled={saving}
+                        aria-label={`default-table-label-${idx + 1}`}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={saving}
+                        onClick={() => removeAt(idx)}
+                        aria-label={`remove-default-table-label-${idx + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div
+                      role="radiogroup"
+                      aria-label={`default-table-color-presets-${idx + 1}`}
+                      className="flex flex-wrap gap-1.5 pl-8"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={colorDraft[idx] == null}
+                        aria-label={`default-table-${idx + 1}-color-none`}
+                        disabled={saving}
+                        onClick={() => setColorAt(idx, null)}
+                        className={cn(
+                          "flex h-7 w-7 items-center justify-center rounded-md border text-[9px] text-muted-foreground transition",
+                          colorDraft[idx] == null
+                            ? "ring-2 ring-ring ring-offset-1"
+                            : "hover:bg-accent",
+                        )}
+                      >
+                        なし
+                      </button>
+                      {TABLE_COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={colorDraft[idx] === preset.value}
+                          aria-label={`default-table-${idx + 1}-color-${preset.name}`}
+                          disabled={saving}
+                          onClick={() => setColorAt(idx, preset.value)}
+                          className={cn(
+                            "h-7 w-7 rounded-md border transition",
+                            colorDraft[idx] === preset.value
+                              ? "ring-2 ring-ring ring-offset-1"
+                              : "hover:opacity-80",
+                          )}
+                          style={{ backgroundColor: preset.value }}
+                        />
+                      ))}
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -155,7 +240,7 @@ export function GroupDefaultTableLabelsCard({
                 variant="outline"
                 size="sm"
                 onClick={addRow}
-                disabled={saving || draft.length >= MAX_TABLES}
+                disabled={saving || labelDraft.length >= MAX_TABLES}
               >
                 + 追加
               </Button>
@@ -195,12 +280,33 @@ export function GroupDefaultTableLabelsCard({
           </div>
         ) : (
           <div className="space-y-2">
-            <ol className="list-decimal space-y-1 pl-6 text-sm">
-              {labels.map((label, idx) => (
-                <li key={idx} className="font-medium">
-                  {label}
-                </li>
-              ))}
+            <ol className="space-y-1 text-sm">
+              {labels.map((label, idx) => {
+                const color = colorAt(idx);
+                return (
+                  <li
+                    key={idx}
+                    className="flex items-center gap-2 font-medium"
+                  >
+                    <span className="w-6 text-muted-foreground">
+                      {idx + 1})
+                    </span>
+                    {color ? (
+                      <span
+                        aria-hidden
+                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-black/10"
+                        style={{ backgroundColor: color }}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="inline-block h-3 w-3 shrink-0 rounded-full border border-dashed"
+                      />
+                    )}
+                    <span>{label}</span>
+                  </li>
+                );
+              })}
             </ol>
             {canEdit ? (
               <Button
