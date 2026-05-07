@@ -1,0 +1,58 @@
+"use client";
+
+import { Download } from "lucide-react";
+
+import {
+  buildWinnerCardUrl,
+  formatDateForFilename,
+  formatDateForLabel,
+  sanitizeFilename,
+} from "@/app/api/og/_lib/og-payload";
+import { Button } from "@/components/ui/button";
+
+interface Props {
+  tid: string;
+  winnerName: string;
+  tournamentName: string;
+  participants: number;
+  /** トーナメント終了時刻。Date オブジェクトで受け取り端末 TZ で format する。 */
+  finishedAt: Date;
+  className?: string;
+}
+
+/**
+ * Phase B: 優勝カード PNG をダウンロードするボタン。
+ *
+ *   - PNG 内に表示する日付ラベル / filename の datePart は **押下端末の TZ** で format
+ *     する（`Date.toLocaleDateString`）。サーバ runtime の TZ に依存しない設計
+ *   - server route に Content-Disposition: attachment を付与しているため iOS Safari でも
+ *     download として認識される。`<a download>` の filename は Chrome / Firefox 用
+ */
+export function WinnerCardDownloadButton({
+  tid,
+  winnerName,
+  tournamentName,
+  participants,
+  finishedAt,
+  className,
+}: Props) {
+  const datePart = formatDateForFilename(finishedAt);
+  const filenameStem = sanitizeFilename(`winner-${tournamentName}-${datePart}`);
+  const url = buildWinnerCardUrl(tid, {
+    winnerName,
+    tournamentName,
+    participants,
+    finishedAtLabel: formatDateForLabel(finishedAt),
+    filename: filenameStem,
+  });
+  const filename = `${filenameStem}.png`;
+
+  return (
+    <Button asChild size="sm" variant="default" className={className}>
+      <a href={url} download={filename} data-testid="winner-card-download">
+        <Download aria-hidden />
+        画像を保存
+      </a>
+    </Button>
+  );
+}
