@@ -795,6 +795,7 @@ describe("deriveRole", () => {
     finishedTournamentCount: 0,
     defaultSeatsPerTable: 8,
     seasonStartDate: null,
+    defaultTableLabels: [],
     createdAt: now,
   };
 

@@ -1,7 +1,13 @@
 import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
-import { DEFAULT_SEATS_PER_TABLE, MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
+import {
+  DEFAULT_SEATS_PER_TABLE,
+  MAX_SEATS_PER_TABLE,
+  MAX_TABLES,
+  MIN_SEATS_PER_TABLE,
+  TABLE_LABEL_MAX_LENGTH,
+} from "@/lib/limits";
 
 /**
  * サークル内表示名の最大文字数。
@@ -95,6 +101,17 @@ export const groupBodySchema = z
     //   旧 doc（Phase 4.17 以前）はフィールド不在のため default(null) で hydrate され、
     //   初回シーズン開始まで null。UI は null のとき「未設定」表示する。
     seasonStartDate: z.instanceof(Timestamp).nullable().default(null),
+    // Phase C: トーナメント新規作成時に各卓 (`tables/{n}.label`) へ index 順に
+    //   自動コピーされるサークル単位のテーブル呼称デフォルト一覧。
+    //   - 最大 MAX_TABLES (= 6) 件 / 各要素 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字
+    //   - 旧 doc（Phase A 以前）はフィールド不在のため default([]) で hydrate される
+    //   - rule 側は `defaultTableLabels.size() <= 6` のみ強制し、各要素の値域は
+    //     service / schema 層で検証する（Cloud Firestore Rules 言語仕様で list element の
+    //     string 長を表現できないため）
+    defaultTableLabels: z
+      .array(z.string().min(1).max(TABLE_LABEL_MAX_LENGTH))
+      .max(MAX_TABLES)
+      .default([]),
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),

@@ -207,8 +207,8 @@ describe("useSeatingAutoOrchestrator — auto-seating", () => {
         player({ id: "p3", isBusted: true, tableNum: null, seatNum: null }),
       ],
       tables: [
-        { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-        { id: "2", tableNum: 2, isBroken: true, createdAt: ts },
+        { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+        { id: "2", tableNum: 2, isBroken: true, createdAt: ts, label: null, color: null },
       ],
     });
     const args = vi.mocked(autoSeatLateEntry).mock.calls[0];

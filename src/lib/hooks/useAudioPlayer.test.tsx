@@ -83,6 +83,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     finishedTournamentCount: 0,
     defaultSeatsPerTable: 8,
     seasonStartDate: null,
+    defaultTableLabels: [],
     createdAt: baseTimestamp,
     ...overrides,
   };

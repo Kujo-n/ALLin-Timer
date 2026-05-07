@@ -91,3 +91,17 @@ export const MAX_LEVELS_PER_TOURNAMENT = 50;
  * rule 側で件数制約を設けない（writeBatch サイズを rule で表現できないため）。
  */
 export const MAX_CLONE_PLAYERS = 50;
+
+/**
+ * Phase C: 卓カスタム呼称（`tables/{n}.label` および `groups/{gid}.defaultTableLabels[i]`）の
+ * 最大文字数。スマートフォン 1 行に収まり、SeatingBoard / BalancingInstructionCard の
+ * 卓カードヘッダで折り返さない値として 10 に設定。
+ *
+ * DRIFT WARNING: `firestore.rules` の以下リテラルと連動。同時に変更すること:
+ *   - `tables/{n}.label.size() <= 10`
+ *   - `groups/{gid}.defaultTableLabels[i]` の長さ強制は schema / service 側で行う
+ *     (rule 言語仕様上、list 内 element の string 長制約は表現困難)
+ *
+ * drift 検出は `scripts/test-rules-limits.mjs`（`npm run test:rules-limits`）で機械的に行う。
+ */
+export const TABLE_LABEL_MAX_LENGTH = 10;

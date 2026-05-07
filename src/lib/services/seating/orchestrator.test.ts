@@ -181,6 +181,10 @@ describe("commitInitialSeating", () => {
           id: p.id,
           data: () => stripId(p),
         })),
+        // Phase C: group doc read（defaultTableLabels 引込）。空配列で fallback。
+        () => ({ exists: () => true, id: "g1", data: () => ({ defaultTableLabels: [] }) }),
+        // Phase C: 既存 tables/{1} doc read（新規 commit のため非存在）。
+        () => ({ exists: () => false }),
       ],
       (ref, patch) => {
         updateCalls.push({ ref, patch: patch as Record<string, unknown> });
@@ -199,7 +203,12 @@ describe("commitInitialSeating", () => {
     // M-3.1 fix: tables are written inside the tx via tx.set, not a separate batch.
     // 2 players × 1 seat/player at seatsPerTable=9 → 1 table, so 1 set call.
     expect(setCalls).toHaveLength(1);
-    expect(setCalls[0].patch).toMatchObject({ tableNum: 1, isBroken: false });
+    expect(setCalls[0].patch).toMatchObject({
+      tableNum: 1,
+      isBroken: false,
+      label: null,
+      color: null,
+    });
   });
 
   it("wraps engine too-many-tables as seating/too-many-tables", async () => {
@@ -393,8 +402,8 @@ describe("applyBalancingOnce", () => {
       ),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
     expect(result.applied).toBe(false);
@@ -417,8 +426,8 @@ describe("applyBalancingOnce → applySingleMove (TG1)", () => {
       ),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     return { seated, tables };
   }
@@ -552,9 +561,9 @@ describe("applyBalancingOnce → applyTableBreak (TG2)", () => {
       player({ id: "c2", tableNum: 3, seatNum: 2 }),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
-      { id: "3", tableNum: 3, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "3", tableNum: 3, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     return { seated, tables };
   }
@@ -826,8 +835,8 @@ describe("applyBalancingOnce → applySingleMove — additional skip reasons", (
       ),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     return { seated, tables };
   }
@@ -986,6 +995,9 @@ describe("commitInitialSeating — additional branches", () => {
             stripId(player({ id: "p1", isBusted: true, bustedAt: ts })),
         }),
         () => ({ exists: () => true, id: "p2", data: () => stripId(p2) }),
+        // Phase C: group + 1 既存 table read
+        () => ({ exists: () => true, id: "g1", data: () => ({ defaultTableLabels: [] }) }),
+        () => ({ exists: () => false }),
       ],
       (_ref, patch) => updateCalls.push(patch as Record<string, unknown>),
       (_ref, patch) => setCalls.push(patch as Record<string, unknown>),
@@ -1008,6 +1020,9 @@ describe("commitInitialSeating — additional branches", () => {
         () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
         () => ({ exists: () => false }),
         () => ({ exists: () => true, id: "p2", data: () => stripId(p2) }),
+        // Phase C: group + 1 既存 table read
+        () => ({ exists: () => true, id: "g1", data: () => ({ defaultTableLabels: [] }) }),
+        () => ({ exists: () => false }),
       ],
       (_ref, patch) => updateCalls.push(patch as Record<string, unknown>),
     );
@@ -1015,6 +1030,120 @@ describe("commitInitialSeating — additional branches", () => {
     await commitInitialSeating("t1", "u1", ["g1"], [p1, p2], 42);
     // p2 だけ割当 + tournament = 2 updates
     expect(updateCalls).toHaveLength(2);
+  });
+
+  it("auto-fills default table labels by index for new tables", async () => {
+    const t = makeTournament({ state: "setup", seatsPerTable: 1 });
+    // 3 players × 1 seat → 3 tables
+    const players = [
+      player({ id: "p1" }),
+      player({ id: "p2" }),
+      player({ id: "p3" }),
+    ];
+    const setCalls: Array<{ patch: Record<string, unknown> }> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        ...players.map((p) => () => ({
+          exists: () => true,
+          id: p.id,
+          data: () => stripId(p),
+        })),
+        // Phase C: group doc に defaultTableLabels=['赤卓','青卓']（3 件目は不足）
+        () => ({
+          exists: () => true,
+          id: "g1",
+          data: () => ({ defaultTableLabels: ["赤卓", "青卓"] }),
+        }),
+        // 3 既存 table reads（全て non-existing → tx.set で create）
+        () => ({ exists: () => false }),
+        () => ({ exists: () => false }),
+        () => ({ exists: () => false }),
+      ],
+      undefined,
+      (_ref, patch) => setCalls.push({ patch: patch as Record<string, unknown> }),
+    );
+
+    await commitInitialSeating("t1", "u1", ["g1"], players, 42, 1);
+
+    expect(setCalls).toHaveLength(3);
+    expect(setCalls[0].patch).toMatchObject({ tableNum: 1, label: "赤卓" });
+    expect(setCalls[1].patch).toMatchObject({ tableNum: 2, label: "青卓" });
+    // 3 番目は defaultLabels から index 不足 → null
+    expect(setCalls[2].patch).toMatchObject({ tableNum: 3, label: null });
+  });
+
+  it("preserves existing manual table label on re-commit", async () => {
+    const t = makeTournament({ state: "seating" });
+    const players = [player({ id: "p1" }), player({ id: "p2" })];
+    const updateCalls: Array<{ patch: Record<string, unknown> }> = [];
+    const setCalls: Array<{ patch: Record<string, unknown> }> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        ...players.map((p) => () => ({
+          exists: () => true,
+          id: p.id,
+          data: () => stripId(p),
+        })),
+        () => ({
+          exists: () => true,
+          id: "g1",
+          data: () => ({ defaultTableLabels: ["赤卓"] }),
+        }),
+        // 既存 table 1: 手動 edit 済みで label='緑卓' → 維持されるべき
+        () => ({
+          exists: () => true,
+          id: "1",
+          data: () => ({ label: "緑卓", color: null }),
+        }),
+      ],
+      (_ref, patch) => updateCalls.push({ patch: patch as Record<string, unknown> }),
+      (_ref, patch) => setCalls.push({ patch: patch as Record<string, unknown> }),
+    );
+
+    await commitInitialSeating("t1", "u1", ["g1"], players, 42);
+
+    // 既存 label が non-null なので tx.update / tx.set のいずれも label を上書きしない
+    const tableUpdates = updateCalls.filter((c) => "label" in c.patch);
+    expect(tableUpdates).toHaveLength(0);
+    expect(setCalls).toHaveLength(0);
+  });
+
+  it("backfills label on existing table when label is null and default is provided", async () => {
+    const t = makeTournament({ state: "seating" });
+    const players = [player({ id: "p1" }), player({ id: "p2" })];
+    const updateCalls: Array<{ patch: Record<string, unknown> }> = [];
+    const setCalls: Array<{ patch: Record<string, unknown> }> = [];
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        ...players.map((p) => () => ({
+          exists: () => true,
+          id: p.id,
+          data: () => stripId(p),
+        })),
+        () => ({
+          exists: () => true,
+          id: "g1",
+          data: () => ({ defaultTableLabels: ["赤卓"] }),
+        }),
+        // 既存 table 1: label=null（旧 doc / 未設定）→ 補完される
+        () => ({
+          exists: () => true,
+          id: "1",
+          data: () => ({ label: null, color: null }),
+        }),
+      ],
+      (_ref, patch) => updateCalls.push({ patch: patch as Record<string, unknown> }),
+      (_ref, patch) => setCalls.push({ patch: patch as Record<string, unknown> }),
+    );
+
+    await commitInitialSeating("t1", "u1", ["g1"], players, 42);
+
+    const labelUpdates = updateCalls.filter((c) => "label" in c.patch);
+    expect(labelUpdates).toHaveLength(1);
+    expect(labelUpdates[0].patch).toMatchObject({ label: "赤卓" });
   });
 });
 
@@ -1056,8 +1185,8 @@ describe("applyManualBalancingMove", () => {
       ),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     return { seated, tables };
   }
@@ -1072,8 +1201,8 @@ describe("applyManualBalancingMove", () => {
       ),
     ];
     const tables = [
-      { id: "1", tableNum: 1, isBroken: false, createdAt: ts },
-      { id: "2", tableNum: 2, isBroken: false, createdAt: ts },
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
     ];
     const result = await applyManualBalancingMove(
       "t1",
