@@ -1,5 +1,6 @@
 "use client";
 
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -69,10 +70,13 @@ export function InviteCodeCard({
           招待コードを発行
         </Button>
         {inviteUrl ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              以下のリンクを共有してください（7 日有効）
+              以下のリンクまたは QR コードを共有してください（7 日有効）
             </p>
+            <div className="flex justify-center rounded-md border bg-white p-4">
+              <QRCodeSVG value={inviteUrl} size={192} aria-label="招待 URL の QR コード" />
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <Input readOnly value={inviteUrl} className="flex-1 min-w-0" />
               <Button
