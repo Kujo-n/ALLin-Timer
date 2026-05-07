@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/guard-bash.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-bash.py\"",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/pre-write-secret-scan.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-write-secret-scan.py\"",
             "timeout": 10
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/post-edit-track.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-track.py\"",
             "timeout": 5
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/stop-format.py",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-format.py\"",
             "timeout": 120
           }
         ]
