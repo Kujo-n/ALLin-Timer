@@ -62,6 +62,43 @@ export class TournamentDashboardPage extends BasePage {
   tableCard(tableNum: number): Locator {
     return this.page.locator(`[aria-label="table-${tableNum}"]`);
   }
+  // Phase C: 卓ヘッダのタイトル span（`{label}（N 人）` または `Table N（N 人）`）。
+  // CardTitle は <div> 実装なので getByText で参照、tableCard 配下に scope 絞り。
+  tableHeaderTitle(tableNum: number): Locator {
+    return this.tableCard(tableNum).getByText(/（\d+ 人）/);
+  }
+  // Phase C: 卓ヘッダの「✎」編集ボタン（aria-label="edit-table-${tableNum}"）。
+  // organizer 以上 + canEditTableLabel=true のときのみ render される。
+  editTableButton(tableNum: number): Locator {
+    return this.page.getByRole("button", { name: `edit-table-${tableNum}` });
+  }
+  // Phase C: 卓 label / color の Dialog（TableLabelEditPopover）。
+  // 同 page に同 Dialog が複数存在しないため top-level scope で取り回せる。
+  tableLabelInput(tableNum: number): Locator {
+    return this.page.getByLabel(`table-label-input-${tableNum}`);
+  }
+  tableColorInput(tableNum: number): Locator {
+    return this.page.getByLabel(`table-color-input-${tableNum}`);
+  }
+  readonly tableLabelDialogSaveButton: Locator = this.page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^保存$/ });
+  readonly tableLabelDialogClearColorButton: Locator = this.page
+    .getByRole("dialog")
+    .getByRole("button", { name: /^色なし$/ });
+
+  /**
+   * Phase C: dashboard 卓ヘッダから label を編集する 1 操作 helper。
+   * `✎` → Dialog 表示 → label 入力 → 保存 までを完結させる（color はそのまま）。
+   */
+  async editTableLabel(tableNum: number, label: string) {
+    await this.editTableButton(tableNum).click();
+    const input = this.tableLabelInput(tableNum);
+    await expect(input).toBeVisible({ timeout: 10_000 });
+    await input.fill(label);
+    await this.tableLabelDialogSaveButton.click();
+    await expect(this.page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+  }
   // Phase 4.11: TimerControls がアイコン化された後の running/paused 操作ボタン。
   // accessible name は aria-label と一致するため `^...$` で完全一致させる。
   readonly pauseButton: Locator = this.page.getByRole("button", { name: /^一時停止$/ });
