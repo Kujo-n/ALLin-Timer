@@ -216,14 +216,14 @@ Write the full plan document using the template below.
 
 **Save path**: every plan must be filed under a PRD-scoped folder.
 
-- **PRD-driven plan** (input was a PRD file): save to `.claude/PRPs/plans/<NN>-<prd-slug>/{kebab-case-feature-name}.plan.md`
-  - `<NN>-<prd-slug>` is derived from the input PRD filename (e.g. `prds/02-season-stats-and-share.prd.md` → folder `plans/02-season-stats-and-share/`)
-- **Free-form plan with no explicit PRD input** (architect-refactor, one-off cleanup, etc.): file it under the PRD **whose work-stream triggered it** — i.e. the PRD that was being implemented when this work emerged, not "the PRD whose code is being touched". If `02-season-stats-and-share` development surfaced an architect-refactor, it belongs in `plans/02-season-stats-and-share/`; a refactor planned after `01-allin-timer` stabilized belongs in `plans/01-allin-timer/`. If the triggering PRD is genuinely ambiguous, ask the user — do not invent a separate "cross-PRD" location.
+- **PRD-driven plan** (input was a PRD file): save to `.claude/PRPs/<NN>-<prd-slug>/plans/{kebab-case-feature-name}.plan.md`
+  - `<NN>-<prd-slug>` is derived from the input PRD filename (e.g. `02-season-stats-and-share/prds/02-season-stats-and-share.prd.md` → folder `02-season-stats-and-share/plans/`)
+- **Free-form plan with no explicit PRD input** (architect-refactor, one-off cleanup, etc.): file it under the PRD **whose work-stream triggered it** — i.e. the PRD that was being implemented when this work emerged, not "the PRD whose code is being touched". If `02-season-stats-and-share` development surfaced an architect-refactor, it belongs in `02-season-stats-and-share/plans/`; a refactor planned after `01-allin-timer` stabilized belongs in `01-allin-timer/plans/`. If the triggering PRD is genuinely ambiguous, ask the user — do not invent a separate "cross-PRD" location.
 
 Create the directory if it doesn't exist:
 
 ```bash
-mkdir -p .claude/PRPs/plans/<NN>-<prd-slug>
+mkdir -p .claude/PRPs/<NN>-<prd-slug>/plans
 ```
 
 ### Plan Template
@@ -474,7 +474,7 @@ EXPECT: Feature works as designed
 Write the generated plan to:
 ```
 
-.claude/PRPs/plans/<NN>-<prd-slug>/{kebab-case-feature-name}.plan.md
+.claude/PRPs/<NN>-<prd-slug>/plans/{kebab-case-feature-name}.plan.md
 
 ```
 
@@ -490,7 +490,7 @@ If this plan was generated from a PRD phase:
 
 ## Plan Created
 
-- **File**: .claude/PRPs/plans/<NN>-<prd-slug>/{kebab-case-feature-name}.plan.md (or _cross-prd/...)
+- **File**: .claude/PRPs/<NN>-<prd-slug>/plans/{kebab-case-feature-name}.plan.md
 - **Source PRD**: [path or "N/A"]
 - **Phase**: [phase name or "standalone"]
 - **Complexity**: [level]
@@ -500,7 +500,7 @@ If this plan was generated from a PRD phase:
 - **Risks**: [top risk or "none identified"]
 - **Confidence Score**: [1-10] — likelihood of single-pass implementation
 
-> Next step: Run `/prp-implement .claude/PRPs/plans/{name}.plan.md` to execute this plan.
+> Next step: Run `/prp-implement .claude/PRPs/<NN>-<prd-slug>/plans/{name}.plan.md` to execute this plan.
 
 ```
 

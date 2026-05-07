@@ -36,7 +36,7 @@ So that サークルごとの開催ペース（四半期 / 半期 / 任意）に
 ## Metadata
 
 - **Complexity**: Large
-- **Source PRD**: [.claude/PRPs/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md)
+- **Source PRD**: [.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md)
 - **PRD Phase**: Phase A — Season Stats Foundation
 - **Stage scope**: schema 2 件追加 / repository 2 件追加 / service 2 件追加 / rule branch 4 件追加 / `finishTournament` tx 拡張 / 純関数 1 件 / `DEFAULT_SEATS_PER_TABLE` 9→8 / UI 2 画面（サークル詳細「シーズンを開始する」+ ランキング画面新設）
 - **Estimated Files**: 約 22 files（schema 2 / repository 2 / service 2 / rules 1 / `tournaments.ts` 1 / `limits.ts` 1 / 純関数 1 / 純関数 test 1 / repo test 4 / service test 2 / schema test 1 / UI 3 / docs 3）
@@ -462,7 +462,7 @@ async function expectDeny(label, fn) {
 | [package.json](../../../../package.json) | UPDATE | `scripts.test:rules-season` を追加（`firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e "node scripts/test-rules-season.mjs"`） |
 | [.claude/rules/group-membership.md](../../../rules/group-membership.md) | UPDATE | データモデル節に `seasonStartDate` を追記、allowed-keys 表に追加、権限マトリクスに「シーズン開始（owner / organizer）/ 戦績参照（全員）」を追加 |
 | [.claude/rules/firebase-patterns.md](../../../rules/firebase-patterns.md) | UPDATE | `seasonStats` / `seasonHistory` の rule 設計（explicit subcollection rule の追加例として記載） |
-| [.claude/PRPs/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md) | UPDATE | Phase A の status を `pending` → `in-progress` に、PRP Plan 列に本ファイルへのリンクを追加 |
+| [.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md) | UPDATE | Phase A の status を `pending` → `in-progress` に、PRP Plan 列に本ファイルへのリンクを追加 |
 
 ## NOT Building
 
@@ -1692,7 +1692,7 @@ async function expectDeny(label, fn) {
 - **IMPLEMENT**:
   - [.claude/rules/group-membership.md](../../../rules/group-membership.md): データモデル節に `seasonStartDate` を追記、allowed-keys 表に追加（organizer ブランチに `seasonStartDate`）、権限マトリクスに「シーズン開始（owner / organizer）/ 戦績参照（全員）/ 戦績更新（finishTournament tx 経由のみ）」を追加。サブセクション「Phase A: シーズン管理」を新設し、本 phase の rule branch / 経路を記述
   - [.claude/rules/firebase-patterns.md](../../../rules/firebase-patterns.md): 「`tournaments/{tid}` 配下 subcollection の rule 設計原則」を **「`groups/{gid}` 配下 subcollection も同原則」** に拡張。`seasonStats` / `seasonHistory` を explicit rule 例として追記
-  - [.claude/PRPs/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md): Phase A の status を `pending` → `in-progress` に、PRP Plan 列に `[phase-a-season-stats-foundation.plan.md](../../plans/02-season-stats-and-share/phase-a-season-stats-foundation.plan.md)` リンク追加
+  - [.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md): Phase A の status を `pending` → `in-progress` に、PRP Plan 列に `[phase-a-season-stats-foundation.plan.md](../../plans/02-season-stats-and-share/phase-a-season-stats-foundation.plan.md)` リンク追加
 - **MIRROR**: 既存 Phase 4.16 / 4.17 の docs 更新差分（[firestore.rules#L195-L221](../../../../firestore.rules#L195-L221) のコメントスタイル）
 - **IMPORTS**: なし（markdown）
 - **VALIDATE**: 手動 review、PRD の Phase 進捗表が機械可読のまま

@@ -16,7 +16,7 @@ argument-hint: [対象スコープ — 例: 全体 | src/lib/firebase | seating]
 ユーザー（あなた）に以下を確認してから Phase 1 へ進む。曖昧な点が 1 つでもあれば、勝手に進めず短く質問する。
 
 1. **対象スコープ** — `$ARGUMENTS` が指定されていればそれ。未指定なら「全体 / 特定ディレクトリ / 特定レイヤ」を聞く
-2. **機能開発が落ち着いている確証** — `git status` がクリーン、in-flight ブランチや進行中の `.claude/PRPs/plans/` が無いか
+2. **機能開発が落ち着いている確証** — `git status` がクリーン、in-flight ブランチや進行中の `.claude/PRPs/<NN>-<prd-slug>/plans/` が無いか
 3. **テスト網が十分か** — 少なくとも E2E が critical path をカバーしているか
 4. **観測可能な動作変更の許容範囲** — 原則 0。例外があれば明示
 
@@ -40,7 +40,7 @@ Skill(architect-refactor) を起動
  → Phase 2: 構造監査（Architect レンズ＋Security レンズ、所見リスト作成）
  → Phase 3: リファクタリング計画（atomic な変更タスク化、ユーザー承認）
  → Phase 4: 段階実行（1 タスク = 1 commit、各回テスト全件 green）
- → Phase 5: 最終検証＋レポート（`.claude/PRPs/reports/architect-refactor-<yyyymmdd>.md`）
+ → Phase 5: 最終検証＋レポート（`.claude/PRPs/<NN>-<prd-slug>/reports/architect-refactor-<yyyymmdd>.md`）
 ```
 
 ## 不変条件（最重要）

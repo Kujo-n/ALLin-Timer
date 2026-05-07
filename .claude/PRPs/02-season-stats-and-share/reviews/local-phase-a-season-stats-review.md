@@ -217,7 +217,7 @@ schema は `DISPLAY_NAME_MAX_LENGTH = 15` を import 経由で使う。drift 検
 - [package.json](package.json)（test:rules-season script 追加）
 
 ### Deleted
-- [.claude/PRPs/plans/02-season-stats-and-share/phase-a-season-stats-foundation.plan.md](.claude/PRPs/plans/02-season-stats-and-share/phase-a-season-stats-foundation.plan.md)（completed/ への移動）
+- [.claude/PRPs/02-season-stats-and-share/plans/phase-a-season-stats-foundation.plan.md](.claude/PRPs/02-season-stats-and-share/plans/phase-a-season-stats-foundation.plan.md)（completed/ への移動）
 
 ## 次の手順
 

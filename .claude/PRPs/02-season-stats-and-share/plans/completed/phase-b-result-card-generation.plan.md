@@ -28,7 +28,7 @@ So that 手動スクリーンショットなしで LINE / X に貼れる見栄�
 ## Metadata
 
 - **Complexity**: Medium
-- **Source PRD**: [.claude/PRPs/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md)
+- **Source PRD**: [.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md)
 - **PRD Phase**: Phase B — Result Card Generation
 - **Stage scope**: 依存追加 2 件 / フォント asset 配置 / route 2 件新設 / 純関数 1 件（query 組み立て） / UI 2 箇所 (WinnerBanner / SeasonRankingClient) / UT 4 ファイル / docs 軽微
 - **Estimated Files**: 約 12 files
@@ -119,8 +119,8 @@ So that 手動スクリーンショットなしで LINE / X に貼れる見栄�
 | P0 (critical) | [.claude/rules/security-base.md](../../../rules/security-base.md) | all | サークル固有データのコミット禁止 — フォント TTF はパッケージから供給する（リポジトリへ大きいバイナリを直 push しない選択を再確認） |
 | P0 (critical) | [.claude/rules/security-env.md](../../../rules/security-env.md) | all | `NEXT_PUBLIC_*` の取扱い。本 phase では Firebase Admin SDK / Service Account を導入**しない**判断の根拠 |
 | P0 (critical) | [.claude/rules/testing.md](../../../rules/testing.md) | all | mock 境界（route handler を「helper 境界」で split）、UT 責務分担、`fakeTournament` factory pattern |
-| P0 (critical) | [.claude/PRPs/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md) | 197-207 | Phase B Goal / Scope / Success signal の真実源 |
-| P0 (critical) | [.claude/PRPs/plans/02-season-stats-and-share/completed/phase-a-season-stats-foundation.plan.md](completed/phase-a-season-stats-foundation.plan.md) | all | 直前 phase の成果物：`SeasonStatsDoc` / `seasonStartDate` / `resolveRanking` / `WinnerBanner` の参照点 |
+| P0 (critical) | [.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md](../../prds/02-season-stats-and-share.prd.md) | 197-207 | Phase B Goal / Scope / Success signal の真実源 |
+| P0 (critical) | [.claude/PRPs/02-season-stats-and-share/plans/completed/phase-a-season-stats-foundation.plan.md](completed/phase-a-season-stats-foundation.plan.md) | all | 直前 phase の成果物：`SeasonStatsDoc` / `seasonStartDate` / `resolveRanking` / `WinnerBanner` の参照点 |
 | P0 (critical) | [src/components/tournament/WinnerBanner.tsx](../../../../src/components/tournament/WinnerBanner.tsx) | all | 現行 WinnerBanner（presentational）。本 phase では「ボタンを **隣接 component に配置**」する形で改修（既存 prop 契約は壊さない） |
 | P0 (critical) | [src/app/tournaments/[tid]/dashboard-client.tsx](../../../../src/app/tournaments/%5Btid%5D/dashboard-client.tsx) | 53, 134-135, 353 | `resolveWinner(data, players)` で winner を導出 → `WinnerBanner` に渡す既存呼出。本 phase で **ボタン配置先**となる |
 | P0 (critical) | [src/app/tournaments/[tid]/live/live-client.tsx](../../../../src/app/tournaments/%5Btid%5D/live/live-client.tsx) | 27, 133, 176 | live 画面の WinnerBanner 表示。本 phase ではこちらにも同等のボタンを置くか判断（後述 Decision） |
@@ -139,7 +139,7 @@ So that 手動スクリーンショットなしで LINE / X に貼れる見栄�
 | P1 (important) | [src/lib/hooks/useGroupRole.ts](../../../../src/lib/hooks/useGroupRole.ts) | all | 任意 gid の role 導出（`useGroupRole(gid)` → `{ role }`）。ボタン visibility に使う |
 | P1 (important) | [src/lib/firebase/AuthProvider.tsx](../../../../src/lib/firebase/AuthProvider.tsx) | all | `useAuthUser()` の loading/user 形 — ボタン disabled 判定 |
 | P1 (important) | [src/components/ui/button.tsx](../../../../src/components/ui/button.tsx) | all | shadcn Button の variant / size。ダウンロードボタンは `<Button asChild>` + `<a download>` 構成 |
-| P1 (important) | [.claude/PRPs/reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md](../../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) | all | Phase A の確定 deviation（client-clock Timestamp 等）— Phase B の input format 期待値の真実源 |
+| P1 (important) | [.claude/PRPs/02-season-stats-and-share/reports/phase-a-season-stats-foundation-report.md](../../reports/02-season-stats-and-share/phase-a-season-stats-foundation-report.md) | all | Phase A の確定 deviation（client-clock Timestamp 等）— Phase B の input format 期待値の真実源 |
 | P2 (reference) | [src/lib/firebase/repositories/seasonStats.ts](../../../../src/lib/firebase/repositories/seasonStats.ts) | all | `subscribeSeasonStats` の戻り値構造（`stats[]` の sort 済み前提）— ボタン側で top 3 を slice する根拠 |
 | P2 (reference) | [src/components/tournament/WinnerBanner.tsx](../../../../src/components/tournament/WinnerBanner.tsx) | all | 既存の `WinnerBanner` を bordered 装飾の参考にする（PNG render 内のスタイル mirror）|
 
@@ -457,7 +457,7 @@ route handler の UT は薄く（200/400 status と content-type のみ assert�
 | `src/app/tournaments/[tid]/dashboard-client.tsx` | UPDATE | WinnerBanner の隣にダウンロードボタンを差込（[L353](../../../../src/app/tournaments/%5Btid%5D/dashboard-client.tsx) 周辺） |
 | `src/app/tournaments/[tid]/live/live-client.tsx` | UPDATE | 同等のボタンを追加（live 画面でも optimal champion を共有したいケース） |
 | `src/app/groups/[gid]/season/season-ranking-client.tsx` | UPDATE | ランキング画面冒頭にボタンを追加（`stats.length > 0` のとき） |
-| `.claude/PRPs/prds/02-season-stats-and-share.prd.md` | UPDATE | Phase B 進捗を `pending` → `in-progress` に変え、本 plan へリンク |
+| `.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md` | UPDATE | Phase B 進捗を `pending` → `in-progress` に変え、本 plan へリンク |
 | `README.md` | UPDATE | scripts 表に変更なし。`@vercel/og` / `@fontsource/noto-sans-jp` 追加を必要なら新規依存セクションに追記 |
 
 ## NOT Building

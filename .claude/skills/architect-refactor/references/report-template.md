@@ -1,6 +1,6 @@
 # Architect Refactor — レポートテンプレート
 
-Phase 5 の最終検証で `.claude/PRPs/reports/architect-refactor-<yyyymmdd>.md` に書き出すフォーマット。
+Phase 5 の最終検証で `.claude/PRPs/<NN>-<prd-slug>/reports/architect-refactor-<yyyymmdd>.md` に書き出すフォーマット。
 
 ```markdown
 # Architect Refactor Report — <yyyymmdd>
@@ -10,7 +10,7 @@ Phase 5 の最終検証で `.claude/PRPs/reports/architect-refactor-<yyyymmdd>.m
 
 ## Findings 概要
 - critical: N 件 / high: N 件 / medium: N 件 / low: N 件
-- 詳細監査結果: `.claude/PRPs/reviews/architect-refactor-<yyyymmdd>.md`
+- 詳細監査結果: `.claude/PRPs/<NN>-<prd-slug>/reviews/architect-refactor-<yyyymmdd>.md`
 
 ## 実施した変更
 - <commit hash> — <一文要約> — <影響範囲>

@@ -77,9 +77,9 @@ Categorize changed files: source, tests, docs, config, migrations.
 
 Check for related PRP artifacts:
 
-- `.claude/PRPs/reports/` — Implementation reports
-- `.claude/PRPs/plans/` — Plans that were executed
-- `.claude/PRPs/prds/` — Related PRDs
+- `.claude/PRPs/<NN>-<prd-slug>/reports/` — Implementation reports
+- `.claude/PRPs/<NN>-<prd-slug>/plans/` — Plans that were executed
+- `.claude/PRPs/<NN>-<prd-slug>/prds/` — Related PRDs
 
 Reference these in the PR body if they exist.
 

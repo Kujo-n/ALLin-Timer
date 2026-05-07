@@ -32,7 +32,7 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 呼び出されたら、最初にこの 4 点を確認してから Phase 1 に進む。曖昧な点が 1 つでもあれば短く質問する:
 
 1. **対象スコープ** — 全体 / 特定ディレクトリ / 特定レイヤ
-2. **機能開発が落ち着いている確証** — `git status` がクリーン、in-flight ブランチや進行中の `.claude/PRPs/plans/` が無いか
+2. **機能開発が落ち着いている確証** — `git status` がクリーン、in-flight ブランチや進行中の `.claude/PRPs/<NN>-<prd-slug>/plans/` が無いか
 3. **テスト網が十分か** — 少なくとも E2E が critical path をカバーしているか
 4. **観測可能な動作変更の許容範囲** — 原則 0。例外があれば明示
 
@@ -104,7 +104,7 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
   - **high** — 開発速度を著しく落とす構造的負債、明確な OWASP 系脆弱性候補
   - **medium** — 保守性の改善、KISS/DRY 違反
   - **low** — 命名／コメント／微小な一貫性
-- 監査結果は `.claude/PRPs/reviews/architect-refactor-<yyyymmdd>.md` に保存
+- 監査結果は `.claude/PRPs/<NN>-<prd-slug>/reviews/architect-refactor-<yyyymmdd>.md` に保存（PRD は架空のリファクタを引き起こした work-stream の所属 PRD）
 
 ### Phase 3 — リファクタリング計画
 
@@ -121,7 +121,7 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
   3. 構造的な土台（型・スキーマ・共通 util）の整理
   4. それに依存するレイヤ（service → repository → component の順、依存方向の上流から）
   5. 末端の cosmetic（命名・並び替え）
-- 計画は `.claude/PRPs/plans/architect-refactor-<yyyymmdd>.plan.md` として書き出し、**ユーザー承認を得てから Phase 4 へ**
+- 計画は `.claude/PRPs/<NN>-<prd-slug>/plans/architect-refactor-<yyyymmdd>.plan.md` として書き出し、**ユーザー承認を得てから Phase 4 へ**
 
 > **なぜ：** 大規模リファクタを 1 PR にまとめると、テストが落ちたとき原因切り分けが極端に難しくなる。atomic に切り分けて 1 つずつ commit する設計が「テスト網による安全保証」の前提条件。
 
@@ -161,7 +161,7 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 - [ ] `npm run typecheck` / `npm run lint` / `npm test` / `npm run test:e2e` / `npm run build` を全件再実行し、green を確認
 - [ ] `git log --oneline <baseline>..HEAD` で commit が atomic な単位で並んでいることを確認
 - [ ] 観測可能な動作変更が無いことを最終確認（手動 smoke test の必要性をユーザーに提案）
-- [ ] レポートを `.claude/PRPs/reports/architect-refactor-<yyyymmdd>.md` に書き出す。フォーマットは [`references/report-template.md`](references/report-template.md) を参照
+- [ ] レポートを `.claude/PRPs/<NN>-<prd-slug>/reports/architect-refactor-<yyyymmdd>.md` に書き出す。フォーマットは [`references/report-template.md`](references/report-template.md) を参照
 - 必要なら PR を `/prp-pr` で起票する。PR 説明には「観測可能な動作変更なし」と「全テスト green を維持」を明記
 
 ## プロジェクト固有の重ね合わせ

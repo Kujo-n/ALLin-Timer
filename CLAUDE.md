@@ -25,29 +25,31 @@
 | リアルタイム同期 | Firestore `onSnapshot`                                                                         |
 | デプロイ         | Vercel Hobby（GitHub 連携）                                                                    |
 
-詳細は [.claude/PRPs/prds/01-allin-timer.prd.md](.claude/PRPs/prds/01-allin-timer.prd.md) を参照。
+詳細は [.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md](.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) を参照。
 
 ## ドキュメント構成
 
-PRD と plan は **2 桁ゼロパディング sequential 番号** で対応付ける。`prds/<NN>-<slug>.prd.md` ↔ `plans/<NN>-<slug>/...`。番号は要件定義（PRD 作成）順で、開発順序を示す。
+PRD と plan は **2 桁ゼロパディング sequential 番号** で対応付ける。`<NN>-<slug>/prds/<NN>-<slug>.prd.md` ↔ `<NN>-<slug>/plans/...`。番号は要件定義（PRD 作成）順で、開発順序を示す。
 
-- **PRD**: [.claude/PRPs/prds/](.claude/PRPs/prds/) 配下に `<NN>-<slug>.prd.md` で生成。各 PRD 内 Phase 進捗表が最新状況の真実源
-  - **01**: [01-allin-timer.prd.md](.claude/PRPs/prds/01-allin-timer.prd.md) — Foundation 〜 Phase 5.x（基盤・席決め・タイマー・サークル管理）
-  - **02**: [02-season-stats-and-share.prd.md](.claude/PRPs/prds/02-season-stats-and-share.prd.md) — シーズン戦績・結果カード・テーブル呼称カスタム（Phase A〜D）
-- **実装計画**: [.claude/PRPs/plans/](.claude/PRPs/plans/) 配下に PRD 別フォルダで生成
-  - 進行中: `plans/<NN>-<slug>/<phase>.plan.md`
-  - 完了: `plans/<NN>-<slug>/completed/<phase>.plan.md` に移動
-  - **すべての plan は必ずいずれかの PRD に帰属させる**。帰属先は「その作業が発生した PRD コンテキスト」で決める。例えば `02-season-stats-and-share` の実装中に派生した architect-refactor は `plans/02-season-stats-and-share/` 配下、`01-allin-timer` の安定後に行う全体リファクタは `plans/01-allin-timer/` 配下、というように **どの PRD の流れで発生した作業か** で振り分ける（「対象コードがどこにあるか」ではない）
-- **実装レポート**: [.claude/PRPs/reports/<NN>-<slug>/](.claude/PRPs/reports/) に Phase 完了毎に生成（PRD と同じ `<NN>-<slug>` フォルダ配下）
-- **レビュー記録**: [.claude/PRPs/reviews/<NN>-<slug>/](.claude/PRPs/reviews/) に同じ規約で配置
+各 PRD はトップレベルの `<NN>-<slug>/` フォルダに集約され、配下に `prds/` / `plans/` / `reports/` / `reviews/` の 4 種類のサブフォルダを持つ。
+
+- **PRD**: [.claude/PRPs/](.claude/PRPs/) 配下の `<NN>-<slug>/prds/<NN>-<slug>.prd.md` に生成。各 PRD 内 Phase 進捗表が最新状況の真実源
+  - **01**: [01-allin-timer.prd.md](.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) — Foundation 〜 Phase 5.x（基盤・席決め・タイマー・サークル管理）
+  - **02**: [02-season-stats-and-share.prd.md](.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) — シーズン戦績・結果カード・テーブル呼称カスタム（Phase A〜D）
+- **実装計画**: [.claude/PRPs/<NN>-<slug>/plans/](.claude/PRPs/) に PRD 別フォルダで生成
+  - 進行中: `<NN>-<slug>/plans/<phase>.plan.md`
+  - 完了: `<NN>-<slug>/plans/completed/<phase>.plan.md` に移動
+  - **すべての plan は必ずいずれかの PRD に帰属させる**。帰属先は「その作業が発生した PRD コンテキスト」で決める。例えば `02-season-stats-and-share` の実装中に派生した architect-refactor は `02-season-stats-and-share/plans/` 配下、`01-allin-timer` の安定後に行う全体リファクタは `01-allin-timer/plans/` 配下、というように **どの PRD の流れで発生した作業か** で振り分ける（「対象コードがどこにあるか」ではない）
+- **実装レポート**: [.claude/PRPs/<NN>-<slug>/reports/](.claude/PRPs/) に Phase 完了毎に生成（PRD と同じ `<NN>-<slug>` フォルダ配下）
+- **レビュー記録**: [.claude/PRPs/<NN>-<slug>/reviews/](.claude/PRPs/) に同じ規約で配置
 - **PRD 内の Phase 進捗表**が最新状況の真実源。個別リンクは PRD を参照
 
 ## ワークフロー
 
 要件定義〜実装は PRP フローを使用:
 
-1. `/prp-prd` — 要件定義（Q&A で PRD 生成）。次の sequential 番号 `<NN>-<slug>.prd.md` で `prds/` に生成
-2. `/prp-plan <prd>` — フェーズ別の実装計画を `.claude/PRPs/plans/<NN>-<slug>/` に生成し、PRD のフェーズを `in-progress` に更新
+1. `/prp-prd` — 要件定義（Q&A で PRD 生成）。次の sequential 番号 `<NN>-<slug>.prd.md` で `<NN>-<slug>/prds/` に生成
+2. `/prp-plan <prd>` — フェーズ別の実装計画を `.claude/PRPs/<NN>-<slug>/plans/` に生成し、PRD のフェーズを `in-progress` に更新
 3. `/prp-implement <plan>` — 実装
 4. `/prp-pr` / `/prp-commit` — PR 作成・コミット
 

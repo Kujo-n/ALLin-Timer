@@ -218,16 +218,16 @@ Run through edge cases from the plan's Testing Strategy checklist.
 Reports are filed under the same `<NN>-<prd-slug>/` folder as the plan being implemented. Derive the folder from the plan path:
 
 ```bash
-# Plan path: .claude/PRPs/plans/<NN>-<prd-slug>/<feature>.plan.md (or its completed/ subfolder)
-#   →  Report:  .claude/PRPs/reports/<NN>-<prd-slug>/<feature>-report.md
+# Plan path: .claude/PRPs/<NN>-<prd-slug>/plans/<feature>.plan.md (or its completed/ subfolder)
+#   →  Report:  .claude/PRPs/<NN>-<prd-slug>/reports/<feature>-report.md
 
 PLAN_PATH="$ARGUMENTS"
-# strip optional /completed/ segment, then strip /plans/, leaving <NN>-<prd-slug>
-PRD_FOLDER="$(echo "$PLAN_PATH" | sed -E 's|^.*/plans/([^/]+)/.*$|\1|')"
-mkdir -p ".claude/PRPs/reports/${PRD_FOLDER}"
+# extract <NN>-<prd-slug> as the segment immediately following .claude/PRPs/
+PRD_FOLDER="$(echo "$PLAN_PATH" | sed -E 's|^.*\.claude/PRPs/([^/]+)/.*$|\1|')"
+mkdir -p ".claude/PRPs/${PRD_FOLDER}/reports"
 ```
 
-Write report to `.claude/PRPs/reports/<NN>-<prd-slug>/{plan-name}-report.md`:
+Write report to `.claude/PRPs/<NN>-<prd-slug>/reports/{plan-name}-report.md`:
 
 ```markdown
 # Implementation Report: [Feature Name]
@@ -300,8 +300,8 @@ If this implementation was for a PRD phase:
 Archive into the `completed/` folder of the **same PRD-scoped directory** the plan was in.
 
 ```bash
-# Plan path looks like: .claude/PRPs/plans/<NN>-<prd-slug>/<feature>.plan.md
-#   →  archive to:      .claude/PRPs/plans/<NN>-<prd-slug>/completed/<feature>.plan.md
+# Plan path looks like: .claude/PRPs/<NN>-<prd-slug>/plans/<feature>.plan.md
+#   →  archive to:      .claude/PRPs/<NN>-<prd-slug>/plans/completed/<feature>.plan.md
 
 PLAN_PATH="$ARGUMENTS"
 PLAN_DIR="$(dirname "$PLAN_PATH")"
@@ -343,8 +343,8 @@ Report to user:
 [Summary or "None — implemented exactly as planned"]
 
 ### Artifacts
-- Report: `.claude/PRPs/reports/<NN>-<prd-slug>/{name}-report.md`
-- Archived Plan: `.claude/PRPs/plans/<NN>-<prd-slug>/completed/{name}.plan.md`
+- Report: `.claude/PRPs/<NN>-<prd-slug>/reports/{name}-report.md`
+- Archived Plan: `.claude/PRPs/<NN>-<prd-slug>/plans/completed/{name}.plan.md`
 
 ### PRD Progress (if applicable)
 | Phase | Status |

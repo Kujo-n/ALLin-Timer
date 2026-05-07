@@ -111,4 +111,4 @@ src/components/group/
 
 - 全フェーズ境界規約: [`error-logging.md`](../../../rules/error-logging.md) / [`firebase-patterns.md`](../../../rules/firebase-patterns.md) / [`testing.md`](../../../rules/testing.md)
 - レンズ: [`web_architect.md`](web_architect.md) / [`security_specialist.md`](security_specialist.md)
-- 直近の実例: [`.claude/PRPs/reports/architect-refactor-20260430.md`](../../../PRPs/reports/architect-refactor-20260430.md)
+- 直近の実例: [`.claude/PRPs/01-allin-timer/reports/architect-refactor-20260430.md`](../../../PRPs/01-allin-timer/reports/architect-refactor-20260430.md)

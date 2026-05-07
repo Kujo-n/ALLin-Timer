@@ -203,7 +203,7 @@ explicit な `match /players/{pid}` と同時に評価され、Firestore Rules �
 「より緩い wildcard 側がそのまま allow を返す」 → Phase 4 organizer-update / Phase 5.1 PD /
 Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴があった
 （emulator validator のケース 3〜6 で deny を期待して 200 が返って発覚。詳細は
-[Phase 5.4 実装レポート](../PRPs/reports/phase-5.4-clone-tournament-with-players-report.md) の
+[Phase 5.4 実装レポート](../PRPs/01-allin-timer/reports/phase-5.4-clone-tournament-with-players-report.md) の
 「Pre-existing rule bug の修正」節）。
 
 **現状の subcollection rule**:

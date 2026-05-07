@@ -169,7 +169,7 @@ test.describe("Phase 4.8: Structure Template Library", () => {
  * `/structures` ⇄ `/templates` の相互ナビゲーション導線。
  *
  * 実装理由と UX 設計は
- * [.claude/PRPs/reports/structure-templates-nav-link-report.md] 参照。
+ * [.claude/PRPs/01-allin-timer/reports/structure-templates-nav-link-report.md] 参照。
  *
  * 検証内容:
  *   - organizer は /structures で Structure Templates ボタンが見える

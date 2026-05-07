@@ -105,13 +105,13 @@ None
 - `src/components/tournament/WinnerCardDownloadButton.test.tsx`
 - `src/components/group/SeasonTopCardDownloadButton.tsx`
 - `src/components/group/SeasonTopCardDownloadButton.test.tsx`
-- `.claude/PRPs/plans/02-season-stats-and-share/completed/phase-b-result-card-generation.plan.md`
-- `.claude/PRPs/reports/02-season-stats-and-share/phase-b-result-card-generation-report.md`
+- `.claude/PRPs/02-season-stats-and-share/plans/completed/phase-b-result-card-generation.plan.md`
+- `.claude/PRPs/02-season-stats-and-share/reports/phase-b-result-card-generation-report.md`
 
 ### Modified
 
 - `package.json` / `package-lock.json` — `@fontsource/noto-sans-jp ^5.2.9` 追加
-- `.claude/PRPs/prds/02-season-stats-and-share.prd.md` — Phase B 進捗更新（plan link / status）
+- `.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md` — Phase B 進捗更新（plan link / status）
 - `src/app/groups/[gid]/season/season-ranking-client.tsx` — DL ボタン挿入 + インデント揃え (M-3)
 - `src/app/tournaments/[tid]/dashboard-client.tsx` — DL ボタン挿入
 - `src/app/tournaments/[tid]/live/live-client.tsx` — DL ボタン挿入

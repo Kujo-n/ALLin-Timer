@@ -7,7 +7,7 @@ NLH（ノーリミットテキサスホールデム）小規模サークル向�
 - スタック: Next.js 15（App Router / TypeScript）+ Tailwind CSS + shadcn/ui + Firebase（Firestore + Authentication）
 - デプロイ: Vercel Hobby（GitHub 連携）
 
-詳細は [.claude/PRPs/prds/allin-timer.prd.md](.claude/PRPs/prds/allin-timer.prd.md) を参照してください。
+詳細は [.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md](.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) を参照してください。
 
 ## セットアップ手順
 

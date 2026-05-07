@@ -139,7 +139,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 - group 切替時のコンテキスト管理は `src/lib/services/current-group.tsx`（`GroupProvider` / `useCurrentGroup`）経由で行う。Phase 4.6 で `currentGroupRole` / `isOrganizer` / `isOwner` を導出フィールドとして追加
 - 招待コード仕様は [security.md](security.md) の「招待コード設計原則」に従う
 - 既存データのマイグレーション手順:
-  - Phase 2.5 → [phase-2.5-group-management.plan.md](../PRPs/plans/completed/phase-2.5-group-management.plan.md)
+  - Phase 2.5 → [phase-2.5-group-management.plan.md](../PRPs/01-allin-timer/plans/completed/phase-2.5-group-management.plan.md)
   - Phase 4.6 → [scripts/migrate-phase-4.6-roles.ts](../../scripts/migrate-phase-4.6-roles.ts) + README の migration 手順
 - **互換レイヤは作らない**（Phase 2.5 先例に従う）。migration 実行前の旧コード／旧クライアントは動作不可
 
@@ -283,7 +283,7 @@ Phase 5.4 「同じ参加者で次のトーナメントを作成」のため、`
 
 ## 参照
 
-- PRD: [.claude/PRPs/prds/allin-timer.prd.md](../PRPs/prds/allin-timer.prd.md) — Implementation Phases / Phase 2.5 / Phase 4.6 / Technical Risks
-- Phase 4.6 実装計画: [.claude/PRPs/plans/completed/phase-4.6-member-role-split.plan.md](../PRPs/plans/completed/phase-4.6-member-role-split.plan.md)
-- Phase 2.5 ローカルレビュー記録: [.claude/PRPs/reviews/local-phase-2.5-review.md](../PRPs/reviews/local-phase-2.5-review.md) — M2 finding
+- PRD: [.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md](../PRPs/01-allin-timer/prds/01-allin-timer.prd.md) — Implementation Phases / Phase 2.5 / Phase 4.6 / Technical Risks
+- Phase 4.6 実装計画: [.claude/PRPs/01-allin-timer/plans/completed/phase-4.6-member-role-split.plan.md](../PRPs/01-allin-timer/plans/completed/phase-4.6-member-role-split.plan.md)
+- Phase 2.5 ローカルレビュー記録: [.claude/PRPs/01-allin-timer/reviews/local-phase-2.5-review.md](../PRPs/01-allin-timer/reviews/local-phase-2.5-review.md) — M2 finding
 - 関連ルール: [firebase-patterns.md](firebase-patterns.md) / [security-base.md](security-base.md) / [security-env.md](security-env.md)

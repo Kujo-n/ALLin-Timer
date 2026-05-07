@@ -180,21 +180,21 @@ Ask final clarifying questions:
 
 ## Phase 7: GENERATE - Write PRD
 
-**Output path**: `.claude/PRPs/prds/{NN}-{kebab-case-name}.prd.md`
+**Output path**: `.claude/PRPs/{NN}-{kebab-case-name}/prds/{NN}-{kebab-case-name}.prd.md`
 
-`{NN}` is the **next sequential 2-digit zero-padded number** (01, 02, 03, ...). Determine it by listing existing PRDs:
+`{NN}` is the **next sequential 2-digit zero-padded number** (01, 02, 03, ...). Determine it by listing existing PRD project folders:
 
 ```bash
-ls .claude/PRPs/prds/ | grep -E '^[0-9]{2}-' | sort | tail -1
+ls .claude/PRPs/ | grep -E '^[0-9]{2}-' | sort | tail -1
 # extract the leading NN, increment by 1, zero-pad to 2 digits
 ```
 
-If no numbered PRDs exist yet, start from `01`. The number reflects PRD creation order = development sequence; never re-number existing PRDs.
+If no numbered PRD folders exist yet, start from `01`. The number reflects PRD creation order = development sequence; never re-number existing PRDs.
 
-Also create the matching plans folder skeleton:
+Also create the matching plans/reports/reviews folder skeleton in the same project folder:
 
 ```bash
-mkdir -p .claude/PRPs/prds .claude/PRPs/plans/{NN}-{kebab-case-name}/completed
+mkdir -p .claude/PRPs/{NN}-{kebab-case-name}/{prds,plans/completed,reports,reviews}
 ```
 
 This makes `/prp-plan` invocations later resolve into the correct PRD-scoped folder automatically.
@@ -368,7 +368,7 @@ After generating, report:
 ```markdown
 ## PRD Created
 
-**File**: `.claude/PRPs/prds/{NN}-{name}.prd.md`
+**File**: `.claude/PRPs/{NN}-{name}/prds/{NN}-{name}.prd.md`
 
 ### Summary
 
@@ -402,7 +402,7 @@ After generating, report:
 
 ### To Start Implementation
 
-Run: `/prp-plan .claude/PRPs/prds/{NN}-{name}.prd.md`
+Run: `/prp-plan .claude/PRPs/{NN}-{name}/prds/{NN}-{name}.prd.md`
 
 This will automatically select the next pending phase and create an implementation plan.
 ```
@@ -437,7 +437,7 @@ This will automatically select the next pending phase and create an implementati
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
-│  GENERATE: Write PRD to .claude/PRPs/prds/              │
+│  GENERATE: Write PRD to .claude/PRPs/{NN}-{name}/prds/  │
 └─────────────────────────────────────────────────────────┘
 ```
 
