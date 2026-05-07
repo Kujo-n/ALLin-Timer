@@ -16,6 +16,7 @@ import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshot
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
+import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -350,7 +351,20 @@ export function DashboardClient({ tid }: { tid: string }) {
         </aside>
       </div>
 
-      {winner ? <WinnerBanner winner={winner} /> : null}
+      {winner ? (
+        <>
+          <WinnerBanner winner={winner} />
+          <div className="flex justify-center">
+            <WinnerCardDownloadButton
+              tid={tid}
+              winnerName={winner.displayName}
+              tournamentName={data.name}
+              participants={players.length}
+              finishedAt={data.finishedAt?.toDate() ?? new Date()}
+            />
+          </div>
+        </>
+      ) : null}
 
       {isOrganizer && canClone(data) ? (
         <div className="flex justify-center">

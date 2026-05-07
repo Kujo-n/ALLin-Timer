@@ -13,6 +13,7 @@ import { PlayersCard } from "@/components/tournament/PlayersCard";
 import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
+import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -173,7 +174,20 @@ export function LiveClient({ tid }: { tid: string }) {
             />
           ) : null}
 
-          {winner ? <WinnerBanner winner={winner} className="w-full" /> : null}
+          {winner ? (
+            <>
+              <WinnerBanner winner={winner} className="w-full" />
+              <div className="flex justify-center">
+                <WinnerCardDownloadButton
+                  tid={tid}
+                  winnerName={winner.displayName}
+                  tournamentName={tournament.name}
+                  participants={players.length}
+                  finishedAt={tournament.finishedAt?.toDate() ?? new Date()}
+                />
+              </div>
+            </>
+          ) : null}
 
           {user ? (
             <section

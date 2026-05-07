@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { SeasonTopCardDownloadButton } from "@/components/group/SeasonTopCardDownloadButton";
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -98,32 +99,37 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
           このシーズンの戦績はまだありません。トーナメントが終了すると自動的に記録されます。
         </p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="py-2 text-left">順位</th>
-              <th className="py-2 text-left">表示名</th>
-              <th className="py-2 text-right">参加</th>
-              <th className="py-2 text-right">優勝</th>
-              <th className="py-2 text-right">FT</th>
-              <th className="py-2 text-right">累計ポイント</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.map((s, i) => (
-              <tr key={s.id} className="border-b">
-                <td className="py-2">{i + 1}</td>
-                <td className="py-2">{s.displayName}</td>
-                <td className="py-2 text-right">{s.participations}</td>
-                <td className="py-2 text-right">{s.wins}</td>
-                <td className="py-2 text-right">{s.finalTables}</td>
-                <td className="py-2 text-right font-semibold">
-                  {s.totalPoints.toFixed(2)} pt
-                </td>
+        <>
+          <div className="flex justify-end">
+            <SeasonTopCardDownloadButton gid={gid} group={group} stats={stats} />
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="py-2 text-left">順位</th>
+                <th className="py-2 text-left">表示名</th>
+                <th className="py-2 text-right">参加</th>
+                <th className="py-2 text-right">優勝</th>
+                <th className="py-2 text-right">FT</th>
+                <th className="py-2 text-right">累計ポイント</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {stats.map((s, i) => (
+                <tr key={s.id} className="border-b">
+                  <td className="py-2">{i + 1}</td>
+                  <td className="py-2">{s.displayName}</td>
+                  <td className="py-2 text-right">{s.participations}</td>
+                  <td className="py-2 text-right">{s.wins}</td>
+                  <td className="py-2 text-right">{s.finalTables}</td>
+                  <td className="py-2 text-right font-semibold">
+                    {s.totalPoints.toFixed(2)} pt
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </main>
   );
