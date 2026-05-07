@@ -17,6 +17,7 @@ import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player"
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
 import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
 import { loadTournamentInTx, playerFromSnap } from "@/lib/firebase/tx-helpers";
+import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
 import {
@@ -249,99 +250,100 @@ export async function autoSeatLateEntry(
   brokenTableNums: number[],
   seatsPerTable: number,
 ): Promise<{ applied: boolean; reason?: string }> {
-  try {
-    // Phase 5.1: 連番抑制のため seed-driven random seat 抽選。
-    // Date.now() ^ playerId hash で実用十分な multi-tournament uniqueness を確保。
-    const seed =
-      Date.now() ^
-      Array.from(playerId).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 0);
-    const seat = planLateEntrySeat(seatedPlayers, brokenTableNums, seatsPerTable, seed);
-    if (!seat) {
-      logger.info("late entry no available seat", { tid, playerId });
-      return { applied: false, reason: "no-seat" };
-    }
+  // Phase 5.1: 連番抑制のため seed-driven random seat 抽選。
+  // Date.now() ^ playerId hash で実用十分な multi-tournament uniqueness を確保。
+  const seed =
+    Date.now() ^
+    Array.from(playerId).reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 0);
+  const seat = planLateEntrySeat(seatedPlayers, brokenTableNums, seatsPerTable, seed);
+  if (!seat) {
+    logger.info("late entry no available seat", { tid, playerId });
+    return { applied: false, reason: "no-seat" };
+  }
 
-    let applied = false;
-    let skipReason: string | null = null;
+  let applied = false;
+  let skipReason: string | null = null;
 
-    // tx 内で再確認する対象卓のプレイヤー ID リスト（subscribe snapshot から導出）。
-    const targetTableExistingIds = seatedPlayers
-      .filter((p) => p.tableNum === seat.tableNum && p.id !== playerId)
-      .map((p) => p.id);
+  // tx 内で再確認する対象卓のプレイヤー ID リスト（subscribe snapshot から導出）。
+  const targetTableExistingIds = seatedPlayers
+    .filter((p) => p.tableNum === seat.tableNum && p.id !== playerId)
+    .map((p) => p.id);
 
-    await runTransaction(firestore, async (tx) => {
-      const t = await loadTournamentInTx(tx, tid, userGroupIds);
-      // Phase 5.1: 座席確定後 (seating) のレイトエントリーも即時配席するため
-      // tx 内 state guard を seating/running/paused に緩和。setup / finished のみ skip。
-      if (
-        t.state !== "seating" &&
-        t.state !== "running" &&
-        t.state !== "paused"
-      ) {
-        skipReason = "state";
-        return;
-      }
-      const pRef = doc(playersRef(tid), playerId);
-      const pSnap = await tx.get(pRef);
-      const p = playerFromSnap(pSnap);
-      if (!p) {
-        skipReason = "missing";
-        return;
-      }
-      if (p.isBusted) {
-        skipReason = "busted";
-        return;
-      }
-      if (p.tableNum !== null) {
-        skipReason = "already-seated";
-        return;
-      }
-      const actualMs = p.lastMovedAt ? p.lastMovedAt.toMillis() : null;
-      if (actualMs !== expectedLastMovedAtMs) {
-        skipReason = "race";
-        return;
-      }
-
-      // H2: 対象卓の既存プレイヤーを tx 内で再 read して seat 占有を再確認。
-      // 直前に他端末が同じ seat へ別プレイヤーを割当てた race を検出する。
-      const freshTargetTable = await Promise.all(
-        targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
-      );
-      for (const snap of freshTargetTable) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) continue;
-        if (fresh.isBusted) continue;
-        if (fresh.tableNum === seat.tableNum && fresh.seatNum === seat.seatNum) {
-          skipReason = "seat-taken";
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "レイトエントリー自動配席に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        const t = await loadTournamentInTx(tx, tid, userGroupIds);
+        // Phase 5.1: 座席確定後 (seating) のレイトエントリーも即時配席するため
+        // tx 内 state guard を seating/running/paused に緩和。setup / finished のみ skip。
+        if (
+          t.state !== "seating" &&
+          t.state !== "running" &&
+          t.state !== "paused"
+        ) {
+          skipReason = "state";
           return;
         }
-      }
+        const pRef = doc(playersRef(tid), playerId);
+        const pSnap = await tx.get(pRef);
+        const p = playerFromSnap(pSnap);
+        if (!p) {
+          skipReason = "missing";
+          return;
+        }
+        if (p.isBusted) {
+          skipReason = "busted";
+          return;
+        }
+        if (p.tableNum !== null) {
+          skipReason = "already-seated";
+          return;
+        }
+        const actualMs = p.lastMovedAt ? p.lastMovedAt.toMillis() : null;
+        if (actualMs !== expectedLastMovedAtMs) {
+          skipReason = "race";
+          return;
+        }
 
-      tx.update(pRef, {
-        tableNum: seat.tableNum,
-        seatNum: seat.seatNum,
-        lastMovedAt: serverTimestamp(),
+        // H2: 対象卓の既存プレイヤーを tx 内で再 read して seat 占有を再確認。
+        // 直前に他端末が同じ seat へ別プレイヤーを割当てた race を検出する。
+        const freshTargetTable = await Promise.all(
+          targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        );
+        for (const snap of freshTargetTable) {
+          const fresh = playerFromSnap(snap);
+          if (!fresh) continue;
+          if (fresh.isBusted) continue;
+          if (fresh.tableNum === seat.tableNum && fresh.seatNum === seat.seatNum) {
+            skipReason = "seat-taken";
+            return;
+          }
+        }
+
+        tx.update(pRef, {
+          tableNum: seat.tableNum,
+          seatNum: seat.seatNum,
+          lastMovedAt: serverTimestamp(),
+        });
+        applied = true;
       });
-      applied = true;
-    });
+    },
+    { tid, playerId },
+  );
 
-    if (!applied) {
-      logger.info("auto seat late entry skipped", { tid, playerId, reason: skipReason });
-      return { applied: false, reason: skipReason ?? "unknown" };
-    }
-    logger.info("auto seat late entry ok", {
-      tid,
-      uid,
-      playerId,
-      tableNum: seat.tableNum,
-      seatNum: seat.seatNum,
-    });
-    return { applied: true };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "レイトエントリー自動配席に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, playerId });
-    throw wrapped;
+  if (!applied) {
+    logger.info("auto seat late entry skipped", { tid, playerId, reason: skipReason });
+    return { applied: false, reason: skipReason ?? "unknown" };
   }
+  logger.info("auto seat late entry ok", {
+    tid,
+    uid,
+    playerId,
+    tableNum: seat.tableNum,
+    seatNum: seat.seatNum,
+  });
+  return { applied: true };
 }
 
 interface ApplyBalancingResult {
@@ -633,96 +635,93 @@ async function applyCascadeMoves(
     )
     .map((p) => p.id);
 
-  try {
-    let applied = false;
-    let skipReason: string | null = null;
+  let applied = false;
+  let skipReason: string | null = null;
 
-    await runTransaction(firestore, async (tx) => {
-      await loadTournamentInTx(tx, tid, userGroupIds);
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "席の cascade 移動に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        await loadTournamentInTx(tx, tid, userGroupIds);
 
-      // 各 cascade 対象 player を re-read し race guard。
-      const freshCascade = await Promise.all(
-        moves.map(async (m) => ({
-          move: m,
-          snap: await tx.get(doc(playersRef(tid), m.playerId)),
-        })),
-      );
-      for (const { move, snap } of freshCascade) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) {
-          skipReason = `missing:${move.playerId}`;
-          return;
-        }
-        if (fresh.isBusted) {
-          skipReason = `busted:${move.playerId}`;
-          return;
-        }
-        if (
-          fresh.tableNum !== move.from.tableNum ||
-          fresh.seatNum !== move.from.seatNum
-        ) {
-          skipReason = `moved:${move.playerId}`;
-          return;
-        }
-        const expected = players.find((p) => p.id === move.playerId);
-        const expectedMs = expected?.lastMovedAt
-          ? expected.lastMovedAt.toMillis()
-          : null;
-        const actualMs = fresh.lastMovedAt
-          ? fresh.lastMovedAt.toMillis()
-          : null;
-        if (actualMs !== expectedMs) {
-          skipReason = `race:${move.playerId}`;
-          return;
-        }
-      }
-
-      // newly-occupied seat に他 player が居ないか re-read（seat-taken race guard）。
-      // cascade の from-seat は別の cascade move が空けるため対象外。to-only の seat だけ検証。
-      if (newlyOccupiedKeys.size > 0) {
-        const freshOthers = await Promise.all(
-          otherTablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        // 各 cascade 対象 player を re-read し race guard。
+        const freshCascade = await Promise.all(
+          moves.map(async (m) => ({
+            move: m,
+            snap: await tx.get(doc(playersRef(tid), m.playerId)),
+          })),
         );
-        for (const snap of freshOthers) {
+        for (const { move, snap } of freshCascade) {
           const fresh = playerFromSnap(snap);
-          if (!fresh) continue;
-          if (fresh.isBusted) continue;
-          if (fresh.tableNum === null || fresh.seatNum === null) continue;
-          const key = `${fresh.tableNum}-${fresh.seatNum}`;
-          if (newlyOccupiedKeys.has(key)) {
-            skipReason = `seat-taken:${key}`;
+          if (!fresh) {
+            skipReason = `missing:${move.playerId}`;
+            return;
+          }
+          if (fresh.isBusted) {
+            skipReason = `busted:${move.playerId}`;
+            return;
+          }
+          if (
+            fresh.tableNum !== move.from.tableNum ||
+            fresh.seatNum !== move.from.seatNum
+          ) {
+            skipReason = `moved:${move.playerId}`;
+            return;
+          }
+          const expected = players.find((p) => p.id === move.playerId);
+          const expectedMs = expected?.lastMovedAt
+            ? expected.lastMovedAt.toMillis()
+            : null;
+          const actualMs = fresh.lastMovedAt
+            ? fresh.lastMovedAt.toMillis()
+            : null;
+          if (actualMs !== expectedMs) {
+            skipReason = `race:${move.playerId}`;
             return;
           }
         }
-      }
 
-      const ts = serverTimestamp();
-      for (const m of moves) {
-        tx.update(doc(playersRef(tid), m.playerId), {
-          tableNum: m.to.tableNum,
-          seatNum: m.to.seatNum,
-          lastMovedAt: ts,
-        });
-      }
-      applied = true;
-    });
+        // newly-occupied seat に他 player が居ないか re-read（seat-taken race guard）。
+        // cascade の from-seat は別の cascade move が空けるため対象外。to-only の seat だけ検証。
+        if (newlyOccupiedKeys.size > 0) {
+          const freshOthers = await Promise.all(
+            otherTablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
+          );
+          for (const snap of freshOthers) {
+            const fresh = playerFromSnap(snap);
+            if (!fresh) continue;
+            if (fresh.isBusted) continue;
+            if (fresh.tableNum === null || fresh.seatNum === null) continue;
+            const key = `${fresh.tableNum}-${fresh.seatNum}`;
+            if (newlyOccupiedKeys.has(key)) {
+              skipReason = `seat-taken:${key}`;
+              return;
+            }
+          }
+        }
 
-    if (!applied) {
-      logger.info("cascade move skipped", { tid, reason: skipReason });
-      return { applied: false, description: null };
-    }
-    const desc = `${moves.length} 名の cascade 移動`;
-    logger.info("cascade move ok", { tid, uid, count: moves.length });
-    return { applied: true, description: desc, moves };
-  } catch (e) {
-    const wrapped = AppError.from(
-      e,
-      "firestore/write_failed",
-      "席の cascade 移動に失敗しました",
-    );
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
+        const ts = serverTimestamp();
+        for (const m of moves) {
+          tx.update(doc(playersRef(tid), m.playerId), {
+            tableNum: m.to.tableNum,
+            seatNum: m.to.seatNum,
+            lastMovedAt: ts,
+          });
+        }
+        applied = true;
+      });
+    },
+    { tid },
+  );
+
+  if (!applied) {
+    logger.info("cascade move skipped", { tid, reason: skipReason });
+    return { applied: false, description: null };
   }
+  const desc = `${moves.length} 名の cascade 移動`;
+  logger.info("cascade move ok", { tid, uid, count: moves.length });
+  return { applied: true, description: desc, moves };
 }
 
 async function applySingleMove(
@@ -752,94 +751,95 @@ async function applySingleMove(
     .filter((p) => p.tableNum === move.from.tableNum && p.id !== move.playerId)
     .map((p) => p.id);
 
-  try {
-    let applied = false;
-    let skipReason: string | null = null;
+  let applied = false;
+  let skipReason: string | null = null;
 
-    await runTransaction(firestore, async (tx) => {
-      await loadTournamentInTx(tx, tid, userGroupIds);
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "バランシング適用に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        await loadTournamentInTx(tx, tid, userGroupIds);
 
-      const pRef = doc(playersRef(tid), move.playerId);
-      const pSnap = await tx.get(pRef);
-      const p = playerFromSnap(pSnap);
-      if (!p) {
-        skipReason = "missing";
-        return;
-      }
-      if (p.isBusted) {
-        skipReason = "busted";
-        return;
-      }
-      if (p.tableNum !== move.from.tableNum || p.seatNum !== move.from.seatNum) {
-        skipReason = "moved";
-        return;
-      }
-      const actualMs = p.lastMovedAt ? p.lastMovedAt.toMillis() : null;
-      if (actualMs !== expectedLastMovedAtMs) {
-        skipReason = "race";
-        return;
-      }
-
-      // 移動先 seat の現在占有を tx 内で確認。
-      // 同時に dest 卓の active 人数（後続の diff-resolved 検証用）を集計する。
-      const freshTarget = await Promise.all(
-        targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
-      );
-      let destActiveCount = 0;
-      for (const snap of freshTarget) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) continue;
-        if (fresh.isBusted) continue;
-        if (fresh.tableNum !== move.to.tableNum) continue;
-        if (fresh.seatNum === move.to.seatNum) {
-          skipReason = "seat-taken";
+        const pRef = doc(playersRef(tid), move.playerId);
+        const pSnap = await tx.get(pRef);
+        const p = playerFromSnap(pSnap);
+        if (!p) {
+          skipReason = "missing";
           return;
         }
-        destActiveCount++;
-      }
+        if (p.isBusted) {
+          skipReason = "busted";
+          return;
+        }
+        if (p.tableNum !== move.from.tableNum || p.seatNum !== move.from.seatNum) {
+          skipReason = "moved";
+          return;
+        }
+        const actualMs = p.lastMovedAt ? p.lastMovedAt.toMillis() : null;
+        if (actualMs !== expectedLastMovedAtMs) {
+          skipReason = "race";
+          return;
+        }
 
-      // Phase 5.x: source/dest 卓の現アクティブ人数を tx 内で再カウントし、
-      // diff (= source - dest) が 2 未満なら move は無意味 / 逆方向に害になるため skip。
-      // mover 自身は active 確定（busted ガード済み）なので 1 を加算。
-      // verifyBalancingDiff=false（手動 D&D）の場合は source 卓の余分な read も skip する。
-      if (verifyBalancingDiff) {
-        const freshSource = await Promise.all(
-          sourceTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        // 移動先 seat の現在占有を tx 内で確認。
+        // 同時に dest 卓の active 人数（後続の diff-resolved 検証用）を集計する。
+        const freshTarget = await Promise.all(
+          targetTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
         );
-        let sourceActiveCount = 1;
-        for (const snap of freshSource) {
+        let destActiveCount = 0;
+        for (const snap of freshTarget) {
           const fresh = playerFromSnap(snap);
           if (!fresh) continue;
           if (fresh.isBusted) continue;
-          if (fresh.tableNum !== move.from.tableNum) continue;
-          sourceActiveCount++;
+          if (fresh.tableNum !== move.to.tableNum) continue;
+          if (fresh.seatNum === move.to.seatNum) {
+            skipReason = "seat-taken";
+            return;
+          }
+          destActiveCount++;
         }
-        if (sourceActiveCount - destActiveCount < 2) {
-          skipReason = "diff-resolved";
-          return;
-        }
-      }
 
-      tx.update(pRef, {
-        tableNum: move.to.tableNum,
-        seatNum: move.to.seatNum,
-        lastMovedAt: serverTimestamp(),
+        // Phase 5.x: source/dest 卓の現アクティブ人数を tx 内で再カウントし、
+        // diff (= source - dest) が 2 未満なら move は無意味 / 逆方向に害になるため skip。
+        // mover 自身は active 確定（busted ガード済み）なので 1 を加算。
+        // verifyBalancingDiff=false（手動 D&D）の場合は source 卓の余分な read も skip する。
+        if (verifyBalancingDiff) {
+          const freshSource = await Promise.all(
+            sourceTableExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+          );
+          let sourceActiveCount = 1;
+          for (const snap of freshSource) {
+            const fresh = playerFromSnap(snap);
+            if (!fresh) continue;
+            if (fresh.isBusted) continue;
+            if (fresh.tableNum !== move.from.tableNum) continue;
+            sourceActiveCount++;
+          }
+          if (sourceActiveCount - destActiveCount < 2) {
+            skipReason = "diff-resolved";
+            return;
+          }
+        }
+
+        tx.update(pRef, {
+          tableNum: move.to.tableNum,
+          seatNum: move.to.seatNum,
+          lastMovedAt: serverTimestamp(),
+        });
+        applied = true;
       });
-      applied = true;
-    });
+    },
+    { tid },
+  );
 
-    if (!applied) {
-      logger.info("balancing move skipped", { tid, playerId: move.playerId, reason: skipReason });
-      return { applied: false, description: null };
-    }
-    const desc = `Table ${move.from.tableNum} / 席 ${move.from.seatNum} → Table ${move.to.tableNum} / 席 ${move.to.seatNum}`;
-    logger.info("balancing move ok", { tid, uid, playerId: move.playerId, desc });
-    return { applied: true, description: desc, moves: [move] };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "バランシング適用に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
+  if (!applied) {
+    logger.info("balancing move skipped", { tid, playerId: move.playerId, reason: skipReason });
+    return { applied: false, description: null };
   }
+  const desc = `Table ${move.from.tableNum} / 席 ${move.from.seatNum} → Table ${move.to.tableNum} / 席 ${move.to.seatNum}`;
+  logger.info("balancing move ok", { tid, uid, playerId: move.playerId, desc });
+  return { applied: true, description: desc, moves: [move] };
 }
 
 async function applyTableBreak(
@@ -863,98 +863,99 @@ async function applyTableBreak(
     )
     .map((p) => p.id);
 
-  try {
-    let applied = false;
-    let skipReason: string | null = null;
+  let applied = false;
+  let skipReason: string | null = null;
 
-    await runTransaction(firestore, async (tx) => {
-      await loadTournamentInTx(tx, tid, userGroupIds);
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル閉鎖に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        await loadTournamentInTx(tx, tid, userGroupIds);
 
-      // 全 move 対象 player を tx.get で再確認し race を弾く。
-      const freshPlayers = await Promise.all(
-        plan.moves.map(async (m) => {
-          const snap = await tx.get(doc(playersRef(tid), m.playerId));
-          return { move: m, snap };
-        }),
-      );
-      for (const { move, snap } of freshPlayers) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) {
-          skipReason = `missing:${move.playerId}`;
-          return;
+        // 全 move 対象 player を tx.get で再確認し race を弾く。
+        const freshPlayers = await Promise.all(
+          plan.moves.map(async (m) => {
+            const snap = await tx.get(doc(playersRef(tid), m.playerId));
+            return { move: m, snap };
+          }),
+        );
+        for (const { move, snap } of freshPlayers) {
+          const fresh = playerFromSnap(snap);
+          if (!fresh) {
+            skipReason = `missing:${move.playerId}`;
+            return;
+          }
+          if (fresh.isBusted) {
+            skipReason = `busted:${move.playerId}`;
+            return;
+          }
+          if (fresh.tableNum !== move.from.tableNum || fresh.seatNum !== move.from.seatNum) {
+            skipReason = `moved:${move.playerId}`;
+            return;
+          }
+          const expected = players.find((p) => p.id === move.playerId);
+          const expectedMs = expected?.lastMovedAt ? expected.lastMovedAt.toMillis() : null;
+          const actualMs = fresh.lastMovedAt ? fresh.lastMovedAt.toMillis() : null;
+          if (actualMs !== expectedMs) {
+            skipReason = `race:${move.playerId}`;
+            return;
+          }
         }
-        if (fresh.isBusted) {
-          skipReason = `busted:${move.playerId}`;
-          return;
-        }
-        if (fresh.tableNum !== move.from.tableNum || fresh.seatNum !== move.from.seatNum) {
-          skipReason = `moved:${move.playerId}`;
-          return;
-        }
-        const expected = players.find((p) => p.id === move.playerId);
-        const expectedMs = expected?.lastMovedAt ? expected.lastMovedAt.toMillis() : null;
-        const actualMs = fresh.lastMovedAt ? fresh.lastMovedAt.toMillis() : null;
-        if (actualMs !== expectedMs) {
-          skipReason = `race:${move.playerId}`;
-          return;
-        }
-      }
 
-      // L2 fix: 移動先卓の既存席占有を tx 内で再構築し、各 move の destination が
-      // 空席であることを確認する。他端末の late entry / balancing が survivors の
-      // 空席を取った race を検出して no-op。
-      const freshSurvivors = await Promise.all(
-        survivorExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
-      );
-      const occupiedByTable = new Map<number, Set<number>>();
-      for (const snap of freshSurvivors) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) continue;
-        if (fresh.isBusted) continue;
-        if (fresh.tableNum === null || fresh.seatNum === null) continue;
-        if (!occupiedByTable.has(fresh.tableNum)) {
-          occupiedByTable.set(fresh.tableNum, new Set());
+        // L2 fix: 移動先卓の既存席占有を tx 内で再構築し、各 move の destination が
+        // 空席であることを確認する。他端末の late entry / balancing が survivors の
+        // 空席を取った race を検出して no-op。
+        const freshSurvivors = await Promise.all(
+          survivorExistingIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        );
+        const occupiedByTable = new Map<number, Set<number>>();
+        for (const snap of freshSurvivors) {
+          const fresh = playerFromSnap(snap);
+          if (!fresh) continue;
+          if (fresh.isBusted) continue;
+          if (fresh.tableNum === null || fresh.seatNum === null) continue;
+          if (!occupiedByTable.has(fresh.tableNum)) {
+            occupiedByTable.set(fresh.tableNum, new Set());
+          }
+          occupiedByTable.get(fresh.tableNum)!.add(fresh.seatNum);
         }
-        occupiedByTable.get(fresh.tableNum)!.add(fresh.seatNum);
-      }
-      for (const m of plan.moves) {
-        const occupied = occupiedByTable.get(m.to.tableNum);
-        if (occupied?.has(m.to.seatNum)) {
-          skipReason = `seat-taken:${m.to.tableNum}-${m.to.seatNum}`;
-          return;
+        for (const m of plan.moves) {
+          const occupied = occupiedByTable.get(m.to.tableNum);
+          if (occupied?.has(m.to.seatNum)) {
+            skipReason = `seat-taken:${m.to.tableNum}-${m.to.seatNum}`;
+            return;
+          }
         }
-      }
 
-      const ts = serverTimestamp();
-      for (const m of plan.moves) {
-        // Phase 5.1: 閉鎖卓 player は移動先で PD 衝突を起こさないよう isPlayingDealer=false に倒す。
-        // 移動先で別の PD が立っていた場合も、移動してきた元 PD は false で上書きされ unique 維持。
-        tx.update(doc(playersRef(tid), m.playerId), {
-          tableNum: m.to.tableNum,
-          seatNum: m.to.seatNum,
-          lastMovedAt: ts,
-          isPlayingDealer: false,
+        const ts = serverTimestamp();
+        for (const m of plan.moves) {
+          // Phase 5.1: 閉鎖卓 player は移動先で PD 衝突を起こさないよう isPlayingDealer=false に倒す。
+          // 移動先で別の PD が立っていた場合も、移動してきた元 PD は false で上書きされ unique 維持。
+          tx.update(doc(playersRef(tid), m.playerId), {
+            tableNum: m.to.tableNum,
+            seatNum: m.to.seatNum,
+            lastMovedAt: ts,
+            isPlayingDealer: false,
+          });
+        }
+        // H1 fix: 同一 tx 内で tables/{brokenTableNum}.isBroken=true も書く。
+        tx.update(doc(tablesRef(tid), String(plan.brokenTableNum)), {
+          isBroken: true,
         });
-      }
-      // H1 fix: 同一 tx 内で tables/{brokenTableNum}.isBroken=true も書く。
-      tx.update(doc(tablesRef(tid), String(plan.brokenTableNum)), {
-        isBroken: true,
+        applied = true;
       });
-      applied = true;
-    });
+    },
+    { tid },
+  );
 
-    if (!applied) {
-      logger.info("table break skipped", { tid, brokenTableNum: plan.brokenTableNum, reason: skipReason });
-      return { applied: false, description: null };
-    }
-    const desc = `Table ${plan.brokenTableNum} を閉鎖（${plan.moves.length} 名移動）`;
-    logger.info("table break ok", { tid, uid, brokenTableNum: plan.brokenTableNum });
-    return { applied: true, description: desc, break: true };
-  } catch (e) {
-    const wrapped = AppError.from(e, "firestore/write_failed", "テーブル閉鎖に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid });
-    throw wrapped;
+  if (!applied) {
+    logger.info("table break skipped", { tid, brokenTableNum: plan.brokenTableNum, reason: skipReason });
+    return { applied: false, description: null };
   }
+  const desc = `Table ${plan.brokenTableNum} を閉鎖（${plan.moves.length} 名移動）`;
+  logger.info("table break ok", { tid, uid, brokenTableNum: plan.brokenTableNum });
+  return { applied: true, description: desc, break: true };
 }
 
 /**
@@ -991,100 +992,101 @@ export async function setIsPlayingDealer(
   value: boolean,
   tablePlayerIds: string[],
 ): Promise<void> {
-  try {
-    await runTransaction(firestore, async (tx) => {
-      const t = await loadTournamentInTx(tx, tid, userGroupIds);
+  // 旧コードは `if (e instanceof AppError) throw e` で specific code を保持していたが、
+  // wrapFirestoreWrite 内部の AppError.from は既存 AppError を idempotent に返すため、
+  // wrap 経由でも tx 内 throw（"seating/pd-busted" / "seating/pd-already-set" 等）の
+  // code が保持される。logger.warn は wrap が 1 度だけ発火する。
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "PD 設定に失敗しました",
+    async () => {
+      await runTransaction(firestore, async (tx) => {
+        const t = await loadTournamentInTx(tx, tid, userGroupIds);
 
-      const pRef = doc(playersRef(tid), pid);
-      const pSnap = await tx.get(pRef);
-      const p = playerFromSnap(pSnap);
-      if (!p) {
-        throw new AppError("not found", "firestore/not-found");
-      }
-      if (p.isBusted) {
-        throw new AppError(
-          "バスト済みプレイヤーは PD 指定できません",
-          "seating/pd-busted",
-        );
-      }
-
-      if (value === false) {
-        // OFF: フラグだけ降ろす。席は変えない。setup 中（tableNum=null）でも OK。
-        tx.update(pRef, { isPlayingDealer: false });
-        return;
-      }
-
-      // ON: setup 中なら tableNum=null で同卓検証は不要（フラグだけ立てる）。
-      if (p.tableNum === null) {
-        tx.update(pRef, { isPlayingDealer: true });
-        return;
-      }
-
-      // ON（席決め後）: 同 table の他 PD がいないか tx 内で再確認。
-      const tableSnaps = await Promise.all(
-        tablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
-      );
-      const tablePlayers: PlayerDoc[] = [p];
-      for (const snap of tableSnaps) {
-        const fresh = playerFromSnap(snap);
-        if (!fresh) continue;
-        // 別卓に動いていたら無視（fixture 不一致の防御）。
-        if (fresh.tableNum !== p.tableNum) continue;
-        tablePlayers.push(fresh);
-      }
-      const otherPd = tablePlayers.find(
-        (q) => q.id !== pid && q.isPlayingDealer && !q.isBusted,
-      );
-      if (otherPd) {
-        throw new AppError(
-          `Table ${p.tableNum} には既に PD がいます`,
-          "seating/pd-already-set",
-        );
-      }
-
-      // rotation: 元 1..元PD席-1 を 1 つずつ後ろへ + PD を席 1 へ。
-      const moves = planPlayingDealerShift(
-        tablePlayers.filter((q) => !q.isBusted),
-        pid,
-        t.seatsPerTable,
-      );
-      const ts = serverTimestamp();
-      // PD 自身の rotation move（席 1 へ）は moves に含まれているため、
-      // フラグ ON は move の update に統合する。pid 以外の rotation を先に書き、
-      // pid は最後に rotation + isPlayingDealer の単一 update で書く。
-      let pdMoveApplied = false;
-      for (const m of moves) {
-        if (m.playerId === pid) {
-          tx.update(pRef, {
-            tableNum: m.to.tableNum,
-            seatNum: m.to.seatNum,
-            lastMovedAt: ts,
-            isPlayingDealer: true,
-          });
-          pdMoveApplied = true;
-        } else {
-          tx.update(doc(playersRef(tid), m.playerId), {
-            tableNum: m.to.tableNum,
-            seatNum: m.to.seatNum,
-            lastMovedAt: ts,
-          });
+        const pRef = doc(playersRef(tid), pid);
+        const pSnap = await tx.get(pRef);
+        const p = playerFromSnap(pSnap);
+        if (!p) {
+          throw new AppError("not found", "firestore/not-found");
         }
-      }
-      if (!pdMoveApplied) {
-        // 既に席 1 に居る場合は rotation 不要、フラグだけ立てる。
-        tx.update(pRef, { isPlayingDealer: true });
-      }
-    });
-    logger.info("set pd ok", { tid, uid, pid, value });
-  } catch (e) {
-    if (e instanceof AppError) {
-      logger.warn(e.message, { code: e.code, tid, pid });
-      throw e;
-    }
-    const wrapped = AppError.from(e, "firestore/write_failed", "PD 設定に失敗しました");
-    logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
-    throw wrapped;
-  }
+        if (p.isBusted) {
+          throw new AppError(
+            "バスト済みプレイヤーは PD 指定できません",
+            "seating/pd-busted",
+          );
+        }
+
+        if (value === false) {
+          // OFF: フラグだけ降ろす。席は変えない。setup 中（tableNum=null）でも OK。
+          tx.update(pRef, { isPlayingDealer: false });
+          return;
+        }
+
+        // ON: setup 中なら tableNum=null で同卓検証は不要（フラグだけ立てる）。
+        if (p.tableNum === null) {
+          tx.update(pRef, { isPlayingDealer: true });
+          return;
+        }
+
+        // ON（席決め後）: 同 table の他 PD がいないか tx 内で再確認。
+        const tableSnaps = await Promise.all(
+          tablePlayerIds.map((id) => tx.get(doc(playersRef(tid), id))),
+        );
+        const tablePlayers: PlayerDoc[] = [p];
+        for (const snap of tableSnaps) {
+          const fresh = playerFromSnap(snap);
+          if (!fresh) continue;
+          // 別卓に動いていたら無視（fixture 不一致の防御）。
+          if (fresh.tableNum !== p.tableNum) continue;
+          tablePlayers.push(fresh);
+        }
+        const otherPd = tablePlayers.find(
+          (q) => q.id !== pid && q.isPlayingDealer && !q.isBusted,
+        );
+        if (otherPd) {
+          throw new AppError(
+            `Table ${p.tableNum} には既に PD がいます`,
+            "seating/pd-already-set",
+          );
+        }
+
+        // rotation: 元 1..元PD席-1 を 1 つずつ後ろへ + PD を席 1 へ。
+        const moves = planPlayingDealerShift(
+          tablePlayers.filter((q) => !q.isBusted),
+          pid,
+          t.seatsPerTable,
+        );
+        const ts = serverTimestamp();
+        // PD 自身の rotation move（席 1 へ）は moves に含まれているため、
+        // フラグ ON は move の update に統合する。pid 以外の rotation を先に書き、
+        // pid は最後に rotation + isPlayingDealer の単一 update で書く。
+        let pdMoveApplied = false;
+        for (const m of moves) {
+          if (m.playerId === pid) {
+            tx.update(pRef, {
+              tableNum: m.to.tableNum,
+              seatNum: m.to.seatNum,
+              lastMovedAt: ts,
+              isPlayingDealer: true,
+            });
+            pdMoveApplied = true;
+          } else {
+            tx.update(doc(playersRef(tid), m.playerId), {
+              tableNum: m.to.tableNum,
+              seatNum: m.to.seatNum,
+              lastMovedAt: ts,
+            });
+          }
+        }
+        if (!pdMoveApplied) {
+          // 既に席 1 に居る場合は rotation 不要、フラグだけ立てる。
+          tx.update(pRef, { isPlayingDealer: true });
+        }
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("set pd ok", { tid, uid, pid, value });
 }
 
 /**
