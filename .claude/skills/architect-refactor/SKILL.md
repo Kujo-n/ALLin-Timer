@@ -73,10 +73,13 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 - [ ] 作業用ブランチに切り替え（例: `refactor/<scope>-<yyyymmdd>`）
 - [ ] テスト全件をベースライン実行し、**全て green** を確認:
   - `npm run typecheck` / `npm run lint` / `npm test`（vitest）/ `npm run test:e2e`（playwright）/ `npm run build`
+  - **推奨順序: `typecheck` / `lint` / `npm test` / `npm run build` を先にまとめて走らせ、最後に `npm run test:e2e`**（理由は Phase 5 と「ローカル E2E と build の競合に注意」節を参照）
   - E2E が重い場合はユーザーと相談して critical path だけ先に回す
 - [ ] 1 件でも fail があれば、リファクタリング前に修復するか、ユーザーに継続可否を確認
 
 > **なぜ：** 後段で「テストが落ちた」が refactor 由来か元から壊れていたかを切り分けるため、開始時点で全 green を確定させる必要がある。
+
+> **注意：** Playwright の `webServer` は local では `reuseExistingServer: true` のため、ベースライン E2E が完了しても dev server (port 3001) / emulator UI (4000) / firestore (8080) / auth (9099) が常駐し続ける。Phase 4 / Phase 5 で `npm run build` を走らせる前にこれらが稼働中だと `.next/server/app/...` cache が drift して E2E 大量失敗を引き起こすため、後述の「ローカル E2E と build の競合に注意」節の手順に従う。
 
 ### Phase 2 — 構造監査
 
@@ -158,11 +161,42 @@ description のとおり雰囲気だけでの自動起動は禁止。以下の�
 
 ### Phase 5 — 最終検証＆レポート
 
-- [ ] `npm run typecheck` / `npm run lint` / `npm test` / `npm run test:e2e` / `npm run build` を全件再実行し、green を確認
+- [ ] **検証順序を厳守**（詳細は次節「ローカル E2E と build の競合に注意」）:
+      1. `npm run typecheck` / `npm run lint` / `npm test`
+      2. `npm run build`（dev server が止まっていることを確認してから走らせる）
+      3. `npm run test:e2e`（playwright が fresh dev server + emulator を起動）
 - [ ] `git log --oneline <baseline>..HEAD` で commit が atomic な単位で並んでいることを確認
 - [ ] 観測可能な動作変更が無いことを最終確認（手動 smoke test の必要性をユーザーに提案）
 - [ ] レポートを `.claude/PRPs/<NN>-<prd-slug>/reports/architect-refactor-<yyyymmdd>.md` に書き出す。フォーマットは [`references/report-template.md`](references/report-template.md) を参照
 - 必要なら PR を `/prp-pr` で起票する。PR 説明には「観測可能な動作変更なし」と「全テスト green を維持」を明記
+
+## ローカル E2E と build の競合に注意
+
+**症状:** Phase 5 などで `npm run build` を実行した後に E2E を再走行すると、本来 green のはずが大量失敗（経験例: 65 件中 53 fail / 12 pass / 2 skip）し、page snapshot が `Internal Server Error` のみになる。
+
+**原因:** Playwright の `webServer` 設定が local で `reuseExistingServer: true` のため、ベースライン E2E や直近の手動起動で立ち上がった `next dev` プロセスがポート 3001 に常駐し続ける。その状態で `npm run build` を走らせると `.next/server/app/<route>/page.js` 等のコンパイル成果物が build に上書きされ、再利用された dev server がリクエスト時に **`ENOENT: no such file or directory, open '...page.js'`** を起こして 500 を返す。dev server stderr に該当ログが出る:
+
+```
+[Error: ENOENT: no such file or directory, open 'D:\...\.next\server\app\tournaments\page.js']
+[WebServer] ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+```
+
+**対策（順序）:**
+
+1. **Phase 1 のベースライン E2E が完了したら、続けて他コマンドを走らせる前に dev server / emulator が常駐していないか確認する。** ポート 3001 / 4000 / 8080 / 9099 のどれかが LISTEN なら常駐している:
+   ```bash
+   netstat -ano | grep -E "LISTEN" | grep -E ":3001 |:4000 |:8080 |:9099 "
+   ```
+
+2. **`npm run build` は dev server が停止している状態でのみ走らせる。** 常駐していたら停止する（具体的な kill 手順は環境依存。Windows なら `taskkill /PID <PID>`、POSIX なら `kill <PID>`。`pkill -f` のようなパターン kill は他作業に影響するため避ける）。
+
+3. **検証順序の推奨は「typecheck / lint / unit / build → E2E」。** build を最後に走らせない。E2E は最後に単独で起動して playwright に fresh dev server + emulator を spawn させる。
+
+4. **Phase 4 ループで `npm run build` を回す場合は dev server を一度落としてから走らせる。** Phase 4 で E2E を毎ループ走らせない設計（`testing.md` 通り「中間 commit は unit + typecheck + lint + build で代替」）にする限り、ループ末尾の build は dev server なしで実施できる。
+
+5. **症状が出た場合の復旧:** 全 dev server / emulator プロセスを停止 → 再度 E2E を実行（playwright が fresh で起動）。`.next/` を消す必要はない（次の dev server 起動時に整合）。
+
+> **背景:** この知見は 2026-05-07 の architect-refactor で発生し、[reports/architect-refactor-20260507.md](../../PRPs/02-season-stats-and-share/reports/architect-refactor-20260507.md) の「ワークフロー上の運用学習」節に詳細を記録。
 
 ## プロジェクト固有の重ね合わせ
 
