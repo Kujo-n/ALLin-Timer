@@ -14,6 +14,14 @@ import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshot
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
+import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
+import { formatWinnerShareText } from "@/components/share/_share-button/share-text";
+import {
+  buildWinnerCardUrl,
+  formatDateForFilename,
+  formatDateForLabel,
+  sanitizeFilename,
+} from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -195,7 +203,37 @@ export function LiveClient({ tid }: { tid: string }) {
           {winner ? (
             <>
               <WinnerBanner winner={winner} className="w-full" />
-              <div className="flex justify-center">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {(() => {
+                  const finishedAtDate =
+                    tournament.finishedAt?.toDate() ?? new Date();
+                  const datePart = formatDateForFilename(finishedAtDate);
+                  const filenameStem = sanitizeFilename(
+                    `winner-${tournament.name}-${datePart}`,
+                  );
+                  const url = buildWinnerCardUrl(tid, {
+                    winnerName: winner.displayName,
+                    tournamentName: tournament.name,
+                    participants: players.length,
+                    finishedAtLabel: formatDateForLabel(finishedAtDate),
+                    filename: filenameStem,
+                  });
+                  const shareText = formatWinnerShareText({
+                    tournamentName: tournament.name,
+                    winnerName: winner.displayName,
+                    participants: players.length,
+                  });
+                  return (
+                    <ShareCardButton
+                      url={url}
+                      filenameStem={filenameStem}
+                      shareText={shareText}
+                      kind="winner"
+                      label="シェア"
+                      dataTestId="winner-card-share"
+                    />
+                  );
+                })()}
                 <WinnerCardDownloadButton
                   tid={tid}
                   winnerName={winner.displayName}

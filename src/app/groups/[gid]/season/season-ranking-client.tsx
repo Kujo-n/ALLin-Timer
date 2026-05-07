@@ -4,6 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SeasonTopCardDownloadButton } from "@/components/group/SeasonTopCardDownloadButton";
+import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
+import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
+import {
+  buildSeasonCardUrl,
+  formatDateForFilename,
+  formatDateForLabel,
+  sanitizeFilename,
+  type SeasonCardQuery,
+} from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -12,6 +21,8 @@ import { subscribeSeasonStats } from "@/lib/firebase/repositories/seasonStats";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { SeasonStatsDoc } from "@/lib/firebase/schemas/seasonStats";
 import { logger } from "@/lib/logger";
+
+import { SeasonHistoryList } from "./_components/SeasonHistoryList";
 
 /**
  * Phase A: シーズンランキング画面。group メンバー全員 read 可。
@@ -95,12 +106,60 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
       </div>
 
       {stats.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          このシーズンの戦績はまだありません。トーナメントが終了すると自動的に記録されます。
-        </p>
+        <>
+          <p className="text-sm text-muted-foreground">
+            このシーズンの戦績はまだありません。トーナメントが終了すると自動的に記録されます。
+          </p>
+          <SeasonHistoryList gid={gid} />
+        </>
       ) : (
         <>
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {(() => {
+              // Phase D: ShareCardButton 用に URL / filenameStem / shareText を派生。
+              // SeasonTopCardDownloadButton 内部と同形の計算を持つ（最小差分優先で許容）。
+              const top1 = stats[0];
+              const top2 = stats.at(1);
+              const top3 = stats.at(2);
+              const startDateObj = group.seasonStartDate
+                ? group.seasonStartDate.toDate()
+                : null;
+              const datePart = startDateObj
+                ? formatDateForFilename(startDateObj)
+                : "open";
+              const filenameStem = sanitizeFilename(
+                `season-${group.name}-${datePart}`,
+              );
+              const query: SeasonCardQuery = {
+                groupName: group.name,
+                seasonStartDateLabel: startDateObj
+                  ? formatDateForLabel(startDateObj)
+                  : null,
+                top1Name: top1.displayName,
+                top1Points: top1.totalPoints,
+                top2Name: top2?.displayName,
+                top2Points: top2?.totalPoints,
+                top3Name: top3?.displayName,
+                top3Points: top3?.totalPoints,
+                filename: filenameStem,
+              };
+              const url = buildSeasonCardUrl(gid, query);
+              const shareText = formatSeasonShareText({
+                groupName: group.name,
+                top1Name: top1.displayName,
+                top1Points: top1.totalPoints,
+              });
+              return (
+                <ShareCardButton
+                  url={url}
+                  filenameStem={filenameStem}
+                  shareText={shareText}
+                  kind="season"
+                  label="首位をシェア"
+                  dataTestId="season-top-card-share"
+                />
+              );
+            })()}
             <SeasonTopCardDownloadButton gid={gid} group={group} stats={stats} />
           </div>
           <table className="w-full text-sm">
@@ -129,6 +188,7 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
               ))}
             </tbody>
           </table>
+          <SeasonHistoryList gid={gid} />
         </>
       )}
     </main>
