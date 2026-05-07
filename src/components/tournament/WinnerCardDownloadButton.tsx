@@ -2,12 +2,7 @@
 
 import { Download } from "lucide-react";
 
-import {
-  buildWinnerCardUrl,
-  formatDateForFilename,
-  formatDateForLabel,
-  sanitizeFilename,
-} from "@/app/api/og/_lib/og-payload";
+import { buildWinnerShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { logger } from "@/lib/logger";
 
@@ -37,14 +32,11 @@ export function WinnerCardDownloadButton({
   finishedAt,
   className,
 }: Props) {
-  const datePart = formatDateForFilename(finishedAt);
-  const filenameStem = sanitizeFilename(`winner-${tournamentName}-${datePart}`);
-  const url = buildWinnerCardUrl(tid, {
+  const { url, filenameStem } = buildWinnerShareInputs(tid, {
     winnerName,
     tournamentName,
     participants,
-    finishedAtLabel: formatDateForLabel(finishedAt),
-    filename: filenameStem,
+    finishedAt,
   });
   const filename = `${filenameStem}.png`;
 

@@ -2,13 +2,7 @@
 
 import { Download } from "lucide-react";
 
-import {
-  buildSeasonCardUrl,
-  formatDateForFilename,
-  formatDateForLabel,
-  sanitizeFilename,
-  type SeasonCardQuery,
-} from "@/app/api/og/_lib/og-payload";
+import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { SeasonStatsDoc } from "@/lib/firebase/schemas/seasonStats";
@@ -36,29 +30,9 @@ export function SeasonTopCardDownloadButton({
   stats,
   className,
 }: Props) {
-  if (stats.length === 0) return null;
-
-  const top1 = stats[0];
-  const top2 = stats.at(1);
-  const top3 = stats.at(2);
-
-  const startDate = group.seasonStartDate ? group.seasonStartDate.toDate() : null;
-  const datePart = startDate ? formatDateForFilename(startDate) : "open";
-  const filenameStem = sanitizeFilename(`season-${group.name}-${datePart}`);
-
-  const query: SeasonCardQuery = {
-    groupName: group.name,
-    seasonStartDateLabel: startDate ? formatDateForLabel(startDate) : null,
-    top1Name: top1.displayName,
-    top1Points: top1.totalPoints,
-    top2Name: top2?.displayName,
-    top2Points: top2?.totalPoints,
-    top3Name: top3?.displayName,
-    top3Points: top3?.totalPoints,
-    filename: filenameStem,
-  };
-
-  const url = buildSeasonCardUrl(gid, query);
+  const inputs = buildSeasonShareInputs(gid, group, stats);
+  if (!inputs) return null;
+  const { url, filenameStem } = inputs;
   const filename = `${filenameStem}.png`;
 
   return (
