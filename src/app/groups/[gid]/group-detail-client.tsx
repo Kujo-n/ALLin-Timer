@@ -33,10 +33,12 @@ import {
   promoteToOwner,
   renameGroup,
   setDefaultSeatsPerTable,
+  setDefaultTableLabels,
   setFinishedTournamentCount,
   startNewSeason,
 } from "@/lib/services/group";
 
+import { GroupDefaultTableLabelsCard } from "./_components/GroupDefaultTableLabelsCard";
 import { GroupHeaderCard } from "./_components/GroupHeaderCard";
 import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
@@ -318,6 +320,17 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         displayValue={group.defaultSeatsPerTable}
         canEdit={isOrganizer}
         editor={defaultSeatsEditor}
+      />
+
+      <GroupDefaultTableLabelsCard
+        labels={group.defaultTableLabels ?? []}
+        canEdit={isOrganizer}
+        onSave={async (labels) => {
+          await setDefaultTableLabels({ gid, uid: user.uid, labels });
+          await reload();
+          await refreshGroups();
+        }}
+        onError={setError}
       />
 
       <SeasonCard
