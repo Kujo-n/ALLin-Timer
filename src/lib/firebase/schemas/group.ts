@@ -174,3 +174,15 @@ export function isOrganizerRole(role: MemberRole | null | undefined): boolean {
 export function isOwnerRole(role: MemberRole | null | undefined): boolean {
   return role === "owner";
 }
+
+/**
+ * group において uid が「唯一のオーナー」かを判定する pure helper。
+ * `ownerUids.length === 1 && ownerUids[0] === uid` を簡潔に表現する。
+ *
+ * アカウント自己削除（`deleteAccount`）の sole-owner block 判定に使用。
+ * `ownerUids.length >= 1` は zod schema が保証するため `[0]` アクセスは安全だが、
+ * 防御的に length チェックを先に置く。
+ */
+export function isSoleOwner(group: GroupBody, uid: string): boolean {
+  return group.ownerUids.length === 1 && group.ownerUids[0] === uid;
+}

@@ -7,6 +7,7 @@ import {
   groupBodySchema,
   isOrganizerRole,
   isOwnerRole,
+  isSoleOwner,
   type GroupBody,
 } from "./group";
 import { groupJoinCodeBodySchema } from "./groupJoinCode";
@@ -814,6 +815,58 @@ describe("deriveRole", () => {
 
   it("returns null when uid is not in the group at all", () => {
     expect(deriveRole(baseGroup, "u-stranger")).toBeNull();
+  });
+});
+
+describe("isSoleOwner", () => {
+  const baseGroup: GroupBody = {
+    name: "G",
+    ownerUids: ["u1"],
+    organizerUids: ["u1"],
+    memberUids: ["u1"],
+    memberDisplayNames: {},
+    audioSettings: {
+      enabled: true,
+      levelUpSoundId: "default:blind-up",
+      winnerSoundId: "default:victory-chime",
+      volume: 0.7,
+    },
+    finishedTournamentCount: 0,
+    defaultSeatsPerTable: 8,
+    seasonStartDate: null,
+    defaultTableLabels: [],
+    defaultTableColors: [],
+    createdAt: now,
+  };
+
+  it("returns true when uid is the sole owner", () => {
+    expect(isSoleOwner(baseGroup, "u1")).toBe(true);
+  });
+
+  it("returns false when uid is one of multiple owners", () => {
+    const coOwned: GroupBody = {
+      ...baseGroup,
+      ownerUids: ["u1", "u2"],
+      organizerUids: ["u1", "u2"],
+      memberUids: ["u1", "u2"],
+    };
+    expect(isSoleOwner(coOwned, "u1")).toBe(false);
+  });
+
+  it("returns false when uid is not an owner", () => {
+    const otherOwned: GroupBody = {
+      ...baseGroup,
+      ownerUids: ["u2"],
+      organizerUids: ["u2"],
+      memberUids: ["u1", "u2"],
+    };
+    expect(isSoleOwner(otherOwned, "u1")).toBe(false);
+  });
+
+  it("returns false defensively when ownerUids is empty", () => {
+    // zod は ownerUids.min(1) を強制するため通常発生しないが、防御的に false を返すこと
+    const empty = { ...baseGroup, ownerUids: [] as string[] } as unknown as GroupBody;
+    expect(isSoleOwner(empty, "u1")).toBe(false);
   });
 });
 
