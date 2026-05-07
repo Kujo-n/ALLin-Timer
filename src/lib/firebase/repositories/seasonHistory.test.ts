@@ -19,6 +19,7 @@ vi.mock("firebase/firestore", async () => {
       }),
     })),
     doc: vi.fn((_ref, id?: string) => ({ __ref: "doc", id: id ?? "auto" })),
+    getDoc: vi.fn(),
     getDocs: vi.fn(),
   };
 });
@@ -27,15 +28,20 @@ vi.mock("@/lib/firebase/converters", () => ({
   zodConverter: vi.fn(() => ({})),
 }));
 
-import { doc, getDocs } from "firebase/firestore";
+import { doc, getDoc, getDocs } from "firebase/firestore";
 
-import { listSeasonHistory, seasonHistoryDocRef } from "./seasonHistory";
+import {
+  getSeasonHistory,
+  listSeasonHistory,
+  seasonHistoryDocRef,
+} from "./seasonHistory";
 
 const t1 = Timestamp.fromDate(new Date("2026-04-01T00:00:00Z"));
 const t2 = Timestamp.fromDate(new Date("2026-05-01T00:00:00Z"));
 
 beforeEach(() => {
   vi.mocked(getDocs).mockReset();
+  vi.mocked(getDoc).mockReset();
 });
 
 describe("listSeasonHistory", () => {
@@ -124,5 +130,36 @@ describe("seasonHistoryDocRef", () => {
     const ref = seasonHistoryDocRef("g1", "season-uuid-1");
     expect(ref).toBeDefined();
     expect(vi.mocked(doc)).toHaveBeenCalled();
+  });
+});
+
+describe("getSeasonHistory", () => {
+  it("returns the history doc when it exists", async () => {
+    vi.mocked(getDoc).mockResolvedValueOnce({
+      exists: () => true,
+      id: "season-uuid-1",
+      data: () => ({
+        startedAt: t1,
+        endedAt: t2,
+        entries: [],
+      }),
+    } as never);
+    const h = await getSeasonHistory("g1", "season-uuid-1");
+    expect(h.id).toBe("season-uuid-1");
+    expect(h.endedAt.toMillis()).toBe(t2.toMillis());
+  });
+
+  it("throws AppError(firestore/not-found) when missing", async () => {
+    vi.mocked(getDoc).mockResolvedValueOnce({ exists: () => false } as never);
+    await expect(getSeasonHistory("g1", "missing")).rejects.toMatchObject({
+      code: "firestore/not-found",
+    });
+  });
+
+  it("wraps unknown errors as firestore/read_failed", async () => {
+    vi.mocked(getDoc).mockRejectedValueOnce(new Error("offline"));
+    await expect(getSeasonHistory("g1", "x")).rejects.toMatchObject({
+      code: "firestore/read_failed",
+    });
   });
 });

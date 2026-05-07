@@ -1,4 +1,4 @@
-import { collection, doc, getDocs } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
@@ -18,6 +18,33 @@ export function seasonHistoryRef(gid: string) {
 
 export function seasonHistoryDocRef(gid: string, seasonId: string) {
   return doc(seasonHistoryRef(gid), seasonId);
+}
+
+/**
+ * Phase D improvement: 単一シーズンの履歴 doc を取得する。
+ *
+ *  - 存在しない seasonId は `AppError("firestore/not-found")` を throw
+ *  - 認可・I/O 失敗は `wrapFirestoreRead` 経由で `firestore/read_failed` にラップ
+ */
+export async function getSeasonHistory(
+  gid: string,
+  seasonId: string,
+): Promise<SeasonHistoryDoc> {
+  return wrapFirestoreRead(
+    "firestore/read_failed",
+    "シーズン履歴の取得に失敗しました",
+    async () => {
+      const snap = await getDoc(seasonHistoryDocRef(gid, seasonId));
+      if (!snap.exists()) {
+        throw new AppError(
+          `seasonHistory not found: ${gid}/${seasonId}`,
+          "firestore/not-found",
+        );
+      }
+      return { id: snap.id, ...snap.data() };
+    },
+    { gid, seasonId },
+  );
 }
 
 /**
