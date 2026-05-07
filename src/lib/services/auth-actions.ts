@@ -1,10 +1,13 @@
 import { FirebaseError } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   fetchSignInMethodsForEmail,
   getAdditionalUserInfo,
   GoogleAuthProvider,
   linkWithCredential,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -359,6 +362,58 @@ export async function attemptAnonymousSelfDelete(
       context: contextLabel,
     });
     return { deleted: false };
+  }
+}
+
+/**
+ * `User.delete()` などで `auth/requires-recent-login` を返した直後に呼ぶ再認証ヘルパー。
+ *
+ * provider に応じて分岐する:
+ *   - `"password"`: `password` 引数で `EmailAuthProvider.credential` を組立て
+ *     `reauthenticateWithCredential` を呼ぶ
+ *   - `"google.com"`: `GoogleAuthProvider` で `reauthenticateWithPopup` を呼ぶ
+ *   - その他（`"anonymous"` 等）: 本ヘルパーは通常アカウント専用のため
+ *     `auth/reauth-provider-unsupported` を throw
+ *
+ * 失敗は AppError に正規化（`wrapAuthError` を再利用、`auth/popup-closed` /
+ * `auth/invalid-credentials` 等の既存正規化を共有する）。
+ */
+export async function reauthenticateAccount(args: {
+  user: User;
+  password?: string;
+}): Promise<void> {
+  const { user, password } = args;
+  const providerId = user.providerData[0]?.providerId ?? null;
+  try {
+    if (providerId === "password") {
+      if (!password) {
+        throw new AppError(
+          "パスワードを入力してください",
+          "auth/reauth-password-required",
+        );
+      }
+      if (!user.email) {
+        throw new AppError(
+          "メールアドレスが取得できません",
+          "auth/reauth-email-missing",
+        );
+      }
+      const cred = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(user, cred);
+    } else if (providerId === "google.com") {
+      const provider = new GoogleAuthProvider();
+      await reauthenticateWithPopup(user, provider);
+    } else {
+      throw new AppError(
+        "対応していない認証方式です",
+        "auth/reauth-provider-unsupported",
+      );
+    }
+    logger.info("reauthenticate ok", { uid: user.uid, providerId });
+  } catch (e) {
+    const wrapped = wrapAuthError(e, "auth/reauth-failed", "再認証に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, uid: user.uid });
+    throw wrapped;
   }
 }
 

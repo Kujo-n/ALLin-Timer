@@ -24,6 +24,12 @@ vi.mock("firebase/auth", async () => {
     fetchSignInMethodsForEmail: vi.fn(),
     linkWithCredential: vi.fn(),
     signOut: vi.fn(),
+    // account-self-delete: 再認証 helper の test 対象
+    reauthenticateWithCredential: vi.fn(),
+    reauthenticateWithPopup: vi.fn(),
+    EmailAuthProvider: {
+      credential: vi.fn().mockReturnValue({ providerId: "password" }),
+    },
     // Phase 4.7: signInWithGoogle が isNewUser 判定に使用。default は false（既存ユーザー）。
     getAdditionalUserInfo: vi.fn().mockReturnValue({ isNewUser: false }),
     GoogleAuthProvider: Object.assign(
@@ -49,9 +55,12 @@ vi.mock("@/lib/services/group", () => ({
 
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -71,6 +80,7 @@ import {
   linkGoogleWithPassword,
   loginWithEmail,
   logout,
+  reauthenticateAccount,
   registerWithEmail,
   signInAsGuest,
   signInWithGoogle,
@@ -99,6 +109,11 @@ beforeEach(() => {
   vi.mocked(linkWithCredential).mockReset().mockResolvedValue(undefined as never);
   vi.mocked(signOut).mockReset().mockResolvedValue(undefined);
   vi.mocked(GoogleAuthProvider.credentialFromError).mockReset();
+  vi.mocked(reauthenticateWithCredential).mockReset().mockResolvedValue(undefined as never);
+  vi.mocked(reauthenticateWithPopup).mockReset().mockResolvedValue(undefined as never);
+  vi.mocked(EmailAuthProvider.credential)
+    .mockReset()
+    .mockReturnValue({ providerId: "password" } as never);
   vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
   vi.mocked(deleteUserProfile).mockReset().mockResolvedValue(undefined);
   vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
@@ -493,6 +508,80 @@ describe("logout", () => {
     await logout();
 
     expect(signOut).toHaveBeenCalled();
+  });
+});
+
+describe("reauthenticateAccount", () => {
+  function makePasswordUser() {
+    return makeUser({
+      providerData: [{ providerId: "password" }],
+    });
+  }
+
+  function makeGoogleUser() {
+    return makeUser({
+      providerData: [{ providerId: "google.com" }],
+    });
+  }
+
+  it("calls reauthenticateWithCredential for password provider", async () => {
+    const user = makePasswordUser();
+
+    await reauthenticateAccount({ user: user as never, password: "pw" });
+
+    expect(EmailAuthProvider.credential).toHaveBeenCalledWith("alice@example.com", "pw");
+    expect(reauthenticateWithCredential).toHaveBeenCalled();
+    expect(reauthenticateWithPopup).not.toHaveBeenCalled();
+  });
+
+  it("throws auth/reauth-password-required when password is missing for password provider", async () => {
+    const user = makePasswordUser();
+
+    await expect(reauthenticateAccount({ user: user as never })).rejects.toMatchObject({
+      code: "auth/reauth-password-required",
+    });
+    expect(reauthenticateWithCredential).not.toHaveBeenCalled();
+  });
+
+  it("normalizes wrong-password from reauthenticateWithCredential to auth/invalid-credentials", async () => {
+    const user = makePasswordUser();
+    vi.mocked(reauthenticateWithCredential).mockRejectedValue(
+      new FirebaseError("auth/wrong-password", "wrong"),
+    );
+
+    await expect(
+      reauthenticateAccount({ user: user as never, password: "pw" }),
+    ).rejects.toMatchObject({
+      code: "auth/invalid-credentials",
+    });
+  });
+
+  it("calls reauthenticateWithPopup for google.com provider", async () => {
+    const user = makeGoogleUser();
+
+    await reauthenticateAccount({ user: user as never });
+
+    expect(reauthenticateWithPopup).toHaveBeenCalled();
+    expect(reauthenticateWithCredential).not.toHaveBeenCalled();
+  });
+
+  it("normalizes popup-closed-by-user to auth/popup-closed", async () => {
+    const user = makeGoogleUser();
+    vi.mocked(reauthenticateWithPopup).mockRejectedValue(
+      new FirebaseError("auth/popup-closed-by-user", "x"),
+    );
+
+    await expect(reauthenticateAccount({ user: user as never })).rejects.toMatchObject({
+      code: "auth/popup-closed",
+    });
+  });
+
+  it("throws auth/reauth-provider-unsupported for unsupported providers", async () => {
+    const user = makeUser({ providerData: [{ providerId: "anonymous" }] });
+
+    await expect(reauthenticateAccount({ user: user as never })).rejects.toMatchObject({
+      code: "auth/reauth-provider-unsupported",
+    });
   });
 });
 
