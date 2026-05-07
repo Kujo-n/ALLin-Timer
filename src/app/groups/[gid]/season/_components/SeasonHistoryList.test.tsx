@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { Timestamp } from "firebase/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,7 +59,7 @@ describe("SeasonHistoryList", () => {
     expect(screen.getByText(/戦績なし/)).toBeInTheDocument();
   });
 
-  it("履歴 1 件 / entries=3 件 のとき首位を表示し、展開で top3 を出す", async () => {
+  it("履歴 1 件 / entries=3 件 のとき首位を表示し、詳細ページへの Link を持つ", async () => {
     vi.mocked(listSeasonHistory).mockResolvedValue([
       makeHistory({
         id: "s1",
@@ -96,13 +96,9 @@ describe("SeasonHistoryList", () => {
       // 首位は totalPoints 最大の Alice
       expect(screen.getByText(/首位: Alice 47\.83 pt/)).toBeInTheDocument();
     });
-    // 折り畳み中は top3 詳細が出ない
-    expect(screen.queryByText(/Bob — 28\.12 pt/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("season-history-toggle-s1"));
-    expect(await screen.findByText(/Alice — 47\.83 pt/)).toBeInTheDocument();
-    expect(screen.getByText(/Bob — 28\.12 pt/)).toBeInTheDocument();
-    expect(screen.getByText(/Carol — 19\.66 pt/)).toBeInTheDocument();
+    const link = screen.getByTestId("season-history-detail-link-s1");
+    expect(link.tagName.toLowerCase()).toBe("a");
+    expect(link).toHaveAttribute("href", "/groups/g-1/season/history/s1");
   });
 
   it("fetch 失敗時は role=alert でエラーメッセージを出す", async () => {

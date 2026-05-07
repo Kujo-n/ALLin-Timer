@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,11 @@ import type { SeasonHistoryDoc } from "@/lib/firebase/schemas/seasonHistory";
 import { logger } from "@/lib/logger";
 
 /**
- * Phase D: 過去シーズンの履歴一覧。`endedAt desc` 順で accordion 表示。
+ * Phase D / improvement: 過去シーズンの履歴一覧。`endedAt desc` 順で行表示。
  *
  *  - 1 度だけ fetch（subscribe しない、append-only / 閲覧頻度低）
  *  - 0 件のときセクションごと非表示
- *  - 個別エントリの展開で top3 まで表示
+ *  - 各 entry は「期間 + 首位」＋「詳細を見る」 Link で navigation に倒す
  *
  *  `listSeasonHistory` は内部で `wrapFirestoreRead` 経由で AppError ラップ済のため、
  *  UI 側では `unwrapOrFrom` で既存 wrap を尊重して二重 warn を避ける。
@@ -23,7 +23,6 @@ export function SeasonHistoryList({ gid }: { gid: string }) {
   const [items, setItems] = useState<SeasonHistoryDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let canceled = false;
@@ -87,58 +86,27 @@ export function SeasonHistoryList({ gid }: { gid: string }) {
             (a, b) => b.totalPoints - a.totalPoints,
           );
           const top1 = sortedEntries[0];
-          const top3 = sortedEntries.slice(0, 3);
-          const isOpen = expanded.has(h.id);
+          const detailHref = `/groups/${gid}/season/history/${encodeURIComponent(h.id)}`;
           return (
             <li
               key={h.id}
-              className="rounded-md border p-3"
+              className="flex items-center justify-between gap-2 rounded-md border p-3"
               data-testid={`season-history-item-${h.id}`}
             >
+              <span className="text-sm">
+                {formatRange(h.startedAt, h.endedAt)}
+                {top1
+                  ? ` — 首位: ${top1.displayName} ${top1.totalPoints.toFixed(2)} pt`
+                  : " — 戦績なし"}
+              </span>
               <Button
-                type="button"
-                variant="ghost"
+                asChild
+                variant="outline"
                 size="sm"
-                className="w-full justify-start gap-2 px-1"
-                aria-expanded={isOpen}
-                data-testid={`season-history-toggle-${h.id}`}
-                onClick={() => {
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(h.id)) {
-                      next.delete(h.id);
-                    } else {
-                      next.add(h.id);
-                    }
-                    return next;
-                  });
-                }}
+                data-testid={`season-history-detail-link-${h.id}`}
               >
-                {isOpen ? (
-                  <ChevronDown aria-hidden />
-                ) : (
-                  <ChevronRight aria-hidden />
-                )}
-                <span>
-                  {formatRange(h.startedAt, h.endedAt)}
-                  {top1
-                    ? ` — 首位: ${top1.displayName} ${top1.totalPoints.toFixed(2)} pt`
-                    : " — 戦績なし"}
-                </span>
+                <Link href={detailHref}>詳細を見る</Link>
               </Button>
-              {isOpen && top3.length > 0 ? (
-                <ol className="ml-6 mt-2 list-decimal text-sm">
-                  {top3.map((e) => (
-                    <li key={e.uid}>
-                      {e.displayName} — {e.totalPoints.toFixed(2)} pt
-                      <span className="text-muted-foreground">
-                        {" "}
-                        （参加 {e.participations} / 優勝 {e.wins}）
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
             </li>
           );
         })}
