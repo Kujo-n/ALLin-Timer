@@ -8,6 +8,7 @@ import { AppError } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
+import { formatTableLabel } from "@/lib/services/format-table-label";
 import {
   diagnoseBalancingNeed,
   planTableBreak,
@@ -134,7 +135,12 @@ export function BalancingInstructionCard({
         {breakPlan ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm">
-              {`Table ${breakPlan.brokenTableNum} を閉鎖（${breakPlan.moves.length} 名移動）`}
+              {`${formatTableLabel(
+                tables.find((t) => t.tableNum === breakPlan.brokenTableNum) ?? {
+                  tableNum: breakPlan.brokenTableNum,
+                  label: null,
+                },
+              )} を閉鎖（${breakPlan.moves.length} 名移動）`}
             </p>
             <Button
               size="sm"
@@ -148,9 +154,19 @@ export function BalancingInstructionCard({
         ) : diag ? (
           <>
             <p className="text-sm">
-              {`Table ${diag.sourceTableNum} が ${diag.diff} 人多いです。`}
+              {`${formatTableLabel(
+                tables.find((t) => t.tableNum === diag.sourceTableNum) ?? {
+                  tableNum: diag.sourceTableNum,
+                  label: null,
+                },
+              )} が ${diag.diff} 人多いです。`}
               <strong>BB の次プレイヤー</strong>
-              {`を Table ${diag.destTableNum} / 席 ${diag.destSeatNum} へ移動してください。`}
+              {`を ${formatTableLabel(
+                tables.find((t) => t.tableNum === diag.destTableNum) ?? {
+                  tableNum: diag.destTableNum,
+                  label: null,
+                },
+              )} / 席 ${diag.destSeatNum} へ移動してください。`}
             </p>
             <p className="text-xs text-muted-foreground">
               移動するプレイヤーを選択（PD は移動できません）

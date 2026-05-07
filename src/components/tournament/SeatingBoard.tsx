@@ -18,7 +18,10 @@ import { AppError } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
+import { formatTableLabel } from "@/lib/services/format-table-label";
 import { cn } from "@/lib/utils";
+
+import { TableLabelEditPopover } from "./_table-label-edit/TableLabelEditPopover";
 
 interface Props {
   players: PlayerDoc[];
@@ -46,6 +49,19 @@ interface Props {
   ) => Promise<void>;
   /** D&D 中（直前の move 進行中）は次の drag を抑止するための flag。 */
   dndBusy?: boolean;
+  /**
+   * Phase C: 卓 label / color の inline edit 権限。organizer 以上 + state が
+   * `seating` 以降のときに true。`onSaveTableLabel` と組で渡す。
+   */
+  canEditTableLabel?: boolean;
+  /**
+   * Phase C: 卓 label / color を保存する handler。`updateTableLabel` 呼出をラップする。
+   * label='' / color=null は repository / service 層で正規化される。
+   */
+  onSaveTableLabel?: (
+    tableNum: number,
+    patch: { label: string | null; color: string | null },
+  ) => Promise<void>;
 }
 
 /**
@@ -76,6 +92,8 @@ export function SeatingBoard({
   onError,
   onMoveSeat,
   dndBusy = false,
+  canEditTableLabel = false,
+  onSaveTableLabel,
 }: Props) {
   const seatedByTable = useMemo(() => {
     const map = new Map<number, PlayerDoc[]>();
@@ -168,15 +186,36 @@ export function SeatingBoard({
             key={table.id}
             className={cn(table.isBroken && "opacity-60")}
             aria-label={`table-${table.tableNum}`}
+            // Phase C: color が設定されていれば左端 6px の帯で表示。
+            // border-left は Tailwind class で 8px width が JIT 確定する組合せが少ないため
+            // inline style で指定。null のときは付与しない。
+            style={
+              table.color
+                ? { borderLeft: `6px solid ${table.color}` }
+                : undefined
+            }
           >
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-sm">
                 <span>
-                  Table {table.tableNum}（{tableSeated.length} 人）
+                  {formatTableLabel(table)}（{tableSeated.length} 人）
                 </span>
-                {table.isBroken ? (
-                  <span className="rounded bg-muted px-2 py-0.5 text-xs">閉鎖</span>
-                ) : null}
+                <span className="flex items-center gap-2">
+                  {table.isBroken ? (
+                    <span className="rounded bg-muted px-2 py-0.5 text-xs">
+                      閉鎖
+                    </span>
+                  ) : null}
+                  {canEditTableLabel && onSaveTableLabel ? (
+                    <TableLabelEditPopover
+                      table={table}
+                      onSave={(patch) =>
+                        onSaveTableLabel(table.tableNum, patch)
+                      }
+                      onError={onError}
+                    />
+                  ) : null}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
