@@ -261,6 +261,7 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run test:rules-limits`              | `src/lib/limits.ts` と `firestore.rules` のリテラル一致を機械検査                   |
 | `npm run test:rules-clone-players`       | `players` create ルールを emulator 上で検証（Phase 5.4 organizer-clone ブランチ） |
 | `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
+| `npm run test:rules-table-labels`        | `defaultTableLabels` / `tables/{n}.label` / `.color` ルールを emulator 上で検証（Phase C） |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
 | `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
@@ -358,7 +359,7 @@ src/
 scripts/
 ├─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
 └─ test-rules-*.mjs               # Firestore Rules emulator validator（limits / clone-players / season /
-                                  # default-seats / finished-count / pd の 6 本。手動 / CI 対象外）
+                                  # default-seats / finished-count / pd / table-labels の 7 本。手動 / CI 対象外）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```
