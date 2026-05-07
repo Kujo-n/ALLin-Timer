@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { AuthCredential } from "firebase/auth";
 
@@ -19,12 +19,16 @@ import { logger } from "@/lib/logger";
 import {
   AccountLinkRequired,
   loginWithEmail,
+  loginWithGoogle,
   registerWithEmail,
-  signInWithGoogle,
+  signUpWithGoogle,
 } from "@/lib/services/auth-actions";
 import { sanitizeRedirect } from "@/lib/services/redirect";
 
 type Mode = "login" | "register";
+
+// notice を読ませてから redirect するまでの猶予。短すぎると読めず、長すぎると待たされ感が出る。
+const NOTICE_REDIRECT_DELAY_MS = 3000;
 
 export function LoginClient() {
   const { user, loading, refreshUser } = useAuthUser();
@@ -37,25 +41,76 @@ export function LoginClient() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [linkRequest, setLinkRequest] = useState<{
     email: string;
     credential: AuthCredential;
   } | null>(null);
   const [displayNameDialogOpen, setDisplayNameDialogOpen] = useState(false);
+  // notice を見せ終わるまでは auto-redirect を抑止する。
+  const [noticeRedirecting, setNoticeRedirecting] = useState(false);
+  // M-2: login + Google で `auth/not-registered-yet` を出した直後は、
+  // delete + signOut 二重失敗で auth user が残っていても auto-redirect しない。
+  const [notRegisteredYet, setNotRegisteredYet] = useState(false);
+  // mode 切替や unmount で notice タイマーを必ず解放するための ref。
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // submitting / displayNameDialogOpen 中は onGoogleSignIn 側の制御に委ねる
-    // （Google 新規ユーザーで onAuthStateChanged が DisplayNameDialog より先に
-    // 走っても、ここで redirect しないようにするため）。
-    if (!loading && user && !user.isAnonymous && !submitting && !displayNameDialogOpen) {
+    return () => {
+      if (noticeTimerRef.current !== null) {
+        clearTimeout(noticeTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    // submitting / displayNameDialogOpen / noticeRedirecting / notRegisteredYet 中は
+    // 各 handler 側の制御に委ねる（zombie auth user で勝手に redirect されないよう
+    // notRegisteredYet も明示的にガードに含める）。
+    if (
+      !loading &&
+      user &&
+      !user.isAnonymous &&
+      !submitting &&
+      !displayNameDialogOpen &&
+      !noticeRedirecting &&
+      !notRegisteredYet
+    ) {
       router.replace(redirect);
     }
-  }, [user, loading, router, redirect, submitting, displayNameDialogOpen]);
+  }, [
+    user,
+    loading,
+    router,
+    redirect,
+    submitting,
+    displayNameDialogOpen,
+    noticeRedirecting,
+    notRegisteredYet,
+  ]);
+
+  function clearNoticeTimer() {
+    if (noticeTimerRef.current !== null) {
+      clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = null;
+    }
+  }
+
+  function changeMode(next: Mode) {
+    setMode(next);
+    setError(null);
+    setNotice(null);
+    setNotRegisteredYet(false);
+    setNoticeRedirecting(false);
+    clearNoticeTimer();
+  }
 
   async function onSubmitPassword(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    setNotRegisteredYet(false);
     setSubmitting(true);
     try {
       if (mode === "login") {
@@ -75,14 +130,41 @@ export function LoginClient() {
     }
   }
 
+  function showNoticeAndRedirect(message: string) {
+    setNotice(message);
+    setNoticeRedirecting(true);
+    clearNoticeTimer();
+    noticeTimerRef.current = setTimeout(() => {
+      noticeTimerRef.current = null;
+      setNoticeRedirecting(false);
+      // 即時 redirect も呼んでおく（auto-redirect useEffect とほぼ同時に発火するが冪等）。
+      router.replace(redirect);
+    }, NOTICE_REDIRECT_DELAY_MS);
+  }
+
   async function onGoogleSignIn() {
     setError(null);
+    setNotice(null);
+    setNotRegisteredYet(false);
     setSubmitting(true);
     try {
-      const { needsDisplayNameSetup } = await signInWithGoogle();
+      if (mode === "register") {
+        const result = await signUpWithGoogle(displayName);
+        refreshUser();
+        if (result.mode === "already-existing") {
+          // notice を NOTICE_REDIRECT_DELAY_MS だけ表示してから redirect。
+          showNoticeAndRedirect(
+            "既にアカウントがあるためログインしました。表示名は変更していません。",
+          );
+          return;
+        }
+        router.replace(redirect);
+        return;
+      }
+      // login モード: 新規 Google アカウントは loginWithGoogle 内で弾かれる。
+      // legacy ユーザー（isNewUser=false かつ displayName 未設定）は DisplayNameDialog 救済へ。
+      const { needsDisplayNameSetup } = await loginWithGoogle();
       if (needsDisplayNameSetup) {
-        // Phase 5.1: 新規ユーザー OR users/{uid} 不在 OR displayName 空 のいずれかで dialog 表示。
-        // redirect は dialog の onDone で行う。
         setDisplayNameDialogOpen(true);
         return;
       }
@@ -90,6 +172,28 @@ export function LoginClient() {
     } catch (e) {
       if (e instanceof AccountLinkRequired) {
         setLinkRequest({ email: e.email, credential: e.pendingCredential });
+        return;
+      }
+      if (e instanceof AppError) {
+        if (
+          e.code === "validation/display-name-required" ||
+          e.code === "validation/display-name-too-long"
+        ) {
+          setError(e.message);
+          document.getElementById("reg-name")?.focus();
+          return;
+        }
+        if (e.code === "auth/not-registered-yet") {
+          // login モードで新規 Google アカウントが弾かれたケース。
+          // 文言で「新規登録」タブへ誘導する。auto-redirect を抑止して
+          // delete + signOut 二重失敗時の zombie auth user による意図せぬ
+          // 遷移も防ぐ。
+          setError(e.message);
+          setNotRegisteredYet(true);
+          return;
+        }
+        // 既に AppError なら内側の wrapAuthError で warn 済みなので二重 warn を避ける。
+        setError(`${e.code}: ${e.message}`);
         return;
       }
       const wrapped = AppError.from(e, "auth/google-failed", "Google ログインに失敗しました");
@@ -101,6 +205,7 @@ export function LoginClient() {
   }
 
   const title = mode === "login" ? "ログイン" : "新規登録";
+  const googleLabel = mode === "login" ? "Google でログイン" : "Google で新規登録";
 
   return (
     <main className="mx-auto max-w-md space-y-6 p-8">
@@ -112,27 +217,6 @@ export function LoginClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              void onGoogleSignIn();
-            }}
-            disabled={submitting}
-          >
-            <GoogleIcon className="h-4 w-4" />
-            Google でログイン
-          </Button>
-          <div className="relative my-2">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">または</span>
-            </div>
-          </div>
-
           <div role="tablist" className="flex gap-1 border-b text-sm">
             {(
               [
@@ -144,10 +228,7 @@ export function LoginClient() {
                 key={value}
                 role="tab"
                 aria-selected={mode === value}
-                onClick={() => {
-                  setMode(value);
-                  setError(null);
-                }}
+                onClick={() => changeMode(value)}
                 className={`border-b-2 px-3 py-2 ${
                   mode === value
                     ? "border-primary font-medium"
@@ -159,23 +240,40 @@ export function LoginClient() {
             ))}
           </div>
 
-          <form onSubmit={onSubmitPassword} className="space-y-4">
-            {mode === "register" ? (
-              <div className="space-y-2">
-                <Label htmlFor="reg-name">表示名</Label>
+          {mode === "register" ? (
+            <>
+              <div className="space-y-2 rounded-md border bg-muted/50 p-4">
+                <Label htmlFor="reg-name" className="font-medium">
+                  表示名（必須）
+                </Label>
                 <Input
                   id="reg-name"
                   required
                   maxLength={DISPLAY_NAME_MAX_LENGTH}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
+                  className="bg-background"
                 />
                 <p className="text-xs text-muted-foreground">
                   トーナメント参加時に席表・参加者一覧に表示される名前です（
                   {DISPLAY_NAME_MAX_LENGTH} 文字以内）。
+                  <strong className="font-medium">
+                    メールアドレス／Google のどちらで登録する場合も先に入力してください。
+                  </strong>
                 </p>
               </div>
-            ) : null}
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">登録方法を選択</span>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          <form onSubmit={onSubmitPassword} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">メールアドレス</Label>
               <Input
@@ -204,10 +302,37 @@ export function LoginClient() {
                 {error}
               </p>
             ) : null}
+            {notice ? (
+              <p className="text-sm text-muted-foreground" role="status">
+                {notice}
+              </p>
+            ) : null}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "送信中…" : mode === "login" ? "ログイン" : "新規登録"}
             </Button>
           </form>
+
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">または</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              void onGoogleSignIn();
+            }}
+            disabled={submitting}
+          >
+            <GoogleIcon className="h-4 w-4" />
+            {googleLabel}
+          </Button>
         </CardContent>
       </Card>
 
