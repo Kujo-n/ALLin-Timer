@@ -84,6 +84,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     defaultSeatsPerTable: 8,
     seasonStartDate: null,
     defaultTableLabels: [],
+    defaultTableColors: [],
     createdAt: baseTimestamp,
     ...overrides,
   };

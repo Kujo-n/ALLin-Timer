@@ -796,6 +796,7 @@ describe("deriveRole", () => {
     defaultSeatsPerTable: 8,
     seasonStartDate: null,
     defaultTableLabels: [],
+    defaultTableColors: [],
     createdAt: now,
   };
 

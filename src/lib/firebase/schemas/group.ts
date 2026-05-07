@@ -102,7 +102,7 @@ export const groupBodySchema = z
     //   初回シーズン開始まで null。UI は null のとき「未設定」表示する。
     seasonStartDate: z.instanceof(Timestamp).nullable().default(null),
     // Phase C: トーナメント新規作成時に各卓 (`tables/{n}.label`) へ index 順に
-    //   自動コピーされるサークル単位のテーブル呼称デフォルト一覧。
+    //   自動コピーされるサークル単位の Table 名デフォルト一覧。
     //   - 最大 MAX_TABLES (= 6) 件 / 各要素 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字
     //   - 旧 doc（Phase A 以前）はフィールド不在のため default([]) で hydrate される
     //   - rule 側は `defaultTableLabels.size() <= 6` のみ強制し、各要素の値域は
@@ -110,6 +110,22 @@ export const groupBodySchema = z
     //     string 長を表現できないため）
     defaultTableLabels: z
       .array(z.string().min(1).max(TABLE_LABEL_MAX_LENGTH))
+      .max(MAX_TABLES)
+      .default([]),
+    // Phase C improvement (02-02): `defaultTableLabels` と index 1:1 で対応する卓色デフォルト。
+    //   - `defaultTableColors[i]` が null なら i 番目の卓は色未設定（labels[i] のみ反映）
+    //   - 配列長は `defaultTableLabels.length` と一致させる service-side invariant
+    //     （短ければ null パディング、長ければ rule で size <= 6 で deny）
+    //   - 旧 doc（02-02 改修前）はフィールド不在のため default([]) で hydrate される。
+    //     orchestrator / UI は `colors[i] ?? null` で参照するため安全
+    //   - 各要素は `#RRGGBB` の hex 文字列または null。空文字は service 層で null に正規化
+    defaultTableColors: z
+      .array(
+        z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable(),
+      )
       .max(MAX_TABLES)
       .default([]),
   })
