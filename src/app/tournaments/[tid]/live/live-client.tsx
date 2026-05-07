@@ -255,7 +255,7 @@ export function LiveClient({ tid }: { tid: string }) {
                         className="text-3xl font-bold tabular-nums"
                         data-testid="my-table"
                       >
-                        {/* Phase C: label が設定されていればカスタム呼称を表示。
+                        {/* Phase C: label が設定されていればカスタム Table 名を表示。
                               tables subscribe が遅延 / 失敗していたら数値 fallback */}
                         {(() => {
                           const myTable = tables.find(

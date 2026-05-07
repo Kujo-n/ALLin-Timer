@@ -93,7 +93,7 @@ export const MAX_LEVELS_PER_TOURNAMENT = 50;
 export const MAX_CLONE_PLAYERS = 50;
 
 /**
- * Phase C: 卓カスタム呼称（`tables/{n}.label` および `groups/{gid}.defaultTableLabels[i]`）の
+ * Phase C: 卓のカスタム Table 名（`tables/{n}.label` および `groups/{gid}.defaultTableLabels[i]`）の
  * 最大文字数。スマートフォン 1 行に収まり、SeatingBoard / BalancingInstructionCard の
  * 卓カードヘッダで折り返さない値として 10 に設定。
  *

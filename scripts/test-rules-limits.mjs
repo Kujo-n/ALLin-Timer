@@ -132,7 +132,7 @@ const checks = [
     expected: EXPECTED.DISPLAY_NAME_MAX_LENGTH,
     minOccurrences: 1,
   },
-  // Phase C: 卓 label / 卓呼称デフォルト一覧の drift 検出。
+  // Phase C: 卓 label / Table 名デフォルト一覧の drift 検出。
   // - tables/{n}.label.size() <= TABLE_LABEL_MAX_LENGTH (= 10)
   // - groups/{gid}.defaultTableLabels.size() <= MAX_TABLES (= 6)
   //   (defaultTableLabels の各要素 string 長は rule で表現困難なため schema / service が enforce)

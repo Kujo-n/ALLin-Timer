@@ -141,7 +141,7 @@ export async function updateTableLabel(
     normalizedLabel.length > TABLE_LABEL_MAX_LENGTH
   ) {
     throw new AppError(
-      `テーブル呼称は ${TABLE_LABEL_MAX_LENGTH} 文字以内で指定してください`,
+      `Table 名は ${TABLE_LABEL_MAX_LENGTH} 文字以内で指定してください`,
       "validation/table-label-invalid",
     );
   }
@@ -154,7 +154,7 @@ export async function updateTableLabel(
   }
   await wrapFirestoreWrite(
     "firestore/write_failed",
-    "テーブル呼称の更新に失敗しました",
+    "Table 名の更新に失敗しました",
     async () => {
       await updateDoc(doc(tablesRef(tid), String(tableNum)), {
         label: normalizedLabel,

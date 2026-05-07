@@ -16,7 +16,7 @@ export const tableBodySchema = z.object({
   tableNum: z.number().int().positive(),
   isBroken: z.boolean(),
   createdAt: z.instanceof(Timestamp),
-  // Phase C: 卓のカスタム呼称（例: "赤卓"）。設定なし=null。
+  // Phase C: 卓のカスタム Table 名（例: "赤卓"）。設定なし=null。
   // 空文字は repository 側 (`updateTableLabel`) で null に正規化する。
   label: z.string().min(1).max(TABLE_LABEL_MAX_LENGTH).nullable().default(null),
   // Phase C: 卓カードの色帯（#RRGGBB hex 文字列）。設定なし=null。
