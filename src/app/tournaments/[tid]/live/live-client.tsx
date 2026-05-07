@@ -18,12 +18,15 @@ import { Button } from "@/components/ui/button";
 import { AppError } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
+import { subscribeTables } from "@/lib/firebase/repositories/tables";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { useAudioPlayer } from "@/lib/hooks/useAudioPlayer";
 import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
 import { attemptAnonymousSelfDelete } from "@/lib/services/auth-actions";
+import { formatTableLabel } from "@/lib/services/format-table-label";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
 
@@ -35,6 +38,9 @@ export function LiveClient({ tid }: { tid: string }) {
   const { user, loading: authLoading } = useAuthUser();
   const router = useRouter();
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
+  // Phase C: 卓 label / color を表示するための tables subscribe。
+  //   失敗時は warn のみで Live 表示自体は壊さない（fallback で `Table N` 表示）。
+  const [tables, setTables] = useState<TableDoc[]>([]);
   // 購読が 1 回以上 fire したかで「読込中」と「参加者ではない」を区別する。
   // これがないとリロード直後の一瞬、参加者でありながら「レイトエントリー超過」等の
   // 誤メッセージが表示される（tournament state は先に解決され、players 購読は遅延するため）。
@@ -62,6 +68,18 @@ export function LiveClient({ tid }: { tid: string }) {
         setPlayersLoaded(true);
       },
       (err) => logger.warn("live players subscribe error", { code: err.code, tid }),
+    );
+    return unsub;
+  }, [tid, user]);
+
+  // Phase C: tables を subscribe して自分の卓の label を解決する。失敗時は warn のみ
+  // （fallback で `Table N` 表示するため Live 画面は壊さない）。
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeTables(
+      tid,
+      (list) => setTables(list),
+      (err) => logger.warn("live tables subscribe error", { code: err.code, tid }),
     );
     return unsub;
   }, [tid, user]);
@@ -237,7 +255,18 @@ export function LiveClient({ tid }: { tid: string }) {
                         className="text-3xl font-bold tabular-nums"
                         data-testid="my-table"
                       >
-                        {me.tableNum}
+                        {/* Phase C: label が設定されていればカスタム呼称を表示。
+                              tables subscribe が遅延 / 失敗していたら数値 fallback */}
+                        {(() => {
+                          const myTable = tables.find(
+                            (t) => t.tableNum === me.tableNum,
+                          );
+                          if (!myTable) return me.tableNum;
+                          const label = formatTableLabel(myTable);
+                          return label === `Table ${me.tableNum}`
+                            ? me.tableNum
+                            : label;
+                        })()}
                       </dd>
                     </div>
                     <div className="flex-1 rounded-md border bg-muted/40 px-3 py-2 text-center">

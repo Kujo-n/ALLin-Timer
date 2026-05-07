@@ -32,7 +32,7 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { isOrganizerRole } from "@/lib/firebase/schemas/group";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
-import { subscribeTables } from "@/lib/firebase/repositories/tables";
+import { subscribeTables, updateTableLabel } from "@/lib/firebase/repositories/tables";
 import {
   appendLevel,
   deleteTournament,
@@ -419,6 +419,12 @@ export function DashboardClient({ tid }: { tid: string }) {
               onError={setError}
               onMoveSeat={handleMoveSeat}
               dndBusy={seatChangeBusy}
+              // Phase C: 卓 label / color の inline edit を organizer に開放。
+              // SeatingBoard が表示される state（seating / running / paused / finished）の全段で edit 可能。
+              canEditTableLabel={isOrganizer}
+              onSaveTableLabel={async (tableNum, patch) => {
+                await updateTableLabel(tid, tableNum, patch);
+              }}
               onTogglePd={async (player, value) => {
                 const tableMates = getSameTableActiveOtherIds(player, players);
                 await setIsPlayingDealer(

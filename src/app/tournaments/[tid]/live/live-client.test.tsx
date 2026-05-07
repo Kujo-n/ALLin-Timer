@@ -22,6 +22,10 @@ vi.mock("@/lib/firebase/AuthProvider", () => ({
 vi.mock("@/lib/firebase/repositories/players", () => ({
   subscribePlayers: vi.fn(),
 }));
+// Phase C: live-client が tables を subscribe するため軽量 mock を追加。
+vi.mock("@/lib/firebase/repositories/tables", () => ({
+  subscribeTables: vi.fn(() => () => {}),
+}));
 // auth-actions / receipt は firebase client を import するため、必要な関数のみ軽量 mock する。
 vi.mock("@/lib/services/auth-actions", () => ({
   attemptAnonymousSelfDelete: vi.fn().mockResolvedValue({ deleted: true }),
