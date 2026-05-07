@@ -8,7 +8,12 @@ import {
 } from "firebase/firestore";
 
 import { AppError, getErrorCode } from "@/lib/errors";
-import { MAX_SEATS_PER_TABLE, MIN_SEATS_PER_TABLE } from "@/lib/limits";
+import {
+  MAX_SEATS_PER_TABLE,
+  MAX_TABLES,
+  MIN_SEATS_PER_TABLE,
+  TABLE_LABEL_MAX_LENGTH,
+} from "@/lib/limits";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import {
   createGroup,
@@ -18,6 +23,7 @@ import {
   removeMemberSelf,
   setMemberDisplayName,
   updateDefaultSeatsPerTable,
+  updateDefaultTableLabels,
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
@@ -354,6 +360,61 @@ export async function setDefaultSeatsPerTable({
   assertOrganizer(group, uid);
   await updateDefaultSeatsPerTable(gid, value);
   logger.info("setDefaultSeatsPerTable ok", { gid, uid, value });
+}
+
+/**
+ * Phase C: テーブル呼称デフォルト（`groups/{gid}.defaultTableLabels`）を更新する。
+ * owner / organizer 限定。サークル詳細画面の inline edit から呼ばれる想定。
+ *
+ * - 各要素は trim 後 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字
+ * - 配列長は最大 MAX_TABLES (= 6) 件
+ * - 重複検査は行わない（同名運用を許容、運用判断）
+ * - rule 側でも organizer-only branch + `affectedKeys.hasOnly(['defaultTableLabels'])`
+ *   + `is list` + `size() <= 6` で再 enforce する。各要素の string 長は rule 言語仕様で
+ *   表現困難なため、本関数 + `updateDefaultTableLabels` の二重防御が最終ライン。
+ */
+export async function setDefaultTableLabels({
+  gid,
+  uid,
+  labels,
+}: {
+  gid: string;
+  uid: string;
+  labels: string[];
+}): Promise<void> {
+  if (!Array.isArray(labels)) {
+    throw new AppError(
+      "テーブル呼称デフォルトは配列で指定してください",
+      "validation/default-table-labels-invalid",
+    );
+  }
+  if (labels.length > MAX_TABLES) {
+    throw new AppError(
+      `テーブル呼称デフォルトは最大 ${MAX_TABLES} 件までです`,
+      "validation/default-table-labels-invalid",
+    );
+  }
+  const normalized: string[] = [];
+  for (const label of labels) {
+    if (typeof label !== "string") {
+      throw new AppError(
+        "テーブル呼称デフォルトは文字列の配列で指定してください",
+        "validation/default-table-labels-invalid",
+      );
+    }
+    const trimmed = label.trim();
+    if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
+      throw new AppError(
+        `テーブル呼称は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
+        "validation/default-table-labels-invalid",
+      );
+    }
+    normalized.push(trimmed);
+  }
+  const group = await getGroup(gid);
+  assertOrganizer(group, uid);
+  await updateDefaultTableLabels(gid, normalized);
+  logger.info("setDefaultTableLabels ok", { gid, uid, count: normalized.length });
 }
 
 /**

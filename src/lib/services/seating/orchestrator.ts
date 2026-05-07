@@ -8,6 +8,7 @@ import {
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
+import { groupDocRef } from "@/lib/firebase/repositories/groups";
 import {
   bustPlayer as bustPlayerWrite,
   unbustPlayer as unbustPlayerWrite,
@@ -114,6 +115,19 @@ export async function commitInitialSeating(
 
       const plan = planInitialSeating(liveActive, sp, seed, pdPlayerIds);
 
+      // Phase C: 卓 label 自動コピーと既存 doc 検出のため tx 内 read を完了させる。
+      // Firestore tx は全 read を全 write より先に行う必要があるため、player 更新 / 卓 set より前に置く。
+      //   - groupSnap: defaultTableLabels (運営者がサークル詳細で登録した卓呼称デフォルト一覧)
+      //   - existingTableSnaps: 既存 tables/{n} doc。再 commitInitialSeating 時に dashboard で
+      //     手動 edit した label を上書きしないため、既存 label が non-null なら維持する。
+      const groupSnap = await tx.get(groupDocRef(t.groupId));
+      const defaultLabels: readonly string[] = groupSnap.exists()
+        ? groupSnap.data().defaultTableLabels ?? []
+        : [];
+      const existingTableSnaps = await Promise.all(
+        plan.tableNums.map((n) => tx.get(doc(tablesRef(tid), String(n)))),
+      );
+
       const ts = serverTimestamp();
       for (const a of plan.assignments) {
         tx.update(doc(playersRef(tid), a.playerId), {
@@ -125,13 +139,37 @@ export async function commitInitialSeating(
       // M-3.1 fix: tables/{n} の upsert を同一 tx 内に統合。
       // 以前は tx 後の writeBatch 経由だったため、tx 成功後のネットワーク断等で
       // 「players は seat 済みだが tables doc が空」の中間状態が残り得た。
-      // Firestore の tx は同一パスの set に対する create/update を両対応する。
-      for (const n of plan.tableNums) {
-        tx.set(doc(tablesRef(tid), String(n)), {
-          tableNum: n,
-          isBroken: false,
-          createdAt: ts,
-        });
+      //
+      // Phase C: 既存 doc が「ある / ない」で書込経路を分ける。
+      //   - 既存なし: tx.set で create（rule allow create + 全フィールド初期化）
+      //   - 既存あり + label 既設定: 何もしない（手動 edit 維持。createdAt も保持）
+      //   - 既存あり + label 未設定 + defaultLabel non-null: tx.update で label のみ patch
+      //     （rule の `affectedKeys.hasOnly(['label', 'color'])` 経路を通るため、color も併記）
+      // 既存 doc を丸ごと tx.set すると `affectedKeys` が createdAt 等を含み update rule で reject される。
+      for (let i = 0; i < plan.tableNums.length; i += 1) {
+        const n = plan.tableNums[i];
+        const ref = doc(tablesRef(tid), String(n));
+        const existing = existingTableSnaps[i];
+        const defaultLabel = defaultLabels[i] ?? null;
+        if (!existing.exists()) {
+          tx.set(ref, {
+            tableNum: n,
+            isBroken: false,
+            createdAt: ts,
+            label: defaultLabel,
+            color: null,
+          });
+          continue;
+        }
+        const existingLabel = existing.data().label ?? null;
+        if (existingLabel === null && defaultLabel !== null) {
+          // 既存 doc に label が未設定で、デフォルトが用意されている場合のみ補完。
+          // color は手動編集のみで auto-fill しないため、既存値を維持する no-op。
+          tx.update(ref, {
+            label: defaultLabel,
+            color: existing.data().color ?? null,
+          });
+        }
       }
       tx.update(tRef, {
         state: "seating",
