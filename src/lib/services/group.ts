@@ -23,7 +23,7 @@ import {
   removeMemberSelf,
   setMemberDisplayName,
   updateDefaultSeatsPerTable,
-  updateDefaultTableLabels,
+  updateDefaultTableSettings,
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
@@ -363,58 +363,94 @@ export async function setDefaultSeatsPerTable({
 }
 
 /**
- * Phase C: テーブル呼称デフォルト（`groups/{gid}.defaultTableLabels`）を更新する。
- * owner / organizer 限定。サークル詳細画面の inline edit から呼ばれる想定。
+ * Phase C / 02-02: Table 名デフォルト（`defaultTableLabels`）と Table 色デフォルト
+ * （`defaultTableColors`）を atomic に更新する。owner / organizer 限定。
+ * サークル詳細画面の inline edit から呼ばれる想定。
  *
- * - 各要素は trim 後 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字
+ * - labels: 各要素は trim 後 1〜TABLE_LABEL_MAX_LENGTH (= 10) 文字
+ * - colors: labels と同じ要素数の `(string | null)[]`。各要素は `#RRGGBB` または null
  * - 配列長は最大 MAX_TABLES (= 6) 件
  * - 重複検査は行わない（同名運用を許容、運用判断）
- * - rule 側でも organizer-only branch + `affectedKeys.hasOnly(['defaultTableLabels'])`
- *   + `is list` + `size() <= 6` で再 enforce する。各要素の string 長は rule 言語仕様で
- *   表現困難なため、本関数 + `updateDefaultTableLabels` の二重防御が最終ライン。
+ * - rule 側でも organizer-only branch + `affectedKeys.hasOnly(['defaultTableLabels', 'defaultTableColors'])`
+ *   + `is list` + `size() <= 6` で再 enforce する。各要素の string 長 / hex 形式は rule 言語仕様で
+ *   表現困難なため、本関数 + `updateDefaultTableSettings` の二重防御が最終ライン。
  */
-export async function setDefaultTableLabels({
+export async function setDefaultTableSettings({
   gid,
   uid,
   labels,
+  colors,
 }: {
   gid: string;
   uid: string;
   labels: string[];
+  colors: (string | null)[];
 }): Promise<void> {
   if (!Array.isArray(labels)) {
     throw new AppError(
-      "テーブル呼称デフォルトは配列で指定してください",
+      "Table 名デフォルトは配列で指定してください",
       "validation/default-table-labels-invalid",
     );
   }
   if (labels.length > MAX_TABLES) {
     throw new AppError(
-      `テーブル呼称デフォルトは最大 ${MAX_TABLES} 件までです`,
+      `Table 名デフォルトは最大 ${MAX_TABLES} 件までです`,
       "validation/default-table-labels-invalid",
     );
   }
-  const normalized: string[] = [];
+  if (!Array.isArray(colors) || colors.length !== labels.length) {
+    throw new AppError(
+      "Table 色デフォルトは Table 名デフォルトと同じ要素数で指定してください",
+      "validation/default-table-colors-invalid",
+    );
+  }
+  const normalizedLabels: string[] = [];
   for (const label of labels) {
     if (typeof label !== "string") {
       throw new AppError(
-        "テーブル呼称デフォルトは文字列の配列で指定してください",
+        "Table 名デフォルトは文字列の配列で指定してください",
         "validation/default-table-labels-invalid",
       );
     }
     const trimmed = label.trim();
     if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
       throw new AppError(
-        `テーブル呼称は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
+        `Table 名は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
         "validation/default-table-labels-invalid",
       );
     }
-    normalized.push(trimmed);
+    normalizedLabels.push(trimmed);
   }
+  const normalizedColors: (string | null)[] = colors.map((c) => {
+    if (c === null || c === undefined) return null;
+    if (typeof c !== "string") {
+      throw new AppError(
+        "Table 色は文字列または null で指定してください",
+        "validation/default-table-colors-invalid",
+      );
+    }
+    const trimmed = c.trim();
+    if (trimmed.length === 0) return null;
+    if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+      throw new AppError(
+        "Table 色は #RRGGBB 形式で指定してください",
+        "validation/default-table-colors-invalid",
+      );
+    }
+    return trimmed;
+  });
   const group = await getGroup(gid);
   assertOrganizer(group, uid);
-  await updateDefaultTableLabels(gid, normalized);
-  logger.info("setDefaultTableLabels ok", { gid, uid, count: normalized.length });
+  await updateDefaultTableSettings(gid, {
+    labels: normalizedLabels,
+    colors: normalizedColors,
+  });
+  logger.info("setDefaultTableSettings ok", {
+    gid,
+    uid,
+    count: normalizedLabels.length,
+    colored: normalizedColors.filter((c) => c !== null).length,
+  });
 }
 
 /**

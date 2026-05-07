@@ -117,12 +117,16 @@ export async function commitInitialSeating(
 
       // Phase C: 卓 label 自動コピーと既存 doc 検出のため tx 内 read を完了させる。
       // Firestore tx は全 read を全 write より先に行う必要があるため、player 更新 / 卓 set より前に置く。
-      //   - groupSnap: defaultTableLabels (運営者がサークル詳細で登録した卓呼称デフォルト一覧)
+      //   - groupSnap: defaultTableLabels / defaultTableColors (運営者がサークル詳細で登録した
+      //     Table 名・色のデフォルト一覧。Phase 02-02 で colors も auto-fill 対象に拡張)
       //   - existingTableSnaps: 既存 tables/{n} doc。再 commitInitialSeating 時に dashboard で
-      //     手動 edit した label を上書きしないため、既存 label が non-null なら維持する。
+      //     手動 edit した label / color を上書きしないため、既存値が non-null なら維持する。
       const groupSnap = await tx.get(groupDocRef(t.groupId));
       const defaultLabels: readonly string[] = groupSnap.exists()
         ? groupSnap.data().defaultTableLabels ?? []
+        : [];
+      const defaultColors: readonly (string | null)[] = groupSnap.exists()
+        ? groupSnap.data().defaultTableColors ?? []
         : [];
       const existingTableSnaps = await Promise.all(
         plan.tableNums.map((n) => tx.get(doc(tablesRef(tid), String(n)))),
@@ -140,34 +144,40 @@ export async function commitInitialSeating(
       // 以前は tx 後の writeBatch 経由だったため、tx 成功後のネットワーク断等で
       // 「players は seat 済みだが tables doc が空」の中間状態が残り得た。
       //
-      // Phase C: 既存 doc が「ある / ない」で書込経路を分ける。
-      //   - 既存なし: tx.set で create（rule allow create + 全フィールド初期化）
-      //   - 既存あり + label 既設定: 何もしない（手動 edit 維持。createdAt も保持）
-      //   - 既存あり + label 未設定 + defaultLabel non-null: tx.update で label のみ patch
-      //     （rule の `affectedKeys.hasOnly(['label', 'color'])` 経路を通るため、color も併記）
+      // Phase C / 02-02: 既存 doc が「ある / ない」で書込経路を分ける。
+      //   - 既存なし: tx.set で create（rule allow create + 全フィールド初期化）。
+      //     label / color ともに defaultLabels / defaultColors の i 番目を反映。
+      //   - 既存あり + 既設定 (label / color とも non-null): 何もしない（手動 edit 維持）
+      //   - 既存あり + label / color の片方以上が未設定 + defaultLabel または defaultColor が
+      //     non-null で補完可能: tx.update で patch（手動 edit 済みフィールドは維持）
       // 既存 doc を丸ごと tx.set すると `affectedKeys` が createdAt 等を含み update rule で reject される。
       for (let i = 0; i < plan.tableNums.length; i += 1) {
         const n = plan.tableNums[i];
         const ref = doc(tablesRef(tid), String(n));
         const existing = existingTableSnaps[i];
         const defaultLabel = defaultLabels[i] ?? null;
+        const defaultColor = defaultColors[i] ?? null;
         if (!existing.exists()) {
           tx.set(ref, {
             tableNum: n,
             isBroken: false,
             createdAt: ts,
             label: defaultLabel,
-            color: null,
+            color: defaultColor,
           });
           continue;
         }
         const existingLabel = existing.data().label ?? null;
-        if (existingLabel === null && defaultLabel !== null) {
-          // 既存 doc に label が未設定で、デフォルトが用意されている場合のみ補完。
-          // color は手動編集のみで auto-fill しないため、既存値を維持する no-op。
+        const existingColor = existing.data().color ?? null;
+        const labelToWrite =
+          existingLabel === null && defaultLabel !== null ? defaultLabel : existingLabel;
+        const colorToWrite =
+          existingColor === null && defaultColor !== null ? defaultColor : existingColor;
+        // どちらかが新たに補完される場合のみ update を発火。両方変化なしなら no-op。
+        if (labelToWrite !== existingLabel || colorToWrite !== existingColor) {
           tx.update(ref, {
-            label: defaultLabel,
-            color: existing.data().color ?? null,
+            label: labelToWrite,
+            color: colorToWrite,
           });
         }
       }
