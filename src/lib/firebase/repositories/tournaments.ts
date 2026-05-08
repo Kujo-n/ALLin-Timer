@@ -15,7 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-import { AppError } from "@/lib/errors";
+import { AppError, getErrorCode } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { groupDocRef } from "@/lib/firebase/repositories/groups";
@@ -47,6 +47,7 @@ import {
   isFinalTable,
   type SeasonPointsRule,
 } from "@/lib/services/season-points";
+import { isOfflineFirestoreErrorCode } from "@/lib/services/firestore-offline";
 import { resolveRanking } from "@/lib/services/timer";
 import {
   canAdvanceLevel,
@@ -403,24 +404,65 @@ export async function advanceLevel(
 ): Promise<void> {
   if (opts.expectedLevel !== undefined) {
     const expected = opts.expectedLevel;
+    const ref = doc(tournamentsRef, tid);
     await wrapFirestoreWrite(
       "firestore/write_failed",
       "レベル進行に失敗しました",
       async () => {
-        await runTransaction(firestore, async (tx) => {
-          const t = await loadTournamentInTx(tx, tid, userGroupIds);
-          const ref = doc(tournamentsRef, tid);
-          if (t.currentLevel !== expected) {
-            // 別端末が先に進めた。no-op で抜ける。
-            logger.info("advance level skipped (race)", {
-              tid,
-              expected,
-              actual: t.currentLevel,
-            });
-            return;
-          }
-          if (t.currentLevel >= t.structureSnapshot.levels.length) return;
-          tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
+        try {
+          await runTransaction(firestore, async (tx) => {
+            const t = await loadTournamentInTx(tx, tid, userGroupIds);
+            if (t.currentLevel !== expected) {
+              // 別端末が先に進めた。no-op で抜ける。
+              logger.info("advance level skipped (race)", {
+                tid,
+                expected,
+                actual: t.currentLevel,
+              });
+              return;
+            }
+            if (t.currentLevel >= t.structureSnapshot.levels.length) return;
+            tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
+          });
+          return; // tx 成功
+        } catch (e) {
+          // tx 内で投げた AppError（permission-denied / not-found 等）は素通しで再 throw。
+          // updateDoc fallback で rule 違反を queue に隠さないために必須。
+          if (e instanceof AppError) throw e;
+          // FirebaseError でオフライン由来 code のみ updateDoc fallback。それ以外は再 throw。
+          const code = getErrorCode(e);
+          if (!isOfflineFirestoreErrorCode(code)) throw e;
+          logger.warn("advance level tx offline; falling back to updateDoc", {
+            tid,
+            expected,
+            code,
+          });
+        }
+        // updateDoc fallback。Firestore SDK は offline でも write を IndexedDB queue に
+        // 入れて即 resolve する。
+        //
+        // 通常の `levelTransitionUpdates(prevState, ...)` を使わない理由（M1 race 対策）:
+        //
+        //   オフライン中に別運営者がオンラインで pause した場合、サーバ側は
+        //   `state="paused" / pausedAt=T_other` に commit 済み。A 端末（オフライン）の queue が
+        //   `pausedAt: null` を含むと、復帰時 flush で T_other が null に上書きされ、
+        //   `state="paused" + pausedAt=null` の invariant 違反 doc が確定する
+        //   （`resumeTournament` の `if (!t.pausedAt) throw` で再開不可になる）。
+        //
+        //   fallback は **「level だけ進める」最小限の payload** に絞り、`pausedAt` を
+        //   touch しない。`pausedAccumMs` / `levelStartedAt` / `lastLevelChangeKind` は
+        //   level 遷移として必要なので書く（auto-advance は hook 側 shouldAutoAdvance が
+        //   state==="running" を担保しているため、新 level でも累積 pause 時間 0 が正しい）。
+        //
+        //   この設計により、オフライン中に他運営者が pause した場合でも:
+        //     - 復帰後 server doc は `state="paused" / pausedAt=T_other / currentLevel=expected+1`
+        //     - resume 時に新 level の最初から再開できる（`getRemainingMs` の Math.max(0, ...) で 0 にクランプ）
+        await updateDoc(ref, {
+          currentLevel: expected + 1,
+          levelStartedAt: serverTimestamp(),
+          pausedAccumMs: 0,
+          lastLevelChangeKind: "auto",
+          updatedAt: serverTimestamp(),
         });
       },
       { tid },

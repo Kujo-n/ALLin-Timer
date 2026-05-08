@@ -507,6 +507,81 @@ describe("advanceLevel (auto with expectedLevel)", () => {
   });
 });
 
+describe("advanceLevel (auto with expectedLevel) — Phase B offline fallback", () => {
+  /** FirebaseError 風の error を作る（実 SDK と同じく `code` プロパティを持つ） */
+  function offlineError(code: string): Error & { code: string } {
+    const e = new Error(`firestore: ${code}`) as Error & { code: string };
+    e.code = code;
+    return e;
+  }
+
+  it("falls back to updateDoc when tx fails with offline code (unavailable)", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(offlineError("unavailable"));
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined);
+    await advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.currentLevel).toBe(2);
+    expect(payload.lastLevelChangeKind).toBe("auto");
+    // M1 race 対策: fallback では pausedAt を **明示的に touch しない**。
+    // オフライン中に別運営者が pause した場合の `state="paused" + pausedAt=null` invariant
+    // 違反を防ぐため、payload に pausedAt キーを含めない（= server 値を保持）。
+    expect(payload).not.toHaveProperty("pausedAt");
+    // pausedAccumMs / levelStartedAt は level 遷移として必要なので書く。
+    expect(payload.pausedAccumMs).toBe(0);
+    expect(payload).toHaveProperty("levelStartedAt");
+    expect(payload).toHaveProperty("updatedAt");
+  });
+
+  it("falls back to updateDoc when tx fails with cancelled / deadline-exceeded", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(offlineError("deadline-exceeded"));
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined);
+    await advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 });
+    expect(vi.mocked(updateDoc)).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-throws AppError without fallback when tx throws permission-denied via loadTournamentInTx", async () => {
+    // loadTournamentInTx は groupId 不一致時に AppError("firestore/permission-denied") を throw する。
+    // tx 内 throw が wrap で `firestore/write_failed` に再ラップされず、AppError instanceof guard で
+    // 素通し再 throw される経路を検証する。
+    vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => true,
+          id: "t1",
+          data: () => stripId(makeTournament({ groupId: "g1", currentLevel: 1 })),
+        }),
+        update: vi.fn(),
+        set: vi.fn(),
+        delete: vi.fn(),
+      };
+      await fn(tx as unknown as Parameters<typeof fn>[0]);
+      return undefined as unknown;
+    });
+    await expect(
+      advanceLevel("t1", "u1", ["g-other"], { expectedLevel: 1 }),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
+    // fallback の updateDoc は呼ばれていない
+    expect(vi.mocked(updateDoc)).not.toHaveBeenCalled();
+  });
+
+  it("re-throws when tx fails with non-offline FirebaseError code (e.g., failed-precondition)", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(offlineError("failed-precondition"));
+    await expect(
+      advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+    // fallback の updateDoc は呼ばれていない（rule 違反を queue に隠さない）
+    expect(vi.mocked(updateDoc)).not.toHaveBeenCalled();
+  });
+
+  it("wraps as firestore/write_failed when both tx and fallback fail", async () => {
+    vi.mocked(runTransaction).mockRejectedValueOnce(offlineError("unavailable"));
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("indexedDB write failed"));
+    await expect(
+      advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
 describe("revertLevel", () => {
   it("rejects when currentLevel is 1", async () => {
     mockGetTournament(makeTournament({ currentLevel: 1 }));
