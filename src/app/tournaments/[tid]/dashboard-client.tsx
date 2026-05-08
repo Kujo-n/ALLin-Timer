@@ -8,6 +8,7 @@ import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
+import { DeviceFallbackHints } from "@/components/tournament/DeviceFallbackHints";
 import { NextBreakCard } from "@/components/tournament/NextBreakCard";
 import { PlayerList } from "@/components/tournament/PlayerList";
 import { PlayersCard } from "@/components/tournament/PlayersCard";
@@ -48,8 +49,10 @@ import { useAutoFinish } from "@/lib/hooks/useAutoFinish";
 import { useFullscreen } from "@/lib/hooks/useFullscreen";
 import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useManualSeatChange } from "@/lib/hooks/useManualSeatChange";
+import { useOrientationLock } from "@/lib/hooks/useOrientationLock";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
+import { useWakeLock } from "@/lib/hooks/useWakeLock";
 import { logger } from "@/lib/logger";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { setIsPlayingDealer } from "@/lib/services/seating/orchestrator";
@@ -95,6 +98,12 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   // Phase 4.14: Fullscreen API でブラウザ chrome を非表示にして同 dashboard を全画面化。
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen();
+
+  // Phase C: 会場プロジェクタ投影中の画面消灯防止 / 横向き固定。
+  // running の間だけ Wake Lock を取得（paused / setup / seating / finished では release）。
+  // Orientation Lock は PWA standalone のときだけ実際に動く（hook 内で feature detection）。
+  const wakeLock = useWakeLock(data?.state === "running");
+  useOrientationLock("landscape");
 
   // Phase 4: dashboard で players と tables を 1 度だけ subscribe し、
   // PlayerList / SeatingBoard / BalancingInstructionCard / TimerControls に伝搬。
@@ -344,6 +353,13 @@ export function DashboardClient({ tid }: { tid: string }) {
               }
               onError={setError}
             />
+          ) : null}
+          {/*
+            Phase C: Wake Lock 未対応端末向けのテキスト案内。
+            running 中のみ表示し、未対応 UA（iOS Safari < 16.4 等）以外では何も描画しない。
+          */}
+          {data.state === "running" ? (
+            <DeviceFallbackHints wakeLockSupported={wakeLock.supported} />
           ) : null}
         </div>
 
