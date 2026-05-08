@@ -569,6 +569,12 @@ describe("finishTournament", () => {
   /**
    * Phase A: tx 内で `tx.get(seasonStatsDocRef(...))` を逐次呼ぶため、
    * 期待 read 件数分の snapshot を順番に返す mock を構築する。
+   *
+   * Phase E: tx 内 read 順序が「tournament(1) → group(1) → seasonStats(N)」に拡張された。
+   * 1 回目: loadTournamentInTx の tournament read
+   * 2 回目: groupRawDocRef の seasonPointsRule 取得 read
+   *   - `groupRawData`（既定 null = 既定 rule にフォールバック）でカスタム rule の検証
+   * 3 回目以降: 各参加者の seasonStats raw read
    */
   function mockFinishTransaction(
     txState: TournamentDoc | null,
@@ -576,21 +582,30 @@ describe("finishTournament", () => {
       captureUpdate?: (ref: unknown, patch: Record<string, unknown>) => void;
       captureSet?: (ref: unknown, data: Record<string, unknown>) => void;
       seasonStatsReads?: Array<Record<string, unknown> | null>;
+      groupRawData?: Record<string, unknown> | null;
     } = {},
   ) {
     vi.mocked(runTransaction).mockImplementationOnce(async (_db, fn) => {
       const reads = options.seasonStatsReads ?? [];
       let readIdx = 0;
-      const txGetCalled = { tournamentReadDone: false };
+      const phase = { tournamentDone: false, groupDone: false };
       const tx = {
         get: vi.fn().mockImplementation(() => {
-          // 1 回目は loadTournamentInTx の tournament read。以降は seasonStats read。
-          if (!txGetCalled.tournamentReadDone) {
-            txGetCalled.tournamentReadDone = true;
+          if (!phase.tournamentDone) {
+            phase.tournamentDone = true;
             return Promise.resolve({
               exists: () => txState !== null,
               id: txState?.id ?? "missing",
               data: () => (txState ? stripId(txState) : undefined),
+            });
+          }
+          if (!phase.groupDone) {
+            phase.groupDone = true;
+            // Phase E: tx 内 group raw read。`groupRawData=null` のとき既定 rule にフォールバック。
+            const g = options.groupRawData;
+            return Promise.resolve({
+              exists: () => g !== null && g !== undefined,
+              data: () => g ?? undefined,
             });
           }
           const r = reads[readIdx];
@@ -918,6 +933,116 @@ describe("finishTournament", () => {
     expect(next.wins).toBe(1);
     expect(next.finalTables).toBe(1);
     // points: 10 * sqrt(1/8) ≈ 3.54
+    expect(next.totalPoints).toBe(3.54);
+  });
+
+  /**
+   * Phase E: groups/{gid}.seasonPointsRule が null（未設定）のとき DEFAULT_SEASON_POINTS_RULE が適用される。
+   * 既存の seasonStats 増分と同じ計算結果（後方互換）。
+   */
+  it("uses DEFAULT_SEASON_POINTS_RULE when group.seasonPointsRule is null (Phase E backward compat)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      seasonStatsReads: [null],
+      groupRawData: { seasonPointsRule: null }, // null = 既定値にフォールバック
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    // 1 人参加 rank 1: base[0]=10 * sqrt(1/8) ≈ 3.54
+    expect(next.totalPoints).toBe(3.54);
+  });
+
+  /**
+   * Phase E: カスタム rule が指定されているとき、totalPoints が新 rule で計算される。
+   */
+  it("uses custom seasonPointsRule when set on the group (Phase E)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      seasonStatsReads: [null],
+      groupRawData: { seasonPointsRule: { base: [20], baseline: 8 } },
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    // base[0]=20 * sqrt(1/8) ≈ 7.07
+    expect(next.totalPoints).toBe(7.07);
+  });
+
+  /**
+   * Phase E: 旧 group doc（schema mismatch / 不正値混入）でも tx を落とさず既定値で計算継続。
+   */
+  it("falls back to DEFAULT_SEASON_POINTS_RULE when seasonPointsRule is corrupt (Phase E defense)", async () => {
+    mockGetTournament(makeTournament({ state: "running", groupId: "g1" }));
+    mockListPlayers([
+      {
+        id: "p1",
+        data: {
+          displayName: "Alice",
+          uid: "u1",
+          entryAt: t0,
+          isBusted: false,
+          bustedAt: null,
+          tableNum: null,
+          seatNum: null,
+          lastMovedAt: null,
+          isPlayingDealer: false,
+        },
+      },
+    ]);
+    const sets: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(makeTournament({ state: "running", groupId: "g1" }), {
+      captureSet: (ref, data) => sets.push([ref, data]),
+      seasonStatsReads: [null],
+      // baseline が範囲外 (0) の不正値 → null フォールバック → 既定値
+      groupRawData: { seasonPointsRule: { base: [10], baseline: 0 } },
+    });
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    expect(sets).toHaveLength(1);
+    const next = sets[0][1] as Record<string, unknown>;
+    // 既定 rule で計算: 10 * sqrt(1/8) ≈ 3.54
     expect(next.totalPoints).toBe(3.54);
   });
 

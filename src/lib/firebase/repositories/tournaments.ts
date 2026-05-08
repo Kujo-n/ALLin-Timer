@@ -33,9 +33,20 @@ import {
 } from "@/lib/firebase/schemas/tournament";
 import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
-import { MAX_LEVEL_DURATION_SEC, MAX_LEVELS_PER_TOURNAMENT } from "@/lib/limits";
+import {
+  MAX_LEVEL_DURATION_SEC,
+  MAX_LEVELS_PER_TOURNAMENT,
+  MAX_SEATS_PER_TABLE,
+  MIN_SEATS_PER_TABLE,
+  SEASON_POINTS_BASE_MAX_LENGTH,
+} from "@/lib/limits";
 import { logger } from "@/lib/logger";
-import { calcSeasonPoints, isFinalTable } from "@/lib/services/season-points";
+import {
+  calcSeasonPoints,
+  DEFAULT_SEASON_POINTS_RULE,
+  isFinalTable,
+  type SeasonPointsRule,
+} from "@/lib/services/season-points";
 import { resolveRanking } from "@/lib/services/timer";
 import {
   canAdvanceLevel,
@@ -55,6 +66,54 @@ import type { Level } from "@/lib/firebase/schemas/structure";
 const tournamentsRef = collection(firestore, "tournaments").withConverter(
   zodConverter(tournamentBodySchema, "tournaments"),
 );
+
+/**
+ * Phase E: `finishTournament` の tx 内で converter 抜きに読む `groups/{gid}` の raw doc ref。
+ * `groupDocRef` は zodConverter 付きで `data()` 呼出時に schema validate が走るが、
+ * tx 内で 1 件でも schema mismatch が起きると tx 全体が失敗し、トーナメント終了が止まる。
+ * tx 内では invariant が緩い raw read に切替え、必要なフィールドだけ防御的に取り出す。
+ */
+function groupRawDocRef(gid: string) {
+  return doc(firestore, "groups", gid);
+}
+
+/**
+ * Phase E: tx 内で読んだ raw `groups/{gid}` doc から `seasonPointsRule` を防御的にパースする。
+ *   - 形式が不正なら `null` を返し、呼出側は `?? DEFAULT_SEASON_POINTS_RULE` で既定値にフォールバック
+ *   - schema mismatch（base が string / 負値 / 配列長範囲外 / baseline が範囲外）でも
+ *     tx 全体を落とさない（= 既定値で計算継続）。これは Phase A の `toPrevStats` と同方針
+ */
+function parseSeasonPointsRuleFromRawData(
+  data: unknown,
+): SeasonPointsRule | null {
+  const obj = (data ?? {}) as Record<string, unknown>;
+  const rule = obj.seasonPointsRule;
+  if (rule === null || rule === undefined) return null;
+  if (typeof rule !== "object") return null;
+  const r = rule as Record<string, unknown>;
+  if (
+    !Array.isArray(r.base) ||
+    r.base.length < 1 ||
+    r.base.length > SEASON_POINTS_BASE_MAX_LENGTH
+  ) {
+    return null;
+  }
+  const base: number[] = [];
+  for (const v of r.base) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return null;
+    base.push(n);
+  }
+  const baselineRaw = Number(r.baseline);
+  if (
+    !Number.isInteger(baselineRaw) ||
+    baselineRaw < MIN_SEATS_PER_TABLE ||
+    baselineRaw > MAX_SEATS_PER_TABLE
+  ) {
+    return null;
+  }
+  return { base, baseline: baselineRaw };
+}
 
 /**
  * Phase A: `finishTournament` の tx 内で converter 抜きに読んだ raw `seasonStats` doc を
@@ -621,6 +680,20 @@ export async function finishTournament(
           return;
         }
 
+        // Phase E: 先に `groups/{gid}` を tx 内 read して seasonPointsRule を取得する。
+        //   - tx 内 read することで、運営者が tournament 進行中に rule を変更しても
+        //     commit 時点の最新値が確実に適用される（Phase A の seasonStartDate と同方針の atomic 強化）
+        //   - `groupRawDocRef`（converter 抜き）で読むのは、過去 doc に schema mismatch があっても
+        //     tx を落とさないため。`parseSeasonPointsRuleFromRawData` で防御的に number / 値域を検査し、
+        //     不正なら `?? DEFAULT_SEASON_POINTS_RULE` で既定値にフォールバックする
+        //   - 同 tx 内で後続 `tx.update(groupDocRef, { finishedTournamentCount: increment(1) })` も
+        //     走るが、Firestore の read-then-write 制約は同一 doc の get → update で満たす
+        //
+        const groupSnap = await tx.get(groupRawDocRef(cur.groupId));
+        const rule =
+          parseSeasonPointsRuleFromRawData(groupSnap.data()) ??
+          DEFAULT_SEASON_POINTS_RULE;
+
         // Phase A: read-then-write 順序を守る。先に全 seasonStats を tx.get、その後で tx.update / tx.set。
         //
         // tx.get は `seasonStatsRawDocRef`（converter 抜き）で行う。converter 付きの
@@ -663,7 +736,7 @@ export async function finishTournament(
           finishedTournamentCount: increment(1),
         });
         for (const e of reads) {
-          const points = calcSeasonPoints(e.rank, totalParticipants);
+          const points = calcSeasonPoints(e.rank, totalParticipants, rule);
           const isWin = e.rank === 1 ? 1 : 0;
           const isFT = isFinalTable(e.rank) ? 1 : 0;
           const next = {
