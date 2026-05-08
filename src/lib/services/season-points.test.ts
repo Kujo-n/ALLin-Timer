@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { calcSeasonPoints, isFinalTable } from "./season-points";
+import {
+  calcSeasonPoints,
+  DEFAULT_SEASON_POINTS_RULE,
+  isFinalTable,
+} from "./season-points";
 
 describe("calcSeasonPoints", () => {
   it("returns 10.00 for rank=1 at baseline (8 participants)", () => {
@@ -99,6 +103,63 @@ describe("calcSeasonPoints", () => {
       expect(calcSeasonPoints(rank, participants)).toBe(expected);
     },
   );
+});
+
+describe("calcSeasonPoints with custom rule (Phase E)", () => {
+  it("uses DEFAULT_SEASON_POINTS_RULE when third arg is omitted (backward compat)", () => {
+    expect(calcSeasonPoints(1, 8)).toBe(10);
+    expect(calcSeasonPoints(2, 8)).toBe(7);
+    expect(calcSeasonPoints(3, 8)).toBe(5);
+  });
+
+  it("applies a custom base array (rank=1 with base[0]=20 returns 20 at baseline)", () => {
+    expect(
+      calcSeasonPoints(1, 8, { base: [20, 15, 10], baseline: 8 }),
+    ).toBe(20);
+  });
+
+  it("applies a custom baseline (baseline=4 doubles factor at 8 participants)", () => {
+    // 10 * sqrt(8/4) = 10 * sqrt(2) ≈ 14.14
+    expect(
+      calcSeasonPoints(1, 8, { base: [10, 7, 5, 3, 1], baseline: 4 }),
+    ).toBe(14.14);
+  });
+
+  it("returns 0 when rank exceeds custom base.length (shorter array)", () => {
+    expect(calcSeasonPoints(4, 8, { base: [10, 7, 5], baseline: 8 })).toBe(0);
+    // 1〜3 位のみ配列にあるので 5 位は 0pt
+    expect(calcSeasonPoints(5, 8, { base: [10, 7, 5], baseline: 8 })).toBe(0);
+  });
+
+  it("returns 0 for invalid rank / participants regardless of rule", () => {
+    expect(calcSeasonPoints(0, 8, { base: [10], baseline: 8 })).toBe(0);
+    expect(calcSeasonPoints(1, 0, { base: [10], baseline: 8 })).toBe(0);
+    expect(calcSeasonPoints(-1, 8, { base: [10], baseline: 8 })).toBe(0);
+  });
+
+  it("equals default rule when explicitly passing DEFAULT_SEASON_POINTS_RULE (characterization)", () => {
+    for (let r = 1; r <= 10; r += 1) {
+      for (const p of [1, 6, 8, 16, 24]) {
+        expect(calcSeasonPoints(r, p)).toBe(
+          calcSeasonPoints(r, p, DEFAULT_SEASON_POINTS_RULE),
+        );
+      }
+    }
+  });
+
+  it("scales correctly with custom baseline=2 (factor sqrt(8/2)=2.0 at 8 participants)", () => {
+    // 10 * sqrt(8/2) = 10 * 2 = 20
+    expect(calcSeasonPoints(1, 8, { base: [10], baseline: 2 })).toBe(20);
+  });
+
+  it("scales correctly with custom baseline=10 at 8 participants", () => {
+    // 10 * sqrt(8/10) = 10 * 0.8944... ≈ 8.94
+    expect(calcSeasonPoints(1, 8, { base: [10], baseline: 10 })).toBe(8.94);
+  });
+
+  it("accepts zero base value (organizer intentionally sets 0pt for the rank)", () => {
+    expect(calcSeasonPoints(1, 8, { base: [0, 7, 5], baseline: 8 })).toBe(0);
+  });
 });
 
 describe("isFinalTable", () => {
