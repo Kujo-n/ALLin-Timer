@@ -630,6 +630,117 @@ describe("groupBodySchema", () => {
     });
     expect(parsed.seasonStartDate).toBeNull();
   });
+
+  // Phase E: seasonPointsRule の additive 追加 — 旧 doc 互換 / null 許容 / 値域検証
+  it("defaults seasonPointsRule to null for legacy docs without the field (Phase E)", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+    });
+    expect(parsed.seasonPointsRule).toBeNull();
+  });
+
+  it("accepts explicit null seasonPointsRule (reset to default)", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: null,
+    });
+    expect(parsed.seasonPointsRule).toBeNull();
+  });
+
+  it("preserves a valid custom seasonPointsRule object", () => {
+    const parsed = groupBodySchema.parse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [10, 7, 5], baseline: 8 },
+    });
+    expect(parsed.seasonPointsRule).toEqual({ base: [10, 7, 5], baseline: 8 });
+  });
+
+  it("rejects seasonPointsRule.base with 0 elements (min 1 required)", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [] as number[], baseline: 8 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects seasonPointsRule.base over 9 elements", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: {
+        base: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        baseline: 8,
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects seasonPointsRule.base with negative element", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [10, -1, 5], baseline: 8 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects seasonPointsRule.baseline below 2", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [10], baseline: 1 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects seasonPointsRule.baseline above 10", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [10], baseline: 11 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects seasonPointsRule.baseline non-integer", () => {
+    const result = groupBodySchema.safeParse({
+      name: "G",
+      ownerUids: ["u1"],
+      organizerUids: ["u1"],
+      memberUids: ["u1"],
+      createdAt: now,
+      seasonPointsRule: { base: [10], baseline: 8.5 },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("seasonStatsBodySchema (Phase A)", () => {
@@ -798,6 +909,7 @@ describe("deriveRole", () => {
     seasonStartDate: null,
     defaultTableLabels: [],
     defaultTableColors: [],
+    seasonPointsRule: null,
     createdAt: now,
   };
 
@@ -836,6 +948,7 @@ describe("isSoleOwner", () => {
     seasonStartDate: null,
     defaultTableLabels: [],
     defaultTableColors: [],
+    seasonPointsRule: null,
     createdAt: now,
   };
 

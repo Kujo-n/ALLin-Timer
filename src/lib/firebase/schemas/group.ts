@@ -6,6 +6,7 @@ import {
   MAX_SEATS_PER_TABLE,
   MAX_TABLES,
   MIN_SEATS_PER_TABLE,
+  SEASON_POINTS_BASE_MAX_LENGTH,
   TABLE_LABEL_MAX_LENGTH,
 } from "@/lib/limits";
 
@@ -49,6 +50,35 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   winnerSoundId: "default:victory-chime",
   volume: 0.7,
 };
+
+/**
+ * Phase E: シーズンポイント計算ルールのカスタマイズ schema。
+ *   - `base`: 1 位から N 位までの素点。長さ 1〜SEASON_POINTS_BASE_MAX_LENGTH (= 9)、
+ *     各要素は 0 以上の数値（負値は意味を持たないため reject）
+ *   - `baseline`: 係数 1.0 になる参加人数（int、MIN_SEATS_PER_TABLE..MAX_SEATS_PER_TABLE = 2..10）
+ *   - `null` を許容して既定値（`DEFAULT_SEASON_POINTS_RULE`）にフォールバック。
+ *     旧 doc（Phase D 以前）はフィールド不在のため default(null) で hydrate される。
+ *
+ * 値域・配列長は本 schema に集約し、firestore.rules / repository / service / UI は
+ * すべて本 schema が真実源。`firestore.rules` の `seasonPointsRule.base.size() <= 9` 等の
+ * リテラルは drift script ([scripts/test-rules-limits.mjs](../../../../scripts/test-rules-limits.mjs))
+ * が `SEASON_POINTS_BASE_MAX_LENGTH` 等と機械的に一致検査する。
+ */
+export const seasonPointsRuleSchema = z
+  .object({
+    base: z
+      .array(z.number().nonnegative())
+      .min(1)
+      .max(SEASON_POINTS_BASE_MAX_LENGTH),
+    baseline: z
+      .number()
+      .int()
+      .min(MIN_SEATS_PER_TABLE)
+      .max(MAX_SEATS_PER_TABLE),
+  })
+  .nullable()
+  .default(null);
+export type SeasonPointsRuleSchema = z.infer<typeof seasonPointsRuleSchema>;
 
 /**
  * `groups/{gid}` の本体スキーマ。サークル単位の所有権モデル。
@@ -128,6 +158,13 @@ export const groupBodySchema = z
       )
       .max(MAX_TABLES)
       .default([]),
+    // Phase E: シーズンポイント計算ルールのカスタマイズ。
+    //   - null（または未設定）→ DEFAULT_SEASON_POINTS_RULE が適用される
+    //   - object → 運営者がパラメータ単位でカスタマイズした rule（base / baseline）
+    //   - 旧 doc（Phase D 以前）はフィールド不在のため default(null) で hydrate される
+    //   - rule 側は `affectedKeys.hasOnly(['seasonPointsRule'])` + `is map | null`
+    //     + `base.size() 1..9` + `baseline 2..10` を強制（各要素の値域は schema に委譲）
+    seasonPointsRule: seasonPointsRuleSchema,
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),
