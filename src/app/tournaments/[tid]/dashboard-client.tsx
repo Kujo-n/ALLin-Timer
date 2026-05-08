@@ -10,6 +10,7 @@ import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
 import { DeviceFallbackHints } from "@/components/tournament/DeviceFallbackHints";
 import { NextBreakCard } from "@/components/tournament/NextBreakCard";
+import { OfflineBanner } from "@/components/tournament/OfflineBanner";
 import { PlayerList } from "@/components/tournament/PlayerList";
 import { PlayersCard } from "@/components/tournament/PlayersCard";
 import { SeatingBoard } from "@/components/tournament/SeatingBoard";
@@ -79,6 +80,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     tournament: data,
     remainingMs,
     fromCache,
+    hasPendingWrites,
     lastSyncAt,
     error: timerError,
   } = useTournamentTimer(tid, {
@@ -270,6 +272,12 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   return (
     <main className="mx-auto w-full max-w-4xl space-y-6 p-8 lg:max-w-7xl">
+      {/*
+        Phase B: 通信障害中 / 同期中の状態を 1 つの帯で運営者に伝える。online で
+        pending writes も無いときは null を返して占有領域 0。
+        ConnectionBadge は引き続き TimerControls 内で「最終同期時刻」を表示する補助 UI。
+      */}
+      <OfflineBanner fromCache={fromCache} hasPendingWrites={hasPendingWrites} />
       {/*
         Phase 4.14 追加要望（差分）:
           - トーナメント名は AppRoot のグローバルヘッダ（「ALLin-PokerTimer」と同じ高さ）の

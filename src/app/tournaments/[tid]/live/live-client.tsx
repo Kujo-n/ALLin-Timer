@@ -9,6 +9,7 @@ import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { ConnectionBadge } from "@/components/tournament/ConnectionBadge";
 import { NextBreakCard } from "@/components/tournament/NextBreakCard";
+import { OfflineBanner } from "@/components/tournament/OfflineBanner";
 import { PlayersCard } from "@/components/tournament/PlayersCard";
 import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
@@ -42,7 +43,8 @@ const MOVED_BANNER_MS = 30_000;
 
 export function LiveClient({ tid }: { tid: string }) {
   // /live は read-only。autoAdvance / auto-seat は渡さない（参加者端末は rule で書込不可）。
-  const { tournament, remainingMs, fromCache, lastSyncAt, error } = useTournamentTimer(tid);
+  const { tournament, remainingMs, fromCache, hasPendingWrites, lastSyncAt, error } =
+    useTournamentTimer(tid);
   const { user, loading: authLoading } = useAuthUser();
   const router = useRouter();
   const [players, setPlayers] = useState<PlayerDoc[]>([]);
@@ -161,6 +163,10 @@ export function LiveClient({ tid }: { tid: string }) {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 p-4 pt-6">
+      {/* Phase B: 接続切れ / 同期中バナー（参加者にも見せる）。
+          ConnectionBadge は header 内に併存し、最終同期時刻を補助表示する。 */}
+      <OfflineBanner fromCache={fromCache} hasPendingWrites={hasPendingWrites} />
+
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-semibold md:text-xl">{tournament.name}</h1>
         <div className="flex items-center gap-2">
