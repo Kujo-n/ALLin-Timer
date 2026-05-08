@@ -67,6 +67,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     seasonStartDate: null,
     defaultTableLabels: [],
     defaultTableColors: [],
+    seasonPointsRule: null,
     createdAt: now,
     ...overrides,
   };
