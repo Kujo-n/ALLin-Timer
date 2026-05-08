@@ -33,7 +33,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 ## What We're NOT Building
 
 - **PWA 化（旧⑪）/ 観戦モード URL（旧⑮）** — 同 `tmp/02_prod-V1/02-01_追加機能要求.md` 内の優先度中項目。別 PRD として後続で起こす
-- **ポイント計算式の運営者カスタマイズ** — MVP は固定パラメータ式（順位ベース × 参加人数係数）。式の構造は `base[rank] × sqrt(participants / 8)` で固定し、`base[1..9 位]` の値と baseline=8 をハードコード。`groups/{gid}.seasonPointsRule` の自由化は次フェーズ送り
+- **ポイント計算式の運営者カスタマイズ** — MVP（Phase A〜D）は固定パラメータ式（順位ベース × 参加人数係数）。式の構造は `base[rank] × sqrt(participants / 8)` で固定し、`base[1..9 位]` の値と baseline=8 をハードコード。`groups/{gid}.seasonPointsRule` のパラメータ自由化は **Phase E で実装済**（式構造の変更自体は引き続き対象外）
 - **整数 pt への round / floor** — Q14 回答に基づき、ポイントは**小数 2 桁保持**（例: 6 人参加の 1 位 = `10 × sqrt(6/8) = 8.66pt`）。表示時の四捨五入は UI の責務、保存値は小数 2 桁で固定
 - **シーズン自動切替（毎月 1 日 / 4 月 1 日 等）** — Q2 b 回答に基づき、運営者の明示的な「シーズン開始」操作のみ
 - **OGP メタタグ / X Card 専用最適化** — Q3 回答に基づき、最低限「画像保存できれば各々 SNS にアップロード」で要件を満たす。Web Share API 統合は Should
@@ -98,7 +98,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | Should | ⑫ テーブル `color`（卓カードの色帯） | 補助。3 卓以上で色被りするため label が主、color が副 |
 | Should | ⑫ `groups/{gid}.defaultTableLabels[]`（group 単位デフォルト）| 毎回入力する手間を削る。`defaultSeatsPerTable` と同パターン |
 | Should | ⑨ Web Share API 統合（OS シェアシートで LINE / X に直接送信）| 工数次第。MVP は画像保存のみで成立 |
-| Won't | ⑧ ポイント計算式の運営者カスタマイズ | MVP は固定式。需要観測後に拡張 |
+| Phase E（旧 Won't） | ⑧ ポイント計算式の運営者カスタマイズ | Phase A〜D MVP は固定式。Phase E で `base[]` / `baseline` のパラメータ自由化を実装（式構造の変更は引き続き対象外） |
 | Won't | ⑧ all-time（シーズン跨ぎ）累計集計 | 現在シーズン + 履歴で要件は満たせる |
 | Won't | ⑨ html2canvas 経由クライアント側生成 | `@vercel/og` に統一 |
 | Won't | ⑨ X Card / OGP メタタグ専用最適化 | Q3 — 画像保存で十分 |
@@ -177,6 +177,7 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
 | B   | Result Card Generation      | `@vercel/og` 導入 + 優勝カード / シーズン首位カードの SSR 画像 route + ダウンロードボタン UI | complete | -        | A       | [phase-b-result-card-generation.plan.md](../plans/02-season-stats-and-share/completed/phase-b-result-card-generation.plan.md) — [report](../reports/02-season-stats-and-share/phase-b-result-card-generation-report.md) |
 | C   | Table Label & Color         | tables.label / color 追加 + group defaultTableLabels + UI inline edit                        | complete | with A   | -       | [phase-c-table-label-color.plan.md](../plans/completed/phase-c-table-label-color.plan.md) — [report](../reports/phase-c-table-label-color-report.md) — [02-02 improvement report](../reports/phase-c-improvement-02-02-report.md) |
 | D   | Web Share API & Polish      | Web Share API 統合（Should）+ シーズン履歴閲覧 UI 拡充 + 成功指標観測（Color picker は Phase C improvement-02-02 で完了済のため除外） | complete | -        | B, C    | [phase-d-web-share-and-polish.plan.md](../plans/completed/phase-d-web-share-and-polish.plan.md) — [report](../reports/phase-d-web-share-and-polish-report.md) — [improvement: past-season-detail](../plans/completed/phase-d-past-season-detail-view.plan.md) — [improvement report](../reports/phase-d-past-season-detail-view-report.md) |
+| E   | Season Points Rule Customization | `groups/{gid}.seasonPointsRule` を additive 追加し、`base[]` / `baseline` を運営者がカスタマイズ可能化（式構造は不変、tx 内 re-read で finishTournament にアトミック適用） | complete | -        | A       | [phase-e-season-points-rule-customization.plan.md](../plans/completed/phase-e-season-points-rule-customization.plan.md) — [report](../reports/phase-e-season-points-rule-customization-report.md) |
 
 ### Phase Details
 
@@ -228,6 +229,27 @@ ALLin-PokerTimer は月 1〜2 回の小規模サークル運用を前提とし�
   - シーズン履歴閲覧 UI のブラッシュアップ（過去 N シーズンの首位一覧）
   - 成功指標の観測（開発者サークル参加 + 運営者ヒアリング）
 - **Success signal**: Web Share API 経由で 1 タップ LINE / X 投稿が成立。実サークル運用で「画像保存」ボタンが複数回押下される
+
+**Phase E: Season Points Rule Customization**
+
+- **Goal**: シーズンポイント計算のパラメータを運営者が自由化できるようにする（PRD MVP 範囲では Won't だった項目の解消）
+- **Scope**:
+  - `groups/{gid}.seasonPointsRule: { base: number[]; baseline: number } | null` を additive 追加（zod default null = 既定値フォールバック）
+  - `base` は 1〜9 件の `nonnegative number[]`、`baseline` は 2〜10 の整数（`MIN_SEATS_PER_TABLE` / `MAX_SEATS_PER_TABLE` と整合）
+  - `firestore.rules` の `groups/{gid}` update に 9 ブランチ目として `seasonPointsRule` 単独書換（`affectedKeys.hasOnly + is map + size 制約`、`null` 許容）を追加
+  - `src/lib/services/season-points.ts` の `calcSeasonPoints` に第 3 引数 `rule?: SeasonPointsRule` を後方互換で追加し、`DEFAULT_SEASON_POINTS_RULE` をフォールバック既定値として export
+  - `finishTournament` の runTransaction 内で `tx.get(groupRawDocRef)` を追加し、保存された rule を防御的にパースして `calcSeasonPoints` に渡す（tx 内アトミック適用）
+  - サークル詳細画面の `<SeasonPointsRuleCard />` 新設（全員閲覧 / owner / organizer のみ編集モーダルから保存・「既定値に戻す」操作可）
+  - `src/lib/services/group.ts` に `setSeasonPointsRule({ gid, uid, value })` 追加（`assertOrganizer` 経由 + 入力正規化 + repository 呼出）
+  - 過去 `seasonStats/{uid}.totalPoints` への遡及適用は **しない**（rule 切替後の新規 finishTournament から新 rule 適用、整合性が必要なら「シーズンを開始する」で reset）
+  - `seasonHistory/{seasonId}` への rule snapshot は **本 phase では保持しない**（Open Question で将来拡張余地）
+  - `src/lib/limits.ts` に `SEASON_POINTS_BASE_MAX_LENGTH = 9` を export し、`scripts/test-rules-limits.mjs` に drift 検査 3 件追加
+  - emulator validator `scripts/test-rules-season-points-rule.mjs` 新設（11 ケース）
+- **Success signal**:
+  - サークル詳細画面の `<SeasonPointsRuleCard />` から運営者が `base[]` / `baseline` を編集 → 次回 finishTournament でカスタム rule が `seasonStats.totalPoints` に反映される
+  - 一般メンバーが SDK 直叩きで `seasonPointsRule` を更新試行 → emulator + 本番で permission-denied
+  - `npm run test:rules-limits` の drift 検査と `npm run test:rules-season-points-rule` の emulator 検査が all-pass
+  - PRD Open Question から「`base[rank]` 値 / baseline=8 の妥当性」項目が「カスタマイズ可能化済」として落とせる
 
 ### Parallelism Notes
 
