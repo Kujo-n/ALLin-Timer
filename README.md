@@ -274,6 +274,21 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 
 <!-- /AUTO-GENERATED -->
 
+## PWA 動作確認（Phase A 以降）
+
+本アプリは PWA としてインストール可能。`npm run build && npm run start` で本番モード起動後:
+
+1. Chrome DevTools → Application → Manifest が green（警告 0 件、`Add to homescreen` ボタン active）
+2. Application → Service Workers に `sw.js` が `activated and is running`
+3. Application → Cache Storage に `allin-shell-v1` / `allin-runtime-v1` が表示
+4. Lighthouse → PWA → Installable / Service Worker が green
+
+iOS Safari では「共有 → ホーム画面に追加」で apple-touch-icon 付き standalone アイコンを生成可能（URL バー / タブが消える）。Android Chrome は manifest 検出後に自前の install プロンプトを出す。
+
+`npm run dev` モードでは HMR / Turbopack との衝突回避のため Service Worker は登録されない。
+
+アイコン素材は `public/icons/` 配下に配置している。`scripts/generate-pwa-icons.mjs` は `public/icons/icon_pwa.png`（運営者提供のロゴ — 赤円 + 白三角 + "ALL IN" 文字）を source として、`icon-192.png` / `icon-512.png` / `icon-512-maskable.png` / `apple-icon-180.png` の 4 サイズを再生成できる。ロゴ差し替え時は `icon_pwa.png` を上書きして `node scripts/generate-pwa-icons.mjs` を再実行する。
+
 ## E2E テスト（Phase 4.5 以降）
 
 Playwright + Firebase Emulator で統合テストを自動化している。`npm run test:e2e` を叩けば Emulator → dev server（port 3001）→ test 実行まで一気通貫で走る。Emulator 起動には **Java ランタイム**が必要（未インストールだと `firestore` / `auth` が起動失敗）。
