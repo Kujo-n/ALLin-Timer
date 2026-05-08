@@ -41,6 +41,7 @@ import {
   updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupRoles,
+  updateSeasonPointsRule,
 } from "./groups";
 
 beforeEach(() => {
@@ -200,6 +201,75 @@ describe("updateDefaultSeatsPerTable", () => {
     await expect(updateDefaultSeatsPerTable("g1", 6)).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
+  });
+});
+
+describe("updateSeasonPointsRule (Phase E)", () => {
+  it("calls updateDoc with { seasonPointsRule: { base, baseline } } for valid rule", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateSeasonPointsRule("g1", { base: [10, 7, 5], baseline: 8 });
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      seasonPointsRule: { base: [10, 7, 5], baseline: 8 },
+    });
+  });
+
+  it("calls updateDoc with { seasonPointsRule: null } for reset", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateSeasonPointsRule("g1", null);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ seasonPointsRule: null });
+  });
+
+  it("rejects empty base array (length < 1)", async () => {
+    await expect(
+      updateSeasonPointsRule("g1", { base: [], baseline: 8 }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rejects base array longer than 9", async () => {
+    await expect(
+      updateSeasonPointsRule("g1", {
+        base: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        baseline: 8,
+      }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative element in base", async () => {
+    await expect(
+      updateSeasonPointsRule("g1", { base: [10, -1, 5], baseline: 8 }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-finite element in base", async () => {
+    await expect(
+      updateSeasonPointsRule("g1", {
+        base: [10, NaN as unknown as number, 5],
+        baseline: 8,
+      }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 11, 8.5, 0, -1])(
+    "rejects baseline %p as out of range or non-int",
+    async (bad) => {
+      await expect(
+        updateSeasonPointsRule("g1", { base: [10], baseline: bad as number }),
+      ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+      expect(updateDoc).not.toHaveBeenCalled();
+    },
+  );
+
+  it("wraps Firestore reject as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(
+      updateSeasonPointsRule("g1", { base: [10], baseline: 8 }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
   });
 });
 

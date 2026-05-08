@@ -16,6 +16,7 @@ import {
   MAX_SEATS_PER_TABLE,
   MAX_TABLES,
   MIN_SEATS_PER_TABLE,
+  SEASON_POINTS_BASE_MAX_LENGTH,
   TABLE_LABEL_MAX_LENGTH,
 } from "@/lib/limits";
 import { firestore } from "@/lib/firebase/client";
@@ -29,6 +30,7 @@ import {
   type CreateGroupInput,
   type GroupDoc,
 } from "@/lib/firebase/schemas/group";
+import type { SeasonPointsRule } from "@/lib/services/season-points";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
 
@@ -69,6 +71,9 @@ export async function createGroup(
         // `setDefaultTableSettings` で運営者が atomic に登録する。
         defaultTableLabels: [],
         defaultTableColors: [],
+        // Phase E: シーズンポイント計算ルールは未設定（null）で開始 → DEFAULT_SEASON_POINTS_RULE が適用される。
+        // `setSeasonPointsRule` で運営者が任意にカスタマイズする。
+        seasonPointsRule: null,
         createdAt: serverTimestamp(),
         joinCodeId: null,
       });
@@ -378,6 +383,67 @@ export async function updateDefaultTableSettings(
     gid,
     count: labels.length,
     colored: colors.filter((c) => c !== null).length,
+  });
+}
+
+/**
+ * Phase E: groups/{gid}.seasonPointsRule をカスタム rule または null（既定値リセット）で上書きする。
+ *   - 書込経路はサークル詳細画面の SeasonPointsRuleCard inline edit のみ（owner / organizer 限定。
+ *     assertOrganizer は service 層）。
+ *   - rule 側は organizer-only branch + `affectedKeys.hasOnly(['seasonPointsRule'])` +
+ *     `is map | null` + `base.size() 1..9` + `baseline 2..10` で他フィールド汚染と長さ違反を deny。
+ *   - 各要素の値域（base[i] >= 0 number / baseline 整数）は Cloud Firestore Rules の言語仕様で
+ *     list element の値域を表現できないため、application 層 (本関数 + zod schema) が最終ライン。
+ *   - `value=null` で渡すと `updateDoc({ seasonPointsRule: null })` を発火し、
+ *     finishTournament tx 側は `?? DEFAULT_SEASON_POINTS_RULE` で既定値にフォールバックする。
+ */
+export async function updateSeasonPointsRule(
+  gid: string,
+  value: SeasonPointsRule | null,
+): Promise<void> {
+  if (value !== null) {
+    if (
+      !Array.isArray(value.base) ||
+      value.base.length < 1 ||
+      value.base.length > SEASON_POINTS_BASE_MAX_LENGTH
+    ) {
+      throw new AppError(
+        `base 配列は 1 件以上 ${SEASON_POINTS_BASE_MAX_LENGTH} 件以下で指定してください`,
+        "validation/season-points-rule-invalid",
+      );
+    }
+    for (const v of value.base) {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+        throw new AppError(
+          "base 配列の各要素は 0 以上の数値で指定してください",
+          "validation/season-points-rule-invalid",
+        );
+      }
+    }
+    if (
+      !Number.isInteger(value.baseline) ||
+      value.baseline < MIN_SEATS_PER_TABLE ||
+      value.baseline > MAX_SEATS_PER_TABLE
+    ) {
+      throw new AppError(
+        `baseline は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
+        "validation/season-points-rule-invalid",
+      );
+    }
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "シーズンポイント計算ルールの更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { seasonPointsRule: value });
+    },
+    { gid },
+  );
+  logger.info("group seasonPointsRule updated", {
+    gid,
+    reset: value === null,
+    baseLen: value?.base.length,
+    baseline: value?.baseline,
   });
 }
 
