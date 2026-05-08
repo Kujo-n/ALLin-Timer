@@ -35,8 +35,10 @@ import {
   setDefaultSeatsPerTable,
   setDefaultTableSettings,
   setFinishedTournamentCount,
+  setSeasonPointsRule,
   startNewSeason,
 } from "@/lib/services/group";
+import type { SeasonPointsRule } from "@/lib/services/season-points";
 
 import { GroupDefaultTableLabelsCard } from "./_components/GroupDefaultTableLabelsCard";
 import { GroupHeaderCard } from "./_components/GroupHeaderCard";
@@ -44,6 +46,7 @@ import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
 import { MemberRoleList, type MemberLine } from "./_components/MemberRoleList";
 import { SeasonCard } from "./_components/SeasonCard";
+import { SeasonPointsRuleCard } from "./_components/SeasonPointsRuleCard";
 import { StartSeasonDialog } from "./_components/StartSeasonDialog";
 
 function shortUid(uid: string): string {
@@ -269,6 +272,46 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     }
   }
 
+  async function onSaveSeasonPointsRule(next: SeasonPointsRule) {
+    if (!user) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await setSeasonPointsRule({ gid, uid: user.uid, value: next });
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const err = unwrapOrFrom(
+        e,
+        "validation/season-points-rule-invalid",
+        "ポイント計算ルールの更新に失敗しました",
+      );
+      setError(`${err.code}: ${err.message}`);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function onResetSeasonPointsRule() {
+    if (!user) return;
+    setWorking(true);
+    setError(null);
+    try {
+      await setSeasonPointsRule({ gid, uid: user.uid, value: null });
+      await reload();
+      await refreshGroups();
+    } catch (e) {
+      const err = unwrapOrFrom(
+        e,
+        "validation/season-points-rule-invalid",
+        "ポイント計算ルールのリセットに失敗しました",
+      );
+      setError(`${err.code}: ${err.message}`);
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function runRoleAction(fn: () => Promise<void>, errorLabel: string) {
     setWorking(true);
     setError(null);
@@ -346,6 +389,14 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         isOrganizer={isOrganizer}
         onRequestStartSeason={() => setConfirmStartSeasonOpen(true)}
         working={working}
+      />
+
+      <SeasonPointsRuleCard
+        rule={group.seasonPointsRule ?? null}
+        isOrganizer={isOrganizer}
+        working={working}
+        onSave={(next) => void onSaveSeasonPointsRule(next)}
+        onReset={() => void onResetSeasonPointsRule()}
       />
 
       <MemberRoleList
