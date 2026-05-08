@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { SoundToggleButton } from "@/components/tournament/SoundToggleButton";
 import { Button } from "@/components/ui/button";
+import { resumeAudioContext } from "@/lib/audio/audio-context";
 import {
   advanceLevel,
   pauseTournament,
@@ -117,7 +118,17 @@ export function TimerControlsRunningPaused({
             aria-label="再開"
             disabled={busy !== null}
             onClick={() =>
-              void run("resume", () => resumeTournament(tid, uid, userGroupIds), "再開失敗")
+              void run(
+                "resume",
+                async () => {
+                  // Phase C: 再開ボタン押下と同 user gesture で AudioContext を resume。
+                  // 次回 auto-advance のブラインドアップ音が autoplay policy で
+                  // suppress されないようにする。失敗は warn 済 / fallback ありで握る。
+                  await resumeAudioContext().catch(() => undefined);
+                  await resumeTournament(tid, uid, userGroupIds);
+                },
+                "再開失敗",
+              )
             }
           >
             <Play aria-hidden className="h-5 w-5" />
