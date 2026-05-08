@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -7,6 +7,8 @@ import { AppShell } from "@/components/nav/AppShell";
 import { HeaderMenuButton } from "@/components/nav/HeaderMenuButton";
 import { NavStateProvider } from "@/components/nav/nav-state";
 import { PageTitleProvider, PageTitleSlot } from "@/components/nav/page-title";
+import { IOsInstallHint } from "@/components/pwa/IOsInstallHint";
+import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 import { AuthProvider } from "@/lib/firebase/AuthProvider";
 import { GroupProvider } from "@/lib/services/current-group";
 
@@ -15,6 +17,35 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ALLin-PokerTimer",
   description: "NLH サークル向けトーナメント進行支援",
+  manifest: "/manifest.webmanifest",
+  applicationName: "ALLin-PokerTimer",
+  appleWebApp: {
+    capable: true,
+    title: "ALLin-PokerTimer",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icons/apple-icon-180.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+};
+
+// Phase A: Next.js 15 で `metadata.themeColor` は deprecation のため `viewport` 側に移管。
+// `viewportFit: "cover"` は iOS notch / safe-area で hint の余白崩れを防ぐ
+// （後続で globals.css に env(safe-area-inset-*) を入れる場合の前提）。
+export const viewport: Viewport = {
+  themeColor: "#0a0a0f",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -47,11 +78,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     <AuthBadge />
                   </div>
                 </header>
+                <IOsInstallHint />
                 <AppShell>{children}</AppShell>
               </PageTitleProvider>
             </NavStateProvider>
           </GroupProvider>
         </AuthProvider>
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );
