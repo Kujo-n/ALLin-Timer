@@ -244,6 +244,34 @@ service cloud.firestore {
         && request.resource.data.defaultTableLabels.size() <= 6
         && request.resource.data.defaultTableColors is list
         && request.resource.data.defaultTableColors.size() <= 6
+      ) || (
+        // Phase E: organizer による seasonPointsRule の単独書換。
+        //   サークル詳細画面の SeasonPointsRuleCard inline edit から
+        //   `setSeasonPointsRule({ gid, uid, value })` 経由で発火。
+        //   affectedKeys は 'seasonPointsRule' のみに限定。他フィールドは触らせない。
+        //   null セット（既定値リセット）も同 branch で許可。
+        //   値域: base は list 長 1..9 / baseline は int 2..10。
+        //   各要素 (base[i] >= 0 number) は Cloud Firestore Rules で list element の値域を
+        //   表現できないため schema / service 層に委譲する（最終ライン防御）。
+        //   ⚠ DRIFT WARNING: base.size() <= 9 / baseline 2..10 のリテラルは
+        //     src/lib/limits.ts の SEASON_POINTS_BASE_MAX_LENGTH / MIN_SEATS_PER_TABLE /
+        //     MAX_SEATS_PER_TABLE と連動。drift 検出は scripts/test-rules-limits.mjs。
+        //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['seasonPointsRule'])
+        && (
+          request.resource.data.seasonPointsRule == null
+          || (
+            request.resource.data.seasonPointsRule is map
+            && request.resource.data.seasonPointsRule.base is list
+            && request.resource.data.seasonPointsRule.base.size() >= 1
+            && request.resource.data.seasonPointsRule.base.size() <= 9
+            && request.resource.data.seasonPointsRule.baseline is int
+            && request.resource.data.seasonPointsRule.baseline >= 2
+            && request.resource.data.seasonPointsRule.baseline <= 10
+          )
+        )
       );
 
       allow delete: if isSignedIn()

@@ -69,6 +69,12 @@ const EXPECTED = {
     "DISPLAY_NAME_MAX_LENGTH",
     "src/lib/firebase/schemas/group.ts",
   ),
+  // Phase E: seasonPointsRule.base 配列長の上限を src/lib/limits.ts から抽出
+  SEASON_POINTS_BASE_MAX_LENGTH: parseConstFromText(
+    limitsText,
+    "SEASON_POINTS_BASE_MAX_LENGTH",
+    "src/lib/limits.ts",
+  ),
 };
 
 const checks = [
@@ -146,6 +152,29 @@ const checks = [
     label: "groups.defaultTableLabels upper bound (<= MAX_TABLES)",
     pattern: /defaultTableLabels\.size\(\)\s*<=\s*(\d+)/g,
     expected: EXPECTED.MAX_TABLES,
+    minOccurrences: 1,
+  },
+  // Phase E: シーズンポイント計算ルールの drift 検出。
+  //   - groups/{gid}.seasonPointsRule.base.size() <= 9 (= SEASON_POINTS_BASE_MAX_LENGTH)
+  //   - groups/{gid}.seasonPointsRule.baseline >= 2 (= MIN_SEATS_PER_TABLE)
+  //   - groups/{gid}.seasonPointsRule.baseline <= 10 (= MAX_SEATS_PER_TABLE)
+  //   各リテラルが schema / limits 側と乖離したら CI で fail させる。
+  {
+    label: "groups.seasonPointsRule.base upper bound (<= SEASON_POINTS_BASE_MAX_LENGTH)",
+    pattern: /seasonPointsRule\.base\.size\(\)\s*<=\s*(\d+)/g,
+    expected: EXPECTED.SEASON_POINTS_BASE_MAX_LENGTH,
+    minOccurrences: 1,
+  },
+  {
+    label: "groups.seasonPointsRule.baseline lower bound (>= MIN_SEATS_PER_TABLE)",
+    pattern: /seasonPointsRule\.baseline\s*>=\s*(\d+)/g,
+    expected: EXPECTED.MIN_SEATS_PER_TABLE,
+    minOccurrences: 1,
+  },
+  {
+    label: "groups.seasonPointsRule.baseline upper bound (<= MAX_SEATS_PER_TABLE)",
+    pattern: /seasonPointsRule\.baseline\s*<=\s*(\d+)/g,
+    expected: EXPECTED.MAX_SEATS_PER_TABLE,
     minOccurrences: 1,
   },
 ];
