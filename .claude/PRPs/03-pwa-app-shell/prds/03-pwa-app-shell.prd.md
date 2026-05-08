@@ -185,7 +185,7 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 | #   | Phase                       | Description                                                                                  | Status      | Parallel | Depends | PRP Plan |
 | --- | --------------------------- | -------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | -------- |
 | A   | PWA Foundation              | manifest + Service Worker + アイコン素材 + meta tags + iOS install テキスト案内               | complete    | with C   | -       | [phase-a-pwa-foundation.plan.md](../plans/completed/phase-a-pwa-foundation.plan.md) |
-| B   | Timer Offline Resilience    | `advanceLevel(auto)` の tx → updateDoc fallback、オフライン状態可視化バナー、multi-tab 警告 UI | pending     | -        | A       | -        |
+| B   | Timer Offline Resilience    | `advanceLevel(auto)` の tx → updateDoc fallback、オフライン状態可視化バナー、multi-tab 警告 UI | complete    | -        | A       | [phase-b-timer-offline-resilience.plan.md](../plans/completed/phase-b-timer-offline-resilience.plan.md) |
 | C   | Device Controls             | Wake Lock API + `screen.orientation.lock` + AudioContext unlock 強化                         | complete    | with A   | -       | [phase-c-device-controls.plan.md](../plans/completed/phase-c-device-controls.plan.md) |
 | D   | Install Promotion & Polish  | role-aware install banner（owner / organizer 限定）+ 観測フェーズ                            | pending     | -        | A, B, C | -        |
 
