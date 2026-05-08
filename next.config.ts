@@ -16,6 +16,26 @@ const nextConfig: NextConfig = {
       "./node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff",
     ],
   },
+  // Phase A: Service Worker スクリプト自身は HTTP cache に乗らないよう
+  // 都度サーバから取得させる。register 側の updateViaCache: "none" と二重で
+  // 「古い SW が pin されたまま update 検知できない」事故を防ぐ。
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
+          },
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
