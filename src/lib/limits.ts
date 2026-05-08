@@ -38,9 +38,22 @@ export const DEFAULT_SEATS_PER_TABLE = 8;
  * `calcSeasonPoints(rank, totalParticipants)` は以下の式で算出する:
  *   `base[rank-1] × sqrt(totalParticipants / SEASON_POINTS_BASELINE_PARTICIPANTS)`
  *
- * 配列長を超える順位は 0pt。読み取り専用の参照定数。
+ * 配列長を超える順位は 0pt。読み取り専用の参照定数。Phase E で運営者カスタマイズ可能化
+ * （`groups/{gid}.seasonPointsRule.base`）。本配列は「カスタム rule 不在時の既定値」として参照する。
  */
 export const SEASON_POINTS_BASE: readonly number[] = [10, 7, 5, 3, 1, 1, 1, 1, 1];
+
+/**
+ * Phase E: シーズンポイント計算の `base` 配列長の上限。
+ *
+ * `seasonPointsRule.base` は最大 9 件（1 位〜9 位までを定義可能）。
+ * `SEASON_POINTS_BASE.length` と機械的に一致させる（drift script で検査）。
+ * `firestore.rules` の `seasonPointsRule.base.size() <= 9` リテラルとも連動。
+ *
+ * DRIFT WARNING: 値を変更する場合は本ファイル / `firestore.rules` /
+ * `scripts/test-rules-limits.mjs` の EXPECTED を同時に更新すること。
+ */
+export const SEASON_POINTS_BASE_MAX_LENGTH = 9;
 
 /**
  * Phase A: シーズンポイント計算の baseline 参加人数（= 8）。
