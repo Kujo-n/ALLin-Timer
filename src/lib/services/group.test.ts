@@ -35,6 +35,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   setMemberDisplayName: vi.fn(),
   updateFinishedTournamentCount: vi.fn(),
   updateDefaultSeatsPerTable: vi.fn(),
+  updateSeasonPointsRule: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
@@ -92,6 +93,7 @@ import {
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
+  updateSeasonPointsRule,
 } from "@/lib/firebase/repositories/groups";
 import { createJoinCode, getJoinCode } from "@/lib/firebase/repositories/groupJoinCodes";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
@@ -115,6 +117,7 @@ import {
   renameGroup,
   setDefaultSeatsPerTable,
   setFinishedTournamentCount,
+  setSeasonPointsRule,
   startNewSeason,
 } from "./group";
 
@@ -144,6 +147,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     seasonStartDate: null,
     defaultTableLabels: [],
     defaultTableColors: [],
+    seasonPointsRule: null,
     createdAt: now,
     ...overrides,
   };
@@ -172,6 +176,7 @@ beforeEach(() => {
   vi.mocked(setMemberDisplayName).mockReset();
   vi.mocked(updateFinishedTournamentCount).mockReset();
   vi.mocked(updateDefaultSeatsPerTable).mockReset();
+  vi.mocked(updateSeasonPointsRule).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
@@ -565,6 +570,156 @@ describe("setDefaultSeatsPerTable", () => {
       expect(updateDefaultSeatsPerTable).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("setSeasonPointsRule (Phase E)", () => {
+  it("allows owner to set a valid custom rule", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(updateSeasonPointsRule).mockResolvedValue();
+
+    await setSeasonPointsRule({
+      gid: "g1",
+      uid: "uOwner",
+      value: { base: [10, 7, 5], baseline: 8 },
+    });
+
+    expect(updateSeasonPointsRule).toHaveBeenCalledWith("g1", {
+      base: [10, 7, 5],
+      baseline: 8,
+    });
+  });
+
+  it("allows organizer (non-owner) to set value", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner", "uOrg"],
+        memberUids: ["uOwner", "uOrg"],
+      }),
+    );
+    vi.mocked(updateSeasonPointsRule).mockResolvedValue();
+
+    await setSeasonPointsRule({
+      gid: "g1",
+      uid: "uOrg",
+      value: { base: [20], baseline: 6 },
+    });
+
+    expect(updateSeasonPointsRule).toHaveBeenCalledWith("g1", {
+      base: [20],
+      baseline: 6,
+    });
+  });
+
+  it("forwards null (reset to default) to repository", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(updateSeasonPointsRule).mockResolvedValue();
+
+    await setSeasonPointsRule({ gid: "g1", uid: "uOwner", value: null });
+
+    expect(updateSeasonPointsRule).toHaveBeenCalledWith("g1", null);
+  });
+
+  it("rejects general member with group/not-organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner", "uMember"],
+      }),
+    );
+    await expect(
+      setSeasonPointsRule({
+        gid: "g1",
+        uid: "uMember",
+        value: { base: [10], baseline: 8 },
+      }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(updateSeasonPointsRule).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty base before reading group (early validation)", async () => {
+    await expect(
+      setSeasonPointsRule({
+        gid: "g1",
+        uid: "uOwner",
+        value: { base: [], baseline: 8 },
+      }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateSeasonPointsRule).not.toHaveBeenCalled();
+  });
+
+  it("rejects base over 9 elements", async () => {
+    await expect(
+      setSeasonPointsRule({
+        gid: "g1",
+        uid: "uOwner",
+        value: { base: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], baseline: 8 },
+      }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative base element", async () => {
+    await expect(
+      setSeasonPointsRule({
+        gid: "g1",
+        uid: "uOwner",
+        value: { base: [10, -1, 5], baseline: 8 },
+      }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it.each([1, 11, 8.5])(
+    "rejects out-of-range or non-int baseline %p",
+    async (bad) => {
+      await expect(
+        setSeasonPointsRule({
+          gid: "g1",
+          uid: "uOwner",
+          value: { base: [10], baseline: bad as number },
+        }),
+      ).rejects.toMatchObject({
+        code: "validation/season-points-rule-invalid",
+      });
+      expect(getGroup).not.toHaveBeenCalled();
+    },
+  );
+
+  it("normalizes base values to 2 decimal places (defensive against UI float artifacts)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["uOwner"],
+        organizerUids: ["uOwner"],
+        memberUids: ["uOwner"],
+      }),
+    );
+    vi.mocked(updateSeasonPointsRule).mockResolvedValue();
+
+    // 8.659999999... のような UI 由来の誤差を 8.66 に丸める
+    await setSeasonPointsRule({
+      gid: "g1",
+      uid: "uOwner",
+      value: { base: [8.659999999, 7.014], baseline: 8 },
+    });
+
+    const call = vi.mocked(updateSeasonPointsRule).mock.calls[0];
+    expect(call[1]).toEqual({ base: [8.66, 7.01], baseline: 8 });
+  });
 });
 
 describe("startNewSeason (Phase A)", () => {

@@ -12,6 +12,7 @@ import {
   MAX_SEATS_PER_TABLE,
   MAX_TABLES,
   MIN_SEATS_PER_TABLE,
+  SEASON_POINTS_BASE_MAX_LENGTH,
   TABLE_LABEL_MAX_LENGTH,
 } from "@/lib/limits";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
@@ -27,7 +28,9 @@ import {
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
+  updateSeasonPointsRule,
 } from "@/lib/firebase/repositories/groups";
+import type { SeasonPointsRule } from "@/lib/services/season-points";
 import {
   seasonHistoryDocRef,
 } from "@/lib/firebase/repositories/seasonHistory";
@@ -450,6 +453,75 @@ export async function setDefaultTableSettings({
     uid,
     count: normalizedLabels.length,
     colored: normalizedColors.filter((c) => c !== null).length,
+  });
+}
+
+/**
+ * Phase E: シーズンポイント計算ルール（`groups/{gid}.seasonPointsRule`）を設定する。
+ * owner / organizer 限定。サークル詳細画面の SeasonPointsRuleCard inline edit から呼ばれる。
+ *
+ *  - `value=null` で渡すと `seasonPointsRule = null` 保存（既定値リセット経路）
+ *  - 非 null のとき:
+ *    - `base` 配列長 1〜SEASON_POINTS_BASE_MAX_LENGTH (= 9)
+ *    - `base[i]` は 0 以上の有限数値（`Math.round(v * 100) / 100` で 2 桁に正規化。
+ *      UI から `8.659999...` のような誤差が混入したときの defensive な丸め。
+ *      calcSeasonPoints の出力丸めと同方針）
+ *    - `baseline` は整数 MIN_SEATS_PER_TABLE..MAX_SEATS_PER_TABLE (= 2..10)
+ *  - rule 側でも organizer-only branch + `affectedKeys.hasOnly(['seasonPointsRule'])` +
+ *    `is map | null` で再 enforce する。値域・配列長は本関数 + `updateSeasonPointsRule` の
+ *    二重防御が最終ライン。
+ */
+export async function setSeasonPointsRule({
+  gid,
+  uid,
+  value,
+}: {
+  gid: string;
+  uid: string;
+  value: SeasonPointsRule | null;
+}): Promise<void> {
+  let normalized: SeasonPointsRule | null = null;
+  if (value !== null) {
+    if (
+      !Array.isArray(value.base) ||
+      value.base.length < 1 ||
+      value.base.length > SEASON_POINTS_BASE_MAX_LENGTH
+    ) {
+      throw new AppError(
+        `base 配列は 1 件以上 ${SEASON_POINTS_BASE_MAX_LENGTH} 件以下で指定してください`,
+        "validation/season-points-rule-invalid",
+      );
+    }
+    const safeBase: number[] = value.base.map((v) => {
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+        throw new AppError(
+          "base 配列の各要素は 0 以上の数値で指定してください",
+          "validation/season-points-rule-invalid",
+        );
+      }
+      return Math.round(v * 100) / 100;
+    });
+    if (
+      !Number.isInteger(value.baseline) ||
+      value.baseline < MIN_SEATS_PER_TABLE ||
+      value.baseline > MAX_SEATS_PER_TABLE
+    ) {
+      throw new AppError(
+        `baseline は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
+        "validation/season-points-rule-invalid",
+      );
+    }
+    normalized = { base: safeBase, baseline: value.baseline };
+  }
+  const group = await getGroup(gid);
+  assertOrganizer(group, uid);
+  await updateSeasonPointsRule(gid, normalized);
+  logger.info("setSeasonPointsRule ok", {
+    gid,
+    uid,
+    reset: normalized === null,
+    baseLen: normalized?.base.length,
+    baseline: normalized?.baseline,
   });
 }
 
