@@ -45,7 +45,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / createdAt / **joinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / **seasonPointsRule** / createdAt / **joinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
@@ -70,6 +70,21 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
     （null セットは owner branch のフルアクセス経由でのみ可能）。
     旧 doc は zod default で `null` として hydrate され、初回 startNewSeason まで未設定のまま。
     UI（サークル詳細・ランキング画面）は null のとき「未設定」と表示する。
+  - `seasonPointsRule`（Phase E 追加・default null）: シーズンポイント計算式の運営者カスタマイズ。
+    `null` または `{ base: number[], baseline: number }`。`null` のとき `DEFAULT_SEASON_POINTS_RULE`
+    （`base = SEASON_POINTS_BASE`、`baseline = SEASON_POINTS_BASELINE_PARTICIPANTS = 8`）が
+    適用される。書込経路はサークル詳細画面の SeasonPointsRuleCard inline edit のみ
+    （`setSeasonPointsRule({ gid, uid, value })` → `updateSeasonPointsRule(gid, value)`）。
+    rule は organizer 以上で `affectedKeys().hasOnly(['seasonPointsRule'])` + `null` または
+    `is map` + `base.size() 1..9` + `baseline 2..10` を強制。各要素 (`base[i] >= 0 number`) は
+    Cloud Firestore Rules で list element の値域を表現できないため schema / service 層に委譲。
+    `finishTournament` の runTransaction 内で `groups/{gid}` を tx 内 raw read してアトミックに
+    rule を解決し、`calcSeasonPoints(rank, totalParticipants, rule)` で各参加者の totalPoints を
+    増分する。tournament 進行中の rule 変更は commit 時点の最新値が適用される。
+    過去の `seasonStats` には遡及適用しない（運営者は「シーズンを開始する」で reset 推奨）。
+    ⚠ DRIFT WARNING: `base.size() <= 9` / `baseline 2..10` のリテラルは src/lib/limits.ts の
+    `SEASON_POINTS_BASE_MAX_LENGTH` / `MIN_SEATS_PER_TABLE` / `MAX_SEATS_PER_TABLE` と連動。
+    drift 検出は scripts/test-rules-limits.mjs。
 - `groupJoinCodes/{code}` — gid / expiresAt / maxUses / usedCount
 - `users/{uid}.groupIds` — 逆引き
 - `structures/{sid}` / `tournaments/{tid}` — `groupId` + `createdByUid`
@@ -125,6 +140,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | シーズン開始日（`seasonStartDate`）の参照 | ○ | ○ | ○ |
 | Table 名デフォルト（`defaultTableLabels`）の参照 | ○ | ○ | ○ |
 | Table 名デフォルト（`defaultTableLabels`）の更新 | ○ | ○ | × |
+| シーズンポイント計算ルール（`seasonPointsRule`）の参照 | ○ | ○ | ○ |
+| シーズンポイント計算ルール（`seasonPointsRule`）の更新 | ○ | ○ | × |
 | 卓 label / color（`tables/{n}.label` / `.color`）の参照 | ○ | ○ | ○ |
 | 卓 label / color の更新 | ○ | ○ | × |
 | アカウント自己削除（`/settings`） | ○（sole-owner サークルがあれば block） | ○ | ○ |

@@ -233,7 +233,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
-`firestore.rules` の `groups/{gid}` `allow update` は 8 ブランチに分かれており（Phase A で 1 ブランチ / Phase C で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
+`firestore.rules` の `groups/{gid}` `allow update` は 9 ブランチに分かれており（Phase A で 1 ブランチ / Phase C で 1 ブランチ / Phase E で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
 
 | ブランチ | 条件 | 許可される変更キー（`affectedKeys().hasOnly`） |
 | --- | --- | --- |
@@ -246,6 +246,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | **defaultSeatsPerTable update** | organizer | `defaultSeatsPerTable` |
 | **seasonStartDate update**（Phase A） | organizer | `seasonStartDate`（`is timestamp`） |
 | **defaultTableLabels update**（Phase C） | organizer | `defaultTableLabels`（`is list` + `size() <= 6`、各要素 string 長は service / schema 側で enforce） |
+| **seasonPointsRule update**（Phase E） | organizer | `seasonPointsRule`（`null` または `is map` + `base.size() 1..9` + `baseline 2..10`、各要素 `>= 0 number` は schema / service 側で enforce） |
 
 新規フィールドを `groups/{gid}` に追加する場合の手順:
 
