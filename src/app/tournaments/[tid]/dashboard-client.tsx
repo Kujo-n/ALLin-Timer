@@ -33,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import { isOrganizerRole } from "@/lib/firebase/schemas/group";
@@ -119,7 +119,7 @@ export function DashboardClient({ tid }: { tid: string }) {
       (list) => setPlayers(list),
       (err) => {
         logger.warn(err.message, { code: err.code });
-        setPlayersError(`${err.code}: ${err.message}`);
+        setPlayersError(formatErrorForDisplay(err));
       },
     );
     return unsub;
@@ -193,7 +193,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     } catch (e) {
       // deleteTournament は内部で warn 済み。UI 表示のみここで担当する。
       const err = unwrapOrFrom(e, "firestore/write_failed", "削除失敗");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
       setConfirmOpen(false);
     }
   }
@@ -216,7 +216,7 @@ export function DashboardClient({ tid }: { tid: string }) {
         "firestore/write_failed",
         "サウンド設定の更新に失敗しました",
       );
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
       return;
     }
     // Phase 4.14: GroupProvider は onSnapshot 購読していないため、
@@ -245,7 +245,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     return (
       <main className="mx-auto max-w-4xl p-8">
         <p className="text-sm text-destructive" role="alert">
-          {`${timerError.code}: ${timerError.message}`}
+          {formatErrorForDisplay(timerError)}
         </p>
       </main>
     );

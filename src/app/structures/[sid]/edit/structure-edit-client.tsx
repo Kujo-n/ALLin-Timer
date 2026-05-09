@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { StructureForm, type StructureFormSubmitInput } from "@/components/structure/StructureForm";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getStructure, updateStructure } from "@/lib/firebase/repositories/structures";
 import { deriveRole } from "@/lib/firebase/schemas/group";
@@ -28,7 +28,7 @@ export function StructureEditClient({ sid }: { sid: string }) {
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        if (!cancelled) setError(formatErrorForDisplay(wrapped));
       }
     })();
     return () => {

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import { createGroupWithOwner } from "@/lib/services/group";
@@ -43,7 +43,7 @@ export function GroupNewClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "group/create-failed", "サークル作成に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setSubmitting(false);
     }

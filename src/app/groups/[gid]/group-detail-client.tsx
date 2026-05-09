@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { InlineNumberEditCard } from "@/components/group/InlineNumberEditCard";
 import { Button } from "@/components/ui/button";
-import { AppError, unwrapOrFrom } from "@/lib/errors";
+import { AppError, formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup, setMemberDisplayName } from "@/lib/firebase/repositories/groups";
 import {
@@ -133,7 +133,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     } catch (e) {
       // getGroup は内部で warn 済み。UI 表示のみここで担当する。
       const err = unwrapOrFrom(e, "firestore/read_failed", "サークル取得失敗");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     }
   }, [gid, user]);
 
@@ -222,7 +222,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       setIssuedCode(code);
     } catch (e) {
       const err = unwrapOrFrom(e, "group/code-failed", "招待コード発行に失敗しました");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setWorking(false);
     }
@@ -250,7 +250,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       router.push("/groups");
     } catch (e) {
       const err = unwrapOrFrom(e, "group/leave-failed", "サークル脱退に失敗しました");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setConfirmLeaveOpen(false);
       setWorking(false);
@@ -267,7 +267,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       router.push("/groups");
     } catch (e) {
       const err = unwrapOrFrom(e, "group/delete-failed", "サークル削除に失敗しました");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setConfirmDeleteOpen(false);
       setWorking(false);
@@ -284,7 +284,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await refreshGroups();
     } catch (e) {
       const err = unwrapOrFrom(e, "season/start-failed", "シーズン開始に失敗しました");
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setConfirmStartSeasonOpen(false);
       setWorking(false);
@@ -305,7 +305,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         "validation/season-points-rule-invalid",
         "ポイント計算ルールの更新に失敗しました",
       );
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setWorking(false);
     }
@@ -325,7 +325,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         "validation/season-points-rule-invalid",
         "ポイント計算ルールのリセットに失敗しました",
       );
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setWorking(false);
     }
@@ -340,7 +340,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await refreshGroups();
     } catch (e) {
       const err = unwrapOrFrom(e, "group/role-change-failed", errorLabel);
-      setError(`${err.code}: ${err.message}`);
+      setError(formatErrorForDisplay(err));
     } finally {
       setWorking(false);
     }

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import type { AppendLevelInput } from "@/lib/firebase/repositories/tournaments";
 import type { Level } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
@@ -117,7 +117,7 @@ export function AppendLevelDialog({
       // repository が AppError ラップ済 → 二重 wrap を avoid。
       const wrapped = unwrapOrFrom(e, "tournament/append-failed", "レベル追加に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setSubmitting(false);
     }

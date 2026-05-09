@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { logger } from "@/lib/logger";
 import {
@@ -140,7 +140,7 @@ export function useManualSeatChange({
           tid,
           pid: player.id,
         });
-        onError(`${wrapped.code}: ${wrapped.message}`);
+        onError(formatErrorForDisplay(wrapped));
       } finally {
         setBusy(false);
       }
@@ -175,7 +175,7 @@ export function useManualSeatChange({
         "元に戻せませんでした",
       );
       logger.warn(wrapped.message, { code: wrapped.code, tid });
-      onError(`${wrapped.code}: ${wrapped.message}`);
+      onError(formatErrorForDisplay(wrapped));
     } finally {
       setBusy(false);
     }

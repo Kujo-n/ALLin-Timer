@@ -24,7 +24,7 @@ import {
   sanitizeFilename,
 } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTables } from "@/lib/firebase/repositories/tables";
@@ -141,7 +141,7 @@ export function LiveClient({ tid }: { tid: string }) {
     return (
       <main className="mx-auto max-w-md p-6">
         <p className="text-sm text-destructive" role="alert">
-          {`${error.code}: ${error.message}`}
+          {formatErrorForDisplay(error)}
         </p>
       </main>
     );
@@ -281,7 +281,7 @@ export function LiveClient({ tid }: { tid: string }) {
                         "参加登録に失敗しました",
                       );
                       logger.warn(wrapped.message, { code: wrapped.code, tid });
-                      setJoinError(`${wrapped.code}: ${wrapped.message}`);
+                      setJoinError(formatErrorForDisplay(wrapped));
                     } finally {
                       setJoining(false);
                     }

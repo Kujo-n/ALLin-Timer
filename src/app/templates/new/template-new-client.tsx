@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { StructureForm } from "@/components/structure/StructureForm";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { createStructureTemplate } from "@/lib/firebase/repositories/structureTemplates";
 import { createStructureTemplateInputSchema } from "@/lib/firebase/schemas/structureTemplate";
@@ -86,7 +86,7 @@ export function TemplateNewClient() {
           } catch (e) {
             const wrapped = AppError.from(e, "firestore/write_failed", "作成失敗");
             logger.warn(wrapped.message, { code: wrapped.code });
-            setError(`${wrapped.code}: ${wrapped.message}`);
+            setError(formatErrorForDisplay(wrapped));
             throw wrapped;
           }
         }}

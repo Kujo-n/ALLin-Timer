@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import {
   deleteStructureTemplate,
@@ -42,7 +42,7 @@ export function TemplatesClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setLoading(false);
     }
@@ -63,7 +63,7 @@ export function TemplatesClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "削除に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code, tid: target.id });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     }
   }
 

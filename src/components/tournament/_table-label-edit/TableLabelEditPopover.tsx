@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 
@@ -80,7 +80,7 @@ export function TableLabelEditPopover({ table, onSave, onError }: Props) {
         "firestore/write_failed",
         "Table 名の更新に失敗しました",
       );
-      onError?.(`${wrapped.code}: ${wrapped.message}`);
+      onError?.(formatErrorForDisplay(wrapped));
     } finally {
       setSaving(false);
     }

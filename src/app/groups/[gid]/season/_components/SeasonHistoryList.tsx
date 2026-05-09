@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { listSeasonHistory } from "@/lib/firebase/repositories/seasonHistory";
 import type { SeasonHistoryDoc } from "@/lib/firebase/schemas/seasonHistory";
 import { logger } from "@/lib/logger";
@@ -45,7 +45,7 @@ export function SeasonHistoryList({ gid }: { gid: string }) {
           gid,
         });
         if (!canceled) {
-          setError(`${wrapped.code}: ${wrapped.message}`);
+          setError(formatErrorForDisplay(wrapped));
           setLoading(false);
         }
       }

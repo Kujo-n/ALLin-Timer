@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { StructureForm } from "@/components/structure/StructureForm";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import {
   getStructureTemplate,
@@ -40,7 +40,7 @@ export function TemplateEditClient({ tid }: { tid: string }) {
           if (err.code === "firestore/not-found") {
             setNotFound(true);
           } else {
-            setError(`${err.code}: ${err.message}`);
+            setError(formatErrorForDisplay(err));
           }
         }
       }
@@ -105,7 +105,7 @@ export function TemplateEditClient({ tid }: { tid: string }) {
             // updateStructureTemplate は内部で warn 済み。UI 表示と StructureForm 側の
             // エラー伝搬のため re-throw する。
             const err = unwrapOrFrom(e, "firestore/write_failed", "更新失敗");
-            setError(`${err.code}: ${err.message}`);
+            setError(formatErrorForDisplay(err));
             throw err;
           }
         }}

@@ -8,7 +8,7 @@ import { ShareCardButton } from "@/components/share/_share-button/ShareCardButto
 import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
 import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getGroup } from "@/lib/firebase/repositories/groups";
 import { subscribeSeasonStats } from "@/lib/firebase/repositories/seasonStats";
@@ -40,7 +40,7 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
       } catch (e) {
         // getGroup は内部で warn 済み。UI 表示のみここで担当する。
         const err = unwrapOrFrom(e, "firestore/read_failed", "サークル取得失敗");
-        if (!canceled) setError(`${err.code}: ${err.message}`);
+        if (!canceled) setError(formatErrorForDisplay(err));
       }
     })();
     return () => {
@@ -53,7 +53,7 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
     const unsub = subscribeSeasonStats(
       gid,
       (items) => setStats(items),
-      (err) => setError(`${err.code}: ${err.message}`),
+      (err) => setError(formatErrorForDisplay(err)),
     );
     return unsub;
   }, [gid, user]);

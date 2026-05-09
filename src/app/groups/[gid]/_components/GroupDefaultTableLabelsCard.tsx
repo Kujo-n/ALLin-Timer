@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { TableColorPresetRadioGroup } from "@/components/tournament/_table-label-edit/TableColorPresetRadioGroup";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { MAX_TABLES, TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 
 interface Props {
@@ -131,7 +131,7 @@ export function GroupDefaultTableLabelsCard({
         "firestore/write_failed",
         "Table 名デフォルトの更新に失敗しました",
       );
-      onError?.(`${wrapped.code}: ${wrapped.message}`);
+      onError?.(formatErrorForDisplay(wrapped));
     } finally {
       setSaving(false);
     }

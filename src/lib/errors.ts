@@ -56,3 +56,16 @@ export function getErrorCode(error: unknown): string {
   }
   return "unknown";
 }
+
+/**
+ * UI 表示用にエラーを `"<code>: <message>"` 形式の文字列に整形する。
+ *
+ * UI コンポーネント全般で頻出する `\`${err.code}: ${err.message}\`` パターンを
+ * 1 か所に集約するための helper。将来「code を非表示にして message のみ表示」
+ * など UI フォーマットを変更したくなった際の単一書換点として導入。
+ *
+ * architect-refactor 20260510 で追加。
+ */
+export function formatErrorForDisplay(err: { code: string; message: string }): string {
+  return `${err.code}: ${err.message}`;
+}

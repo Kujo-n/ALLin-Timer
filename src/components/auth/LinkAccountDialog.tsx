@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { linkGoogleWithPassword } from "@/lib/services/auth-actions";
 
@@ -50,7 +50,7 @@ export function LinkAccountDialog({
     } catch (e) {
       const wrapped = AppError.from(e, "auth/link-failed", "連携に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setSubmitting(false);
     }

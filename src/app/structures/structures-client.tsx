@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { deleteStructure, listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import { logger } from "@/lib/logger";
@@ -36,7 +36,7 @@ export function StructuresClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export function StructuresClient() {
       await reload();
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "削除に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     }
   }
 

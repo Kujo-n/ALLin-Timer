@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc, TournamentState } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
@@ -79,7 +79,7 @@ export function TournamentsClient() {
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        if (!cancelled) setError(formatErrorForDisplay(wrapped));
       } finally {
         if (!cancelled) setLoading(false);
       }

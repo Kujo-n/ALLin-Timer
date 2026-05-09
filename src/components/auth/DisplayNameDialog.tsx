@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
@@ -50,7 +50,7 @@ export function DisplayNameDialog({ open, onDone, initialName = "" }: Props) {
     } catch (e) {
       const wrapped = AppError.from(e, "auth/unknown", "保存に失敗しました");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setSubmitting(false);
     }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 
 interface UseInlineNumberEditOptions {
   /** 現在の値（編集モード解除時の表示・cancel 時の戻し先）。group などの reactive value から渡す。 */
@@ -130,7 +130,7 @@ export function useInlineNumberEdit(options: UseInlineNumberEditOptions): UseInl
       await onSaved?.();
     } catch (err) {
       const wrapped = unwrapOrFrom(err, errorCode, errorMessage);
-      onError(`${wrapped.code}: ${wrapped.message}`);
+      onError(formatErrorForDisplay(wrapped));
     } finally {
       setSaving(false);
     }

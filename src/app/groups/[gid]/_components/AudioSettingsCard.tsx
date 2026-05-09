@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { listAvailableSounds } from "@/lib/audio/sound-catalog";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { updateAudioSettings } from "@/lib/firebase/repositories/groups";
 import {
   type AudioSettings,
@@ -105,7 +105,7 @@ export function AudioSettingsCard({
         "firestore/write_failed",
         "サウンド設定の更新に失敗しました",
       );
-      onError(`${wrapped.code}: ${wrapped.message}`);
+      onError(formatErrorForDisplay(wrapped));
     } finally {
       setWorking(false);
     }

@@ -14,7 +14,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
@@ -551,7 +551,7 @@ function PdCheckbox({
               code: wrapped.code,
               pid: player.id,
             });
-            onError?.(`${wrapped.code}: ${wrapped.message}`);
+            onError?.(formatErrorForDisplay(wrapped));
           });
         }}
         aria-label={`pd-${player.displayName}`}

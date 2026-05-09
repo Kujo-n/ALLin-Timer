@@ -10,7 +10,7 @@ import {
 } from "@/components/tournament/ClonePlayersChecklist";
 import { TournamentForm } from "@/components/tournament/TournamentForm";
 import { Button } from "@/components/ui/button";
-import { AppError, unwrapOrFrom } from "@/lib/errors";
+import { AppError, formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { subscribePlayers } from "@/lib/firebase/repositories/players";
 import { subscribeTournament } from "@/lib/firebase/repositories/tournaments";
@@ -49,7 +49,7 @@ export function CloneClient({ tid }: { tid: string }) {
       },
       (err) => {
         logger.warn(err.message, { code: err.code });
-        setError(`${err.code}: ${err.message}`);
+        setError(formatErrorForDisplay(err));
       },
     );
     return unsub;

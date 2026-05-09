@@ -6,7 +6,7 @@ import { addDoc, collection, getDocs, serverTimestamp, Timestamp } from "firebas
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import { logger } from "@/lib/logger";
@@ -48,7 +48,7 @@ export function DebugFsClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", "書込失敗");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     }
   }
 
@@ -60,7 +60,7 @@ export function DebugFsClient() {
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
       logger.warn(wrapped.message, { code: wrapped.code });
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     }
   }
 

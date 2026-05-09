@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { joinInputSchema } from "@/lib/firebase/schemas/player";
@@ -58,7 +58,7 @@ export function JoinClient({ tid }: { tid: string }) {
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "トーナメント取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        if (!cancelled) setError(formatErrorForDisplay(wrapped));
       }
     })();
     return () => {
@@ -69,7 +69,7 @@ export function JoinClient({ tid }: { tid: string }) {
   function wrapError(e: unknown) {
     const wrapped = AppError.from(e, "receipt/unknown", "受付に失敗しました");
     logger.warn(wrapped.message, { code: wrapped.code, tid });
-    setError(`${wrapped.code}: ${wrapped.message}`);
+    setError(formatErrorForDisplay(wrapped));
   }
 
   async function onLoginSubmit(e: React.FormEvent) {

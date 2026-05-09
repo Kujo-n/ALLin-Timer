@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentState } from "@/lib/firebase/schemas/tournament";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
@@ -62,7 +62,7 @@ export function PlayerList({
     } catch (e) {
       // service 側で warn 済み — UI catch は表示用 message 抽出のみ
       const wrapped = unwrapOrFrom(e, "firestore/write_failed", "取消に失敗しました");
-      setLocalError(`${wrapped.code}: ${wrapped.message}`);
+      setLocalError(formatErrorForDisplay(wrapped));
     } finally {
       setCancelling(false);
     }
@@ -116,7 +116,7 @@ export function PlayerList({
                               "firestore/write_failed",
                               "PD 設定に失敗しました",
                             );
-                            setLocalError(`${wrapped.code}: ${wrapped.message}`);
+                            setLocalError(formatErrorForDisplay(wrapped));
                           });
                         }}
                         aria-label={`pd-${p.displayName}`}

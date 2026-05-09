@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { finishTournament } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
@@ -98,7 +98,7 @@ export function TimerControls({
     } catch (e) {
       const wrapped = AppError.from(e, "firestore/write_failed", errMsg);
       logger.warn(wrapped.message, { code: wrapped.code, tid, op });
-      onError?.(`${wrapped.code}: ${wrapped.message}`);
+      onError?.(formatErrorForDisplay(wrapped));
     } finally {
       setBusy(null);
     }

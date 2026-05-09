@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { StructureTemplateCard } from "@/components/structure/StructureTemplateCard";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { listStructureTemplates } from "@/lib/firebase/repositories/structureTemplates";
 import type { StructureTemplateDoc } from "@/lib/firebase/schemas/structureTemplate";
 import { logger } from "@/lib/logger";
@@ -31,7 +31,7 @@ export function StructureTemplatePicker({ onSelect }: Props) {
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "テンプレート取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        if (!cancelled) setError(formatErrorForDisplay(wrapped));
       } finally {
         if (!cancelled) setLoading(false);
       }

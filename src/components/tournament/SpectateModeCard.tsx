@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { unwrapOrFrom } from "@/lib/errors";
+import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { buildSpectateUrl } from "@/lib/services/qr";
 import { setSpectateEnabled } from "@/lib/services/tournament";
@@ -87,7 +87,7 @@ export function SpectateModeCard({
         "firestore/write_failed",
         "観戦モード設定の更新に失敗しました",
       );
-      onError(`${wrapped.code}: ${wrapped.message}`);
+      onError(formatErrorForDisplay(wrapped));
       // dialog は閉じない（再試行可能な状態を残す）。
     } finally {
       setToggling(false);

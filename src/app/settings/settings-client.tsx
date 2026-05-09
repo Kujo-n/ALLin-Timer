@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { getUserProfile } from "@/lib/firebase/repositories/users";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
@@ -71,7 +71,7 @@ export function SettingsClient() {
       const wrapped = AppError.from(e, "auth/unknown", "更新に失敗しました");
       setStatus({
         kind: "error",
-        message: `${wrapped.code}: ${wrapped.message}`,
+        message: formatErrorForDisplay(wrapped),
       });
     }
   }

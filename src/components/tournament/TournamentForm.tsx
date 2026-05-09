@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AppError } from "@/lib/errors";
+import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { listStructuresByGroup } from "@/lib/firebase/repositories/structures";
 import type { StructureDoc } from "@/lib/firebase/schemas/structure";
 import type { StructureSnapshot } from "@/lib/firebase/schemas/tournament";
@@ -84,7 +84,7 @@ export function TournamentForm({
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "ストラクチャ取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
-        if (!cancelled) setError(`${wrapped.code}: ${wrapped.message}`);
+        if (!cancelled) setError(formatErrorForDisplay(wrapped));
       } finally {
         if (!cancelled) setLoadingList(false);
       }
@@ -126,7 +126,7 @@ export function TournamentForm({
       await onSubmit({ name: name.trim(), snapshot, seatsPerTable });
     } catch (e) {
       const wrapped = AppError.from(e, "tournament/unknown", "保存に失敗しました");
-      setError(`${wrapped.code}: ${wrapped.message}`);
+      setError(formatErrorForDisplay(wrapped));
     } finally {
       setSubmitting(false);
     }
