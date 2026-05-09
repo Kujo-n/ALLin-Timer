@@ -415,24 +415,19 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
                     && isOrganizer(request.resource.data.groupId);
-      // Phase 1 (04-spectate-mode): tournaments の update は 2 経路の OR:
-      //   経路 A (既存): organizer は全フィールド update 可（structure 編集 / level 進行 / state 遷移 等）
-      //   経路 B (本 Phase): spectateEnabled + updatedAt のみの単独書換。affectedKeys で他フィールド汚染を deny。
+      // tournaments update: organizer は全フィールド update 可（structure 編集 / level 進行 / state 遷移 /
+      // spectateEnabled toggle 等）。
       //
-      //   経路 A が広いため、行動上は経路 B が必須でない（organizer は経路 A で書ける）。
-      //   それでも明示するのは:
-      //   - groups/{gid} の単独フィールド書換 rule 経路（finishedTournamentCount / defaultSeatsPerTable /
-      //     seasonStartDate / defaultTableLabels / seasonPointsRule）と設計を揃え、将来 organizer 経路を
-      //     狭める際の足場とするため
-      //   - emulator validator で「spectateEnabled の単独書換が allow / member は deny / 値が non-bool は deny」
-      //     を独立に確認できるようにするため
-      allow update: if isOrganizer(resource.data.groupId)
-                    || (
-                      isOrganizer(resource.data.groupId)
-                      && request.resource.data.diff(resource.data).affectedKeys()
-                           .hasOnly(['spectateEnabled', 'updatedAt'])
-                      && request.resource.data.spectateEnabled is bool
-                    );
+      // Phase 1 (04-spectate-mode) では「spectateEnabled + updatedAt の単独書換 + is bool」の narrow 分岐 B
+      // を OR で明示していたが、両分岐とも `isOrganizer(resource.data.groupId)` を要求していたため
+      // 分岐 B は分岐 A の strict subset で permissions を一切追加しない dead branch だった
+      // (architect-refactor 20260510)。
+      //
+      // 将来 spectateEnabled の toggle を非 organizer に開放する場合や `affectedKeys` を狭めて
+      // narrow update path を本当に必要とするなら、その時点で分岐 A の `isOrganizer` を狭めると同時に
+      // narrow 分岐を追加する形で導入する。`spectateEnabled is bool` の型強制は
+      // `tournaments` zod schema が同じ制約を application 層で enforce 済み。
+      allow update: if isOrganizer(resource.data.groupId);
       allow delete: if isOrganizer(resource.data.groupId);
 
       // 参加者ドキュメント: 本人による自己作成／更新／取消を許容（Phase 2: 受付フロー）
