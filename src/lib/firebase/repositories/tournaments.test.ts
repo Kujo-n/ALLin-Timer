@@ -69,6 +69,7 @@ import {
   setLevelDurationSec,
   subscribeTournament,
   subscribeTournamentsByGroup,
+  updateSpectateEnabled,
   updateTournament,
 } from "./tournaments";
 
@@ -233,6 +234,50 @@ describe("updateTournament", () => {
   it("wraps errors", async () => {
     vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
     await expect(updateTournament("t1", { name: "X" })).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
+
+describe("updateSpectateEnabled", () => {
+  it("calls updateDoc with { spectateEnabled: true, updatedAt: serverTimestamp() }", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateSpectateEnabled("t1", true);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      spectateEnabled: true,
+      updatedAt: { __op: "serverTimestamp" },
+    });
+  });
+
+  it("calls updateDoc with { spectateEnabled: false, updatedAt: serverTimestamp() }", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateSpectateEnabled("t1", false);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      spectateEnabled: false,
+      updatedAt: { __op: "serverTimestamp" },
+    });
+  });
+
+  it.each([
+    ["string", "true"],
+    ["number", 1],
+    ["null", null],
+    ["undefined", undefined],
+  ] as const)(
+    "rejects %s value with validation/spectate-enabled-invalid",
+    async (_label, bad) => {
+      await expect(
+        updateSpectateEnabled("t1", bad as unknown as boolean),
+      ).rejects.toMatchObject({ code: "validation/spectate-enabled-invalid" });
+      expect(updateDoc).not.toHaveBeenCalled();
+    },
+  );
+
+  it("wraps Firestore reject as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(updateSpectateEnabled("t1", true)).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
   });

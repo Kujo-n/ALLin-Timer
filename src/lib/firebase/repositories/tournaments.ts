@@ -239,6 +239,37 @@ export async function updateTournament(tid: string, patch: UpdateTournamentInput
 }
 
 /**
+ * Phase 3 (04-spectate-mode): tournaments/{tid}.spectateEnabled を toggle する単独書換経路。
+ *
+ *   - rule は Phase 1 で 2 経路（broad organizer A / 単独書換 B）が組まれている。本関数は経路 B に
+ *     対応した patch shape `{ spectateEnabled, updatedAt }` を送る（経路 A も両キーを許可する
+ *     ため両者で通るが、慣習として B に揃える）。
+ *   - 値の型は本関数の事前チェックと firestore.rules の `is bool` で二重防御。
+ *   - service 層 (setSpectateEnabled) で role check を行うため、本関数は型のみ enforce。
+ *   - logger.info は wrapFirestoreWrite の外（成功時のみ）。warn は wrap helper が出力する。
+ */
+export async function updateSpectateEnabled(tid: string, value: boolean): Promise<void> {
+  if (typeof value !== "boolean") {
+    throw new AppError(
+      "観戦モードフラグは boolean で指定してください",
+      "validation/spectate-enabled-invalid",
+    );
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "観戦モード設定の更新に失敗しました",
+    async () => {
+      await updateDoc(doc(tournamentsRef, tid), {
+        spectateEnabled: value,
+        updatedAt: serverTimestamp(),
+      });
+    },
+    { tid },
+  );
+  logger.info("tournament spectateEnabled updated", { tid, value });
+}
+
+/**
  * トーナメントを開始する（state: setup → running）。
  * Phase 2.5: owner ベース→group メンバーベース。
  *  - クライアント側早期失敗のため `userGroupIds` を受け取り、対象 tournament の

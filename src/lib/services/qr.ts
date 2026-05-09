@@ -1,4 +1,11 @@
+function safeOrigin(): string {
+  return typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+}
+
 export function buildJoinUrl(tid: string): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
-  return new URL(`/join/${tid}`, origin).toString();
+  return new URL(`/join/${tid}`, safeOrigin()).toString();
+}
+
+export function buildSpectateUrl(tid: string): string {
+  return new URL(`/spectate/${tid}`, safeOrigin()).toString();
 }
