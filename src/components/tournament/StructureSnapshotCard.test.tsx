@@ -127,6 +127,7 @@ describe("StructureSnapshotCard — editing (Phase 5.2)", () => {
       currentLevel,
       lateEntryDeadlineLevel: 6,
       seatsPerTable: 9,
+      spectateEnabled: false,
       createdAt: baseTs,
       updatedAt: baseTs,
     };

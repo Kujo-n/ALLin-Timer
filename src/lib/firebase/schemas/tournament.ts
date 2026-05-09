@@ -50,6 +50,16 @@ export const tournamentBodySchema = z.object({
   //   - 初回 level 設定（confirmSeating で 0→1）は変更しない（"manual" 等は記録せず undefined のまま）
   //   - UI 層は `=== "manual"` 判定で undefined / null / "auto" すべて「鳴らす側」に倒す
   lastLevelChangeKind: z.enum(["auto", "manual"]).nullable().optional(),
+  // Phase 1 (04-spectate-mode): 観戦モード公開フラグ。default false で旧 doc 互換。
+  //   - true のとき `/spectate/[tid]` への unauthenticated read を許可する（firestore.rules）
+  //   - toggle 経路は organizer 以上のみ（rule + service の二重防御。Phase 3 で実装）
+  //   - ⚠ DRIFT WARNING: firestore.rules の以下の式で参照される:
+  //     1. tournaments/{tid} allow read: `... || resource.data.get('spectateEnabled', false) == true`
+  //     2. tournaments/{tid}/players/{pid} allow read: 親 doc の spectateEnabled を get() で参照
+  //     3. tournaments/{tid}/tables/{tableId} allow read: 同上
+  //     4. tournaments/{tid} allow update: `affectedKeys.hasOnly(['spectateEnabled', 'updatedAt']) + is bool` ブランチ
+  //   schema を消すときは 4 経路すべてから rule を撤去すること。
+  spectateEnabled: z.boolean().default(false),
   createdAt: z.instanceof(Timestamp),
   updatedAt: z.instanceof(Timestamp),
 });

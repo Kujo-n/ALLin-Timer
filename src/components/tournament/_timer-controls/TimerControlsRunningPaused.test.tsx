@@ -47,6 +47,7 @@ function makePausedTournament(overrides: Partial<TournamentDoc> = {}): Tournamen
     currentLevel: 1,
     lateEntryDeadlineLevel: 6,
     seatsPerTable: 9,
+    spectateEnabled: false,
     createdAt: baseCreatedAt,
     updatedAt: baseCreatedAt,
     ...overrides,

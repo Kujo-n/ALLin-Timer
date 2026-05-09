@@ -162,6 +162,8 @@ export async function createTournament(input: CreateTournamentInput): Promise<st
         currentLevel: 0,
         lateEntryDeadlineLevel: input.structureSnapshot.lateEntryDeadlineLevel,
         seatsPerTable: input.seatsPerTable,
+        // Phase 1 (04-spectate-mode): default false で create。toggle は Phase 3 の専用 service 経由。
+        spectateEnabled: false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });

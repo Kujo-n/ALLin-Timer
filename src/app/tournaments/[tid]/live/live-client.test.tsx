@@ -86,6 +86,7 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
     currentLevel: 4, // 締切 Lv3 超過
     lateEntryDeadlineLevel: 3,
     seatsPerTable: 9,
+    spectateEnabled: false,
     createdAt: ts,
     updatedAt: ts,
     ...overrides,
