@@ -212,8 +212,28 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 | Path | 許可 |
 | --- | --- |
-| `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update） |
-| `match /tables/{tableId}` | explicit、organizer のみ書込可。Phase C で `allow write` を `allow create / update / delete` に分割し、update は「label / color に触れない経路」と「`affectedKeys.hasOnly(['label', 'color'])` で `label.size() <= TABLE_LABEL_MAX_LENGTH` / `color matches /^#[0-9a-fA-F]{6}$/` を強制する経路」の OR で構成 |
+| `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update）。Phase 1 (04-spectate-mode) で **read 経路に親 tournament の `spectateEnabled == true` 分岐を OR 追加**（write 経路は据え置き、観戦は read-only） |
+| `match /tables/{tableId}` | explicit、organizer のみ書込可。Phase C で `allow write` を `allow create / update / delete` に分割し、update は「label / color に触れない経路」と「`affectedKeys.hasOnly(['label', 'color'])` で `label.size() <= TABLE_LABEL_MAX_LENGTH` / `color matches /^#[0-9a-fA-F]{6}$/` を強制する経路」の OR で構成。Phase 1 (04-spectate-mode) で **read 経路に同じ `spectateEnabled == true` 分岐を OR 追加** |
+
+加えて `match /tournaments/{tid}` 自体（subcollection ではなくドキュメント本体）も Phase 1 (04-spectate-mode) で
+拡張済み:
+
+- `allow read` は **`allow get` + `allow list` に明示分割**:
+  - `allow get: if isSignedIn() || resource.data.get('spectateEnabled', false) == true`（unauthenticated GET を OR で開放）
+  - `allow list: if isSignedIn()`（既存の signed-in 経由 list は維持。**anon の collection 列挙は deny**）
+  - 分割理由: `allow read` 複合形のままだと anon が `where("spectateEnabled", "==", true)` で公開中の全 tournament を
+    列挙できる discovery 経路が成立する。tid base62 の推測困難性（≈117bit）は GET の防御にしか効かないため、
+    LIST 経由 discovery を `groupJoinCodes` と同方針で deny する（defense-in-depth）
+- `allow update` は既存 organizer 経路に加え、`affectedKeys.hasOnly(['spectateEnabled', 'updatedAt']) + is bool` の
+  単独書換ブランチを additive 追加（経路 A は経路 B を包含するため行動上 redundant だが、`groups/{gid}` の単独
+  フィールド書換 rule（finishedTournamentCount / defaultSeatsPerTable / seasonStartDate / defaultTableLabels /
+  seasonPointsRule）と設計を揃えるための足場）
+- 旧 `allow update, delete` の合体行を分割し、`allow delete` を独立行に（rule 分割の回帰確認は emulator
+  validator のケース 14）
+- emulator validator: [scripts/test-rules-spectate.mjs](../../scripts/test-rules-spectate.mjs)（`npm run test:rules-spectate`）
+  — read allow / deny / write 経路据え置き / delete 回帰 / **anon list deny + signed-in list 維持** までを 16 ケースで網羅
+- collectionGroup wildcard `match /{path=**}/players/{pid}` は **触らない**（`/spectate/[tid]` ページは
+  path-specific rule 経由でしか read しない設計のため、観戦経路で wildcard を緩める必要がない）
 
 `match /groups/{gid}` 配下（Phase A で追加）:
 

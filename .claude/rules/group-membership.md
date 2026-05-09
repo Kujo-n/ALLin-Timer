@@ -144,6 +144,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | シーズンポイント計算ルール（`seasonPointsRule`）の更新 | ○ | ○ | × |
 | 卓 label / color（`tables/{n}.label` / `.color`）の参照 | ○ | ○ | ○ |
 | 卓 label / color の更新 | ○ | ○ | × |
+| 観戦モード（`tournaments/{tid}.spectateEnabled`）の toggle | ○ | ○ | × |
+| 観戦モード ON 中 tournament の **anon read**（`/spectate/[tid]` 経由） | -（anon でも可） | -（同上） | -（同上） |
 | アカウント自己削除（`/settings`） | ○（sole-owner サークルがあれば block） | ○ | ○ |
 
 ## ロール遷移
@@ -244,6 +246,27 @@ const myRole = user && tournamentGroup ? deriveRole(tournamentGroup, user.uid) :
 追加し、wildcard `match /{sub=**}` は絶対に書かないこと。
 
 emulator validation: [scripts/test-rules-season.mjs](../../scripts/test-rules-season.mjs)（`npm run test:rules-season`）。
+
+### Phase 1 (04-spectate-mode): tournaments.spectateEnabled
+
+観戦モード（spectator-only read-only view）の rule 基盤。observable scope は **tournament 単位**で、
+group や season を跨いで開放されることはない。
+
+| Path | 観戦時の挙動 |
+| --- | --- |
+| `tournaments/{tid}` | `spectateEnabled === true` のとき anon でも read 可 |
+| `tournaments/{tid}/players/{pid}` | 親 tournament の `spectateEnabled === true` のとき anon でも read 可 |
+| `tournaments/{tid}/tables/{tableId}` | 同上 |
+
+書込（toggle / 進行操作）の権限は通常通り organizer 以上に限定される。`spectateEnabled` toggle 自体は
+`tournaments/{tid}` の `allow update` 経路で `affectedKeys.hasOnly(['spectateEnabled', 'updatedAt']) + is bool`
+の単独書換ブランチが additive 追加されている（既存の broad organizer update 経路と OR、行動上 redundant
+だが将来 organizer 経路を狭める足場）。詳細・rule 経路の DRIFT WARNING は
+[firebase-patterns.md](firebase-patterns.md) の「`tournaments/{tid}` / `groups/{gid}` 配下 subcollection の rule 設計原則」
+を参照。
+
+emulator validation: [scripts/test-rules-spectate.mjs](../../scripts/test-rules-spectate.mjs)（`npm run test:rules-spectate`）。
+詳細仕様は [04-spectate-mode PRD](../PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md)。
 
 ### tournament state ごとの許可判定（Phase 4 architect-refactor 以降・推奨）
 
