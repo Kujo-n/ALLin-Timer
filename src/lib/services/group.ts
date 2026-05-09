@@ -52,8 +52,9 @@ import {
   removeGroupIdFromUser,
 } from "@/lib/firebase/repositories/users";
 import {
+  assertOrganizer,
+  assertOwner,
   DISPLAY_NAME_MAX_LENGTH,
-  type GroupDoc,
 } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { isInProgress, isSeating } from "@/lib/services/tournament-state";
@@ -205,17 +206,6 @@ export async function propagateDisplayNameToGroups(
   }
 }
 
-function assertOwner(group: GroupDoc, uid: string): void {
-  if (!group.ownerUids.includes(uid)) {
-    throw new AppError("オーナーのみ実行できます", "group/not-owner");
-  }
-}
-
-function assertOrganizer(group: GroupDoc, uid: string): void {
-  if (!group.organizerUids.includes(uid)) {
-    throw new AppError("運営のみ実行できます", "group/not-organizer");
-  }
-}
 
 /**
  * group から脱退する。最後のオーナーは脱退不可（先に別メンバーをオーナーに昇格 or group 削除）。

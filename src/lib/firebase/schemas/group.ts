@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 import { z } from "zod";
 
+import { AppError } from "@/lib/errors";
 import {
   DEFAULT_SEATS_PER_TABLE,
   MAX_SEATS_PER_TABLE,
@@ -222,4 +223,27 @@ export function isOwnerRole(role: MemberRole | null | undefined): boolean {
  */
 export function isSoleOwner(group: GroupBody, uid: string): boolean {
   return group.ownerUids.length === 1 && group.ownerUids[0] === uid;
+}
+
+/**
+ * group において uid が owner でない場合に `AppError("group/not-owner")` を throw する。
+ *
+ * Pure な role 判定 helper として `services/group.ts` の file-private 版を集約。
+ * service / tournament 層が共通で参照できるよう `schemas/group.ts` に置く（Firebase
+ * 初期化を transitively 持ち込まないため、unit test の mock 境界を壊さない）。
+ */
+export function assertOwner(group: GroupBody, uid: string): void {
+  if (!group.ownerUids.includes(uid)) {
+    throw new AppError("オーナーのみ実行できます", "group/not-owner");
+  }
+}
+
+/**
+ * group において uid が organizer（owner も含む）でない場合に
+ * `AppError("group/not-organizer")` を throw する。`assertOwner` と対。
+ */
+export function assertOrganizer(group: GroupBody, uid: string): void {
+  if (!group.organizerUids.includes(uid)) {
+    throw new AppError("運営のみ実行できます", "group/not-organizer");
+  }
 }

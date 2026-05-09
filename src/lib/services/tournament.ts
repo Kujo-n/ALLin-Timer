@@ -4,6 +4,7 @@ import {
   getTournament,
   updateSpectateEnabled,
 } from "@/lib/firebase/repositories/tournaments";
+import { assertOrganizer } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 
 /**
@@ -36,10 +37,7 @@ export async function setSpectateEnabled({
   }
   const tournament = await getTournament(tid);
   const group = await getGroup(tournament.groupId);
-  // assertOrganizer は src/lib/services/group.ts 内 file-private のため、ここでは同じ判定を局所コピー。
-  if (!group.organizerUids.includes(uid)) {
-    throw new AppError("運営のみ実行できます", "group/not-organizer");
-  }
+  assertOrganizer(group, uid);
   await updateSpectateEnabled(tid, value);
   logger.info("setSpectateEnabled ok", {
     tid,
