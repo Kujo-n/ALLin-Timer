@@ -37,10 +37,13 @@ vi.mock("@/lib/firebase/converters", () => ({
 
 import { getDocs, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 
+import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
+
 import {
   listTables,
   markTableBroken,
   subscribeTables,
+  updateTableLabel,
   upsertTable,
   upsertTables,
 } from "./tables";
@@ -160,5 +163,104 @@ describe("subscribeTables", () => {
     );
     subscribeTables("t1", onNext, onError);
     expect(onError.mock.calls[0][0].code).toBe("firestore/subscribe_failed");
+  });
+
+  it("wraps converter throw as firestore/invalid-data", () => {
+    const onNext = vi.fn();
+    const onError = vi.fn();
+    vi.mocked(onSnapshot).mockImplementationOnce(
+      ((_ref: unknown, next: (s: unknown) => void) => {
+        next({
+          docs: [
+            {
+              id: "1",
+              data: () => {
+                throw new Error("zod mismatch");
+              },
+            },
+          ],
+        });
+        return () => {};
+      }) as never,
+    );
+    subscribeTables("t1", onNext, onError);
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onError.mock.calls[0][0].code).toBe("firestore/invalid-data");
+  });
+});
+
+describe("updateTableLabel", () => {
+  it("writes normalized label and color when both are valid", async () => {
+    await updateTableLabel("t1", 3, { label: "メイン", color: "#ff0000" });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBe("メイン");
+    expect(payload.color).toBe("#ff0000");
+  });
+
+  it("trims surrounding whitespace from label", async () => {
+    await updateTableLabel("t1", 1, { label: "  Final  ", color: null });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBe("Final");
+    expect(payload.color).toBeNull();
+  });
+
+  it("normalizes empty label string to null", async () => {
+    await updateTableLabel("t1", 1, { label: "", color: null });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBeNull();
+  });
+
+  it("normalizes whitespace-only label to null", async () => {
+    await updateTableLabel("t1", 1, { label: "   ", color: null });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBeNull();
+  });
+
+  it("passes through explicit null label and null color", async () => {
+    await updateTableLabel("t1", 1, { label: null, color: null });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBeNull();
+    expect(payload.color).toBeNull();
+  });
+
+  it("accepts uppercase hex color", async () => {
+    await updateTableLabel("t1", 1, { label: null, color: "#ABCDEF" });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.color).toBe("#ABCDEF");
+  });
+
+  it("throws validation/table-label-invalid when label exceeds max length", async () => {
+    const tooLong = "a".repeat(TABLE_LABEL_MAX_LENGTH + 1);
+    await expect(
+      updateTableLabel("t1", 1, { label: tooLong, color: null }),
+    ).rejects.toMatchObject({ code: "validation/table-label-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("accepts label exactly at max length boundary", async () => {
+    const exactly = "a".repeat(TABLE_LABEL_MAX_LENGTH);
+    await updateTableLabel("t1", 1, { label: exactly, color: null });
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.label).toBe(exactly);
+  });
+
+  it.each([
+    "red",
+    "#fff",
+    "#1234567",
+    "ff0000",
+    "#GGGGGG",
+  ])("throws validation/table-color-invalid for invalid color %s", async (color) => {
+    await expect(
+      updateTableLabel("t1", 1, { label: null, color }),
+    ).rejects.toMatchObject({ code: "validation/table-color-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("wraps updateDoc errors as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    await expect(
+      updateTableLabel("t1", 1, { label: "x", color: "#000000" }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
   });
 });
