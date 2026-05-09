@@ -12,13 +12,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  TABLE_COLOR_PRESETS,
-} from "@/components/tournament/_table-label-edit/table-color-presets";
+import { TableColorPresetRadioGroup } from "@/components/tournament/_table-label-edit/TableColorPresetRadioGroup";
 import { AppError } from "@/lib/errors";
 import { MAX_TABLES, TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import { logger } from "@/lib/logger";
-import { cn } from "@/lib/utils";
 
 interface Props {
   /**
@@ -190,45 +187,16 @@ export function GroupDefaultTableLabelsCard({
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div
-                      role="radiogroup"
-                      aria-label={`default-table-color-presets-${idx + 1}`}
-                      className="flex flex-wrap gap-1.5 pl-8"
-                    >
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={colorDraft[idx] == null}
-                        aria-label={`default-table-${idx + 1}-color-none`}
+                    <div className="pl-8">
+                      <TableColorPresetRadioGroup
+                        value={colorDraft[idx] ?? null}
+                        onChange={(next) => setColorAt(idx, next)}
                         disabled={saving}
-                        onClick={() => setColorAt(idx, null)}
-                        className={cn(
-                          "flex h-7 w-7 items-center justify-center rounded-md border text-[9px] text-muted-foreground transition",
-                          colorDraft[idx] == null
-                            ? "ring-2 ring-ring ring-offset-1"
-                            : "hover:bg-accent",
-                        )}
-                      >
-                        なし
-                      </button>
-                      {TABLE_COLOR_PRESETS.map((preset) => (
-                        <button
-                          key={preset.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={colorDraft[idx] === preset.value}
-                          aria-label={`default-table-${idx + 1}-color-${preset.name}`}
-                          disabled={saving}
-                          onClick={() => setColorAt(idx, preset.value)}
-                          className={cn(
-                            "h-7 w-7 rounded-md border transition",
-                            colorDraft[idx] === preset.value
-                              ? "ring-2 ring-ring ring-offset-1"
-                              : "hover:opacity-80",
-                          )}
-                          style={{ backgroundColor: preset.value }}
-                        />
-                      ))}
+                        ariaLabelPrefix={`default-table-${idx + 1}`}
+                        ariaLabelStyle="compact"
+                        size="sm"
+                        groupAriaLabel={`default-table-color-presets-${idx + 1}`}
+                      />
                     </div>
                   </li>
                 ))}

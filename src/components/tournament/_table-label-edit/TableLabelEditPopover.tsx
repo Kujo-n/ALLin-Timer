@@ -17,12 +17,9 @@ import { AppError } from "@/lib/errors";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import { logger } from "@/lib/logger";
-import { cn } from "@/lib/utils";
 
-import {
-  TABLE_COLOR_PRESETS,
-  isPresetTableColor,
-} from "./table-color-presets";
+import { TableColorPresetRadioGroup } from "./TableColorPresetRadioGroup";
+import { isPresetTableColor } from "./table-color-presets";
 
 interface Props {
   table: TableDoc;
@@ -143,46 +140,14 @@ export function TableLabelEditPopover({ table, onSave, onError }: Props) {
             </div>
             <div className="space-y-2">
               <span className="text-sm font-medium">色</span>
-              <div
-                role="radiogroup"
-                aria-label={`table-color-presets-${table.tableNum}`}
-                className="flex flex-wrap gap-2"
-              >
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={color === null}
-                  aria-label="色：なし"
-                  disabled={saving}
-                  onClick={() => setColor(null)}
-                  className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-md border text-[10px] text-muted-foreground transition",
-                    color === null
-                      ? "ring-2 ring-ring ring-offset-2"
-                      : "hover:bg-accent",
-                  )}
-                >
-                  なし
-                </button>
-                {TABLE_COLOR_PRESETS.map((preset) => (
-                  <button
-                    key={preset.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={color === preset.value}
-                    aria-label={`色：${preset.name}`}
-                    disabled={saving}
-                    onClick={() => setColor(preset.value)}
-                    className={cn(
-                      "h-9 w-9 rounded-md border transition",
-                      color === preset.value
-                        ? "ring-2 ring-ring ring-offset-2"
-                        : "hover:opacity-80",
-                    )}
-                    style={{ backgroundColor: preset.value }}
-                  />
-                ))}
-              </div>
+              <TableColorPresetRadioGroup
+                value={color}
+                onChange={setColor}
+                disabled={saving}
+                ariaLabelStyle="verbose"
+                size="md"
+                groupAriaLabel={`table-color-presets-${table.tableNum}`}
+              />
               <button
                 type="button"
                 onClick={() => setShowAdvancedColor((v) => !v)}
