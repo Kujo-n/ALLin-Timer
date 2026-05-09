@@ -1,6 +1,13 @@
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { Level } from "@/lib/firebase/schemas/structure";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
+import {
+  isBeforeStart,
+  isFinished,
+  isInProgress,
+  isPaused,
+  isRunning,
+} from "@/lib/services/tournament-state";
 
 export interface LevelInfo {
   current: Level;
@@ -41,22 +48,22 @@ export function getRemainingMs(tournament: TournamentDoc, nowMs: number): number
   if (!info) return null;
   const durationMs = info.current.durationSec * 1000;
 
-  if (tournament.state === "setup" || tournament.state === "seating") return null;
+  if (isBeforeStart(tournament)) return null;
 
   if (tournament.levelStartedAt === null) {
-    return tournament.state === "finished" ? 0 : null;
+    return isFinished(tournament) ? 0 : null;
   }
   const startMs = tournament.levelStartedAt.toMillis();
   const accum = tournament.pausedAccumMs ?? 0;
 
-  if (tournament.state === "finished") {
+  if (isFinished(tournament)) {
     if (tournament.finishedAt === null) return 0;
     const finishedAtMs = tournament.finishedAt.toMillis();
     const elapsed = finishedAtMs - startMs - accum;
     return Math.max(0, durationMs - elapsed);
   }
 
-  if (tournament.state === "paused") {
+  if (isPaused(tournament)) {
     if (tournament.pausedAt === null) return null;
     const pausedAtMs = tournament.pausedAt.toMillis();
     const elapsed = pausedAtMs - startMs - accum;
@@ -80,9 +87,7 @@ export function resolveWinner(
   tournament: TournamentDoc,
   players: readonly PlayerDoc[],
 ): PlayerDoc | null {
-  const isRunningOrPaused = tournament.state === "running" || tournament.state === "paused";
-  const isFinished = tournament.state === "finished";
-  if (!isRunningOrPaused && !isFinished) return null;
+  if (!isInProgress(tournament) && !isFinished(tournament)) return null;
   if (players.length < 2) return null;
   const active = players.filter((p) => !p.isBusted);
   if (active.length !== 1) return null;
@@ -155,11 +160,7 @@ export function getNextBreakInfo(
   tournament: TournamentDoc,
   remainingMs: number | null,
 ): NextBreakInfo | null {
-  if (
-    tournament.state === "setup" ||
-    tournament.state === "seating" ||
-    tournament.state === "finished"
-  ) {
+  if (isBeforeStart(tournament) || isFinished(tournament)) {
     return null;
   }
   const info = getLevelInfo(tournament);
@@ -192,7 +193,7 @@ export function getNextBreakInfo(
  * runTransaction で `currentLevel == expected` guard と共に書込を試みる）。
  */
 export function shouldAutoAdvance(tournament: TournamentDoc, nowMs: number): boolean {
-  if (tournament.state !== "running") return false;
+  if (!isRunning(tournament)) return false;
   if (tournament.levelStartedAt === null) return false;
   const remaining = getRemainingMs(tournament, nowMs);
   if (remaining === null) return false;

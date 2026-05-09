@@ -13,19 +13,17 @@ import {
   signInAsGuest,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
+import { isFinished, isInProgress } from "@/lib/services/tournament-state";
 
 export type ReceiptResult = "created" | "already-joined";
 
 function assertAcceptingEntries(t: TournamentDoc): void {
-  if (t.state === "finished") {
+  if (isFinished(t)) {
     throw new AppError("このトーナメントは終了しています", "tournament/late-entry-closed");
   }
   // Phase 4: late entry 締切超過は client 側で警告（rules では弾かない）。
   // 締切超過後に join しても自動配席されず /live で「締切超過」表示になるため事前に防ぐ。
-  if (
-    (t.state === "running" || t.state === "paused") &&
-    t.currentLevel > t.lateEntryDeadlineLevel
-  ) {
+  if (isInProgress(t) && t.currentLevel > t.lateEntryDeadlineLevel) {
     throw new AppError(
       `レイトエントリー締切（Lv ${t.lateEntryDeadlineLevel}）を超過しています`,
       "tournament/late-entry-closed",
