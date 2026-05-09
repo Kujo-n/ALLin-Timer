@@ -47,61 +47,52 @@ export function SpectateClient({ tid }: { tid: string }) {
   // graceful な状態に倒すための flag。一度 true になったら subscribe 系の他エラーで上書きしない。
   const [spectateEnded, setSpectateEnded] = useState(false);
 
-  // useTournamentTimer 自体の error を spectate-end / その他で分岐ハンドリング。
-  useEffect(() => {
-    if (!timerError) return;
-    const innerCode = getErrorCode(timerError.cause);
+  // 3 つの subscribe (timer / players / tables) のエラーハンドリングは同一形なので
+  // file-private helper に集約。permission-denied 検出は spectateEnded への昇格、
+  // 他 code は警告ログのみ。一度 setSpectateEnded(true) になれば後続の他エラーで
+  // 上書きしない（state setter の単調性は呼出側に依存しない）。
+  const handleSubscribeError = (
+    err: AppError,
+    scope: "tournament" | "players" | "tables",
+  ) => {
+    const innerCode = getErrorCode(err.cause);
     logger.warn("spectate subscribe error", {
-      code: timerError.code,
+      code: err.code,
       innerCode,
-      scope: "tournament",
+      scope,
       tid,
     });
     if (innerCode === "permission-denied") {
       setSpectateEnded(true);
     }
+  };
+
+  useEffect(() => {
+    if (!timerError) return;
+    handleSubscribeError(timerError, "tournament");
+    // handleSubscribeError は closure で setSpectateEnded / tid を捕捉するが、
+    // tid は props 由来で安定。useCallback で wrap せず、依存は timerError のみで十分。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerError, tid]);
 
   useEffect(() => {
-    const handle = (err: AppError, scope: "players" | "tables") => {
-      const innerCode = getErrorCode(err.cause);
-      logger.warn("spectate subscribe error", {
-        code: err.code,
-        innerCode,
-        scope,
-        tid,
-      });
-      if (innerCode === "permission-denied") {
-        setSpectateEnded(true);
-      }
-    };
     const unsub = subscribePlayers(
       tid,
       (list) => setPlayers(list),
-      (err) => handle(err, "players"),
+      (err) => handleSubscribeError(err, "players"),
     );
     return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid]);
 
   useEffect(() => {
-    const handle = (err: AppError) => {
-      const innerCode = getErrorCode(err.cause);
-      logger.warn("spectate subscribe error", {
-        code: err.code,
-        innerCode,
-        scope: "tables",
-        tid,
-      });
-      if (innerCode === "permission-denied") {
-        setSpectateEnded(true);
-      }
-    };
     const unsub = subscribeTables(
       tid,
       (list) => setTables(list),
-      (err) => handle(err),
+      (err) => handleSubscribeError(err, "tables"),
     );
     return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tid]);
 
   // ────────────────────────────────────────────────────────────
