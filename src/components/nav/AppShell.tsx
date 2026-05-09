@@ -14,11 +14,11 @@ import { PrimaryNav } from "./PrimaryNav";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuthUser();
-  const { currentGroupId, isOrganizer } = useCurrentGroup();
+  const { currentGroupId } = useCurrentGroup();
   const { desktopCollapsed, mobileOpen, setMobileOpen } = useNavState();
 
   const signedIn = !!user && !user.isAnonymous;
-  const ctx = { signedIn, currentGroupId, isOrganizer };
+  const ctx = { signedIn, currentGroupId };
 
   // ナビゲーション後に sheet を自動クローズ。Radix が focus をトリガーへ復帰する。
   useEffect(() => setMobileOpen(false), [pathname, setMobileOpen]);

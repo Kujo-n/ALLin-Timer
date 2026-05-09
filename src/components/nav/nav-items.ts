@@ -5,14 +5,12 @@ import {
   LayoutGrid,
   Settings,
   Users,
-  Volume2,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavContext = {
   signedIn: boolean;
   currentGroupId: string | null;
-  isOrganizer: boolean;
 };
 
 type NavItem = {
@@ -32,13 +30,10 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/tournaments", label: "トーナメント一覧", icon: CalendarClock, authOnly: true },
   { href: "/structures", label: "ストラクチャ", icon: LayoutGrid, authOnly: true },
   { href: "/templates", label: "テンプレート", icon: FileStack, authOnly: true },
-  {
-    href: (ctx) => (ctx.currentGroupId ? `/groups/${ctx.currentGroupId}/audio-settings` : null),
-    label: "サウンド設定",
-    icon: Volume2,
-    authOnly: true,
-    visible: (ctx) => !!ctx.currentGroupId && ctx.isOrganizer,
-  },
+  // PRD 02 polish (タブ化) で「サウンド設定」エントリを廃止。
+  //   サークル詳細画面「設定」タブ内 `AudioSettingsCard` に集約済み。サークル単位の設定であり、
+  //   サイドバーの top-level entry を維持するメリットが薄いため重複を解消。
+  //   旧 path `/groups/{gid}/audio-settings` は thin redirect で互換性維持。
   { href: "/settings", label: "アカウント設定", icon: Settings, authOnly: true },
 ];
 
