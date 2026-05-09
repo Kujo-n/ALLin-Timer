@@ -97,7 +97,7 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 | Must | ⑪ Service Worker（app shell precache + runtime stale-while-revalidate） | 一時通信障害時の UI 凍結防止 |
 | Must | 🆕 **`advanceLevel(auto)` の tx → updateDoc fallback** | オフライン耐性の核心。「ブラインドレベルが上がらない」の直接修正 |
 | Must | 🆕 オフライン状態の可視化（pending writes badge / 通信障害中バナー） | 運営者が「今 queue 中」を理解できる |
-| Must | 🆕 PWA install 促進 UI（owner / organizer 限定） | Q3「運営者にはインストールを進める」に直接対応 |
+| Must | 🆕 PWA install 促進 UI（トップ画面 `/` のみ・全ユーザーに表示） | Q3「運営者にはインストールを進める」を直接対応しつつ、一般メンバーへの誤表示コストは「dismiss するだけ」と低いため role gating を持たない（Phase D 設計判断） |
 | Should | 🆕 Wake Lock API（タイマー画面で画面消灯防止） | 会場プロジェクタ投影で重要 |
 | Should | 🆕 `screen.orientation.lock`（横向きロック） | タイマー画面の安定表示 |
 | Should | 🆕 AudioContext unlock の自動化強化（タイマー開始ボタン押下で確実に unlock） | autoplay 制約対策。既存 `SoundUnlockBanner` の補助 |
@@ -116,20 +116,20 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 - ⑪ Service Worker による static asset precache + runtime cache（network-first for HTML / stale-while-revalidate for static）
 - 🆕 `advanceLevel(auto)` の tx 失敗時 updateDoc fallback
 - 🆕 オフライン状態の可視化バナー（`onSnapshot({ includeMetadataChanges })` + `hasPendingWrites` 検出ベース）
-- 🆕 owner / organizer 限定の PWA install 促進バナー（`beforeinstallprompt` event 保持 + iOS UA 判定 fallback）
+- 🆕 トップ画面 `/` 限定の PWA install 促進バナー（全ユーザー対象・role gating なし。`beforeinstallprompt` event 保持 + iOS UA 判定 fallback。30 日 dismiss は localStorage 永続化）
 
 ### User Flow
 
 **運営者の会場運用フロー**:
-1. （初回）`/tournaments/[tid]` 訪問 → owner / organizer ロール検出 → 「ホーム画面に追加」バナー表示
+1. （初回）トップ画面 `/` 訪問 → 「ホーム画面に追加」バナー表示（全ユーザー対象）
 2. インストール → ホーム画面アイコンから standalone 起動 → URL バー消失 + status bar 半透明
 3. タイマー画面で「開始」ボタン押下 → AudioContext unlock + Wake Lock 取得 + screen.orientation.lock
 4. 進行中に通信が一瞬切れる → 通信障害バナー表示 + タイマー継続 + auto-advance は updateDoc fallback で進む
 5. 通信復帰 → pending writes flush + バナー消失
 
 **参加者の閲覧フロー**:
-1. `/tournaments/[tid]/live` または `/join/[tid]` 訪問 → member ロール検出 → install バナー非表示
-2. ブラウザ閲覧で席表 / タイマー確認 → PWA インストールは任意
+1. `/tournaments/[tid]/live` または `/join/[tid]` 訪問（外部 QR 直リンクから） → install バナーは出ない（mount 点はトップ画面のみのため）
+2. ブラウザ閲覧で席表 / タイマー確認 → PWA インストールは任意（必要なら `/` 訪問時に促進 UI が表示される）
 
 **通信障害時のフロー**:
 1. ネットワーク切断 → SW が cache から HTML/JS 提供 → UI 凍結なし
@@ -152,7 +152,7 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 - ⑪ runtime キャッシュ戦略: HTML は **network-first**（最新性優先）、静的アセット（CSS/JS/画像）は **stale-while-revalidate**、Firestore 通信（`firestore.googleapis.com`）は SW で **キャッシュしない**（IndexedDB 側に既存）
 - 🆕 `advanceLevel(auto)` の二段構え: 既存の `runTransaction` 経路を保持しつつ、catch で `unwrapOrFrom` 経由で `firestore/unavailable` 系のエラーを判定 → `updateDoc(tournamentsRef, { currentLevel: expected + 1, ...levelTransitionUpdates })` で fallback。tx fallback 経路は **race 解決を諦める**代わりに「online 復帰時に他端末との同期で eventual consistency に倒す」設計
 - 🆕 オフライン状態可視化: `subscribeTournament` の payload に既に `hasPendingWrites` が含まれている（[tournaments.ts#L786-L800](src/lib/firebase/repositories/tournaments.ts#L786-L800)）ため、UI 層で `useState + useEffect` 経由でバナーを出すだけ。新規 hook 1 つで対応
-- 🆕 PWA install promotion UI: `useGroupRole(gid)` ([useGroupRole.ts](src/lib/hooks/useGroupRole.ts)) で role 判定し、`role !== "member"` のときのみ `beforeinstallprompt` イベントを capture してカスタム install button を render。iOS UA 判定は `navigator.userAgent` で `iPad` / `iPhone` / `iPod` 検出 + `display-mode: standalone` 未起動時のみ表示
+- 🆕 PWA install promotion UI: **トップ画面 (`src/app/page.tsx`) にのみ mount** し、role gating は持たない。`beforeinstallprompt` イベントを capture してカスタム install button を render。iOS UA 判定は `navigator.userAgent` で `iPad` / `iPhone` / `iPod` 検出 + `display-mode: standalone` 未起動時のみ表示。dismiss は `localStorage["allinpt.pwaInstallDismissedAt"]` に 30 日 TTL で永続化（Phase D Decisions 参照）
 - 🆕 Wake Lock / orientation: タイマー画面（`/tournaments/[tid]` の running 状態時）で `navigator.wakeLock.request("screen")` を発行。release は visibilitychange で再取得 + `state="finished"` 遷移時に解放。横向きロックは `screen.orientation.lock("landscape")` を試行（PWA standalone モードのみ動作）
 - 🆕 AudioContext unlock 強化: `useAudioPlayer` hook 内でタイマー開始ボタン押下時に **必ず `resumeAudioContext()` を await** し、unlock 失敗時はバナー表示にフォールバック。既存 `SoundUnlockBanner` を保持しつつ呼出経路を二重化
 - アイコン素材は `public/icons/` 配下に配置し、`<NextImage>` で参照。192x192 / 512x512 / 180x180（apple-touch-icon）の最低 3 サイズ + maskable icon 1 種
@@ -187,7 +187,7 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 | A   | PWA Foundation              | manifest + Service Worker + アイコン素材 + meta tags + iOS install テキスト案内               | complete    | with C   | -       | [phase-a-pwa-foundation.plan.md](../plans/completed/phase-a-pwa-foundation.plan.md) |
 | B   | Timer Offline Resilience    | `advanceLevel(auto)` の tx → updateDoc fallback、オフライン状態可視化バナー、multi-tab 警告 UI | complete    | -        | A       | [phase-b-timer-offline-resilience.plan.md](../plans/completed/phase-b-timer-offline-resilience.plan.md) |
 | C   | Device Controls             | Wake Lock API + `screen.orientation.lock` + AudioContext unlock 強化                         | complete    | with A   | -       | [phase-c-device-controls.plan.md](../plans/completed/phase-c-device-controls.plan.md) |
-| D   | Install Promotion & Polish  | role-aware install banner（owner / organizer 限定）+ 観測フェーズ                            | pending     | -        | A, B, C | -        |
+| D   | Install Promotion & Polish  | トップ画面 `/` 限定の install banner（role gating なし）+ SW path allowlist / LRU + 観測フェーズ | complete    | -        | A, B, C | [phase-d-install-promotion-and-polish.plan.md](../plans/completed/phase-d-install-promotion-and-polish.plan.md) |
 
 ### Phase Details
 
@@ -255,7 +255,7 @@ ALLin-PokerTimer は会場 Wi-Fi が不安定な環境（特に Wi-Fi 設備の�
 | auto-advance のオフライン耐性化 | tx 試行 → tx 失敗時 updateDoc fallback の二段構え | tx 完全廃止して updateDoc 単独 / 完全 race-free な writeBatch 化 | online 時は tx の atomicity を維持しつつ、offline 時のみ fallback。race は楽観 update で対処、二重 increment は値域内のため壊滅的影響なし |
 | `finishTournament` のオフライン対応 | 引き続き online 必須（fallback 入れない） | writeBatch + 後送り reconcile | `seasonStats` の atomicity 維持が必要。一時通信障害ケアの範疇外 |
 | multi-tab 同時運用 | Could として警告 UI のみ | フル対応（leader election） | Firestore SDK の既知バグ（[#6511](https://github.com/firebase/firebase-js-sdk/issues/6511)）の対応コストが高い。「運営者は 1 端末」運用ルールで十分 |
-| install promotion 表示対象 | owner / organizer 限定 | 全員に表示 | ユーザー Q3 回答「運営者にはインストールを進めるようにしたい」に直接対応。member は任意 |
+| install promotion 表示対象 | トップ画面 `/` のみ・全ユーザーに表示（role gating なし） | owner/organizer 限定 / 全画面に表示 | Phase D 設計時の方針見直し: 運営者を主たる対象とする意図は維持しつつ、(1) 表示位置をトップ画面に集約することで「会場 dashboard / live 中に促進バナーが邪魔をする」事故を排除、(2) member への誤表示は「dismiss するだけ」とコスト低、(3) role gating の実装と test 複雑度を回避できる、の 3 点で「全ユーザー × `/` のみ」が最適と判断 |
 | iOS install プロンプト | UA 判定で「共有 → ホーム画面に追加」テキスト案内 | iOS でも `beforeinstallprompt` 待つ / install promotion を Android のみに限定 | iOS Safari は `beforeinstallprompt` 永久に非対応。Next.js 公式ガイドも同パターンを推奨 |
 | PRD 単位 | PWA + オフライン耐性 + デバイス制御を 1 PRD（B 案） | PRD 03 = PWA only / マスター機含めて統合 | 「会場運用体感パック」として技術領域は分離可能だが体感価値が連動。マスター機モードは別 PRD に分離してスコープ縮小 |
 
