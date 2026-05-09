@@ -10,8 +10,9 @@ import { test, expect, type Page } from "./fixtures/test-context";
  *   3. 「今は閉じる」を押すと banner が消え、`localStorage["allinpt.pwaInstallDismissedAt"]`
  *      に ms epoch が書き込まれて 30 日 TTL に乗る（再 mount 時に再表示されない）
  *   4. mount 点限定設計 — `/login` には PwaInstallPromotion / IOsInstallHint いずれも mount されない
- *   5. `/sw.js` が Phase D で導入された invariant（CACHE_VERSION="v2" / NAVIGATE_CACHE_ALLOWLIST /
- *      MAX_RUNTIME_ENTRIES / shouldCacheNavigate）をすべて含む形で配信される
+ *   5. `/sw.js` が Phase D + Phase 4 (04-spectate-mode) で導入された invariant（CACHE_VERSION="v3" /
+ *      NAVIGATE_CACHE_ALLOWLIST に "/spectate" 含む / MAX_RUNTIME_ENTRIES / shouldCacheNavigate）を
+ *      すべて含む形で配信される
  *
  * 検証外（既存 unit でカバー）:
  *   - PwaInstallPromotion.test.tsx で 9 ケース（event 未捕捉 / capture+preventDefault /
@@ -158,7 +159,7 @@ test.describe("Phase D — PWA Install Promotion (top page only)", () => {
 });
 
 test.describe("Phase D — Service Worker static contract", () => {
-  test("/sw.js が Phase D の invariant（CACHE_VERSION=v2 / allowlist / MAX_RUNTIME_ENTRIES / shouldCacheNavigate）を保持する", async ({
+  test("/sw.js が Phase D + Phase 4 の invariant（CACHE_VERSION=v3 / allowlist / MAX_RUNTIME_ENTRIES / shouldCacheNavigate）を保持する", async ({
     request,
   }) => {
     const res = await request.get("/sw.js");
@@ -169,12 +170,15 @@ test.describe("Phase D — Service Worker static contract", () => {
 
     const body = await res.text();
 
-    // CACHE_VERSION は Phase D で v1 → v2 に bump 済み
-    expect(body).toMatch(/const\s+CACHE_VERSION\s*=\s*"v2"/);
+    // CACHE_VERSION は Phase D で v1 → v2、Phase 4 (04-spectate-mode) で v2 → v3 に bump 済み
+    expect(body).toMatch(/const\s+CACHE_VERSION\s*=\s*"v3"/);
 
-    // navigate cache の path allowlist が "/" + "/login" のみ（auth-aware path 除外）
+    // navigate cache の path allowlist が "/" + "/login" + "/spectate"（auth-aware path 除外）
+    // Phase D: "/" + "/login" のみ → Phase 4 で "/spectate" を末尾追加（観戦モード瞬断耐性）
     expect(body).toContain("NAVIGATE_CACHE_ALLOWLIST");
-    expect(body).toMatch(/NAVIGATE_CACHE_ALLOWLIST\s*=\s*\[\s*"\/"\s*,\s*"\/login"\s*\]/);
+    expect(body).toMatch(
+      /NAVIGATE_CACHE_ALLOWLIST\s*=\s*\[\s*"\/"\s*,\s*"\/login"\s*,\s*"\/spectate"\s*\]/,
+    );
 
     // 簡易 LRU の上限定数（50 件で最古から間引き）
     expect(body).toContain("MAX_RUNTIME_ENTRIES");

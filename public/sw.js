@@ -7,12 +7,16 @@
 // Phase D: navigate cache の path allowlist 化（auth-aware page を cache に積まない）/
 //          RUNTIME_CACHE の簡易 LRU eviction / CACHE_VERSION を v2 に bump（旧 cache 全消し）。
 //
+// Phase 4 (04-spectate-mode): /spectate を NAVIGATE_CACHE_ALLOWLIST に追加し、
+//   会場 Wi-Fi 瞬断時に予備モニタが直前 HTML を保持できるようにする。
+//   network-first のため stale 許容範囲は数分以内。CACHE_VERSION v2 → v3 に bump し旧 cache を一掃。
+//
 // 本ファイルは vanilla JS（ESM 不可 / TS 不可）。Next.js は中身を transform しない。
 
 /* eslint-disable */
 // @ts-nocheck
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `allin-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `allin-runtime-${CACHE_VERSION}`;
 
@@ -36,7 +40,9 @@ const SHELL_URLS = [
 // `/groups/...` / `/tournaments/...` / `/settings` / `/account` / `/structures/...` /
 // `/join/...` 等は auth-aware で共用端末漏えいのリスクがあるため cache 書込を skip。
 // query string / hash は無視し pathname のみで判定する。
-const NAVIGATE_CACHE_ALLOWLIST = ["/", "/login"];
+// /spectate は anon 公開かつ tid 推測困難（base62 ≈ 117bit）のため共用端末漏えいリスク無し。
+// 会場予備モニタの瞬断耐性のため allowlist に含める（Phase 4 / 04-spectate-mode）。
+const NAVIGATE_CACHE_ALLOWLIST = ["/", "/login", "/spectate"];
 
 function shouldCacheNavigate(pathname) {
   return NAVIGATE_CACHE_ALLOWLIST.some((p) =>
