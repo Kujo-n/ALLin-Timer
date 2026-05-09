@@ -66,6 +66,8 @@ import {
   canDelete as canDeleteTournament,
   canEdit as canEditTournament,
   isInProgress,
+  isRunning,
+  isSetup,
   showSeatingBoard as showSeatingBoardForState,
 } from "@/lib/services/tournament-state";
 
@@ -105,7 +107,7 @@ export function DashboardClient({ tid }: { tid: string }) {
   // Phase C: 会場プロジェクタ投影中の画面消灯防止 / 横向き固定。
   // running の間だけ Wake Lock を取得（paused / setup / seating / finished では release）。
   // Orientation Lock は PWA standalone のときだけ実際に動く（hook 内で feature detection）。
-  const wakeLock = useWakeLock(data?.state === "running");
+  const wakeLock = useWakeLock(data ? isRunning(data) : false);
   useOrientationLock("landscape");
 
   // Phase 4: dashboard で players と tables を 1 度だけ subscribe し、
@@ -367,7 +369,7 @@ export function DashboardClient({ tid }: { tid: string }) {
             Phase C: Wake Lock 未対応端末向けのテキスト案内。
             running 中のみ表示し、未対応 UA（iOS Safari < 16.4 等）以外では何も描画しない。
           */}
-          {data.state === "running" ? (
+          {isRunning(data) ? (
             <DeviceFallbackHints wakeLockSupported={wakeLock.supported} />
           ) : null}
         </div>
@@ -554,7 +556,7 @@ export function DashboardClient({ tid }: { tid: string }) {
           <DialogHeader>
             <DialogTitle>トーナメントを削除</DialogTitle>
             <DialogDescription>
-              {data.state === "setup"
+              {isSetup(data)
                 ? `「${data.name}」を削除します。開始前のため安全に削除できます。`
                 : `「${data.name}」を削除します。終了済みのため履歴ごと削除されます。参加者・卓情報も同時に消去されます。`}
             </DialogDescription>

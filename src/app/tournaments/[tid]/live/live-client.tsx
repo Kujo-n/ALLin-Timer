@@ -38,6 +38,7 @@ import { attemptAnonymousSelfDelete } from "@/lib/services/auth-actions";
 import { formatTableLabel } from "@/lib/services/format-table-label";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
+import { isBeforeStart, isRunning } from "@/lib/services/tournament-state";
 
 const MOVED_BANNER_MS = 30_000;
 
@@ -263,9 +264,7 @@ export function LiveClient({ tid }: { tid: string }) {
                 <JoinSelfPanel
                   tid={tid}
                   canJoin={
-                    (tournament.state === "setup" ||
-                      tournament.state === "seating" ||
-                      tournament.state === "running") &&
+                    (isBeforeStart(tournament) || isRunning(tournament)) &&
                     !lateEntryClosed
                   }
                   joining={joining}
@@ -332,7 +331,7 @@ export function LiveClient({ tid }: { tid: string }) {
                     </p>
                   ) : null}
                 </div>
-              ) : tournament.state === "setup" || tournament.state === "seating" ? (
+              ) : isBeforeStart(tournament) ? (
                 <p className="text-sm text-muted-foreground">席決め待ち中…</p>
               ) : lateEntryClosed ? (
                 <p className="text-sm text-destructive">レイトエントリー締切超過です</p>

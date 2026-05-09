@@ -19,6 +19,7 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { logger } from "@/lib/logger";
 import { getLevelInfo } from "@/lib/services/timer";
+import { isBeforeStart, isFinished } from "@/lib/services/tournament-state";
 
 /**
  * Phase 2 (04-spectate-mode): /spectate/[tid] の Client Component。
@@ -197,7 +198,7 @@ function SpectateLateEntryBanner({
   tournament: TournamentDoc;
   lateEntryClosed: boolean;
 }) {
-  if (tournament.state === "finished") {
+  if (isFinished(tournament)) {
     return (
       <section
         role="status"
@@ -207,7 +208,7 @@ function SpectateLateEntryBanner({
       </section>
     );
   }
-  if (tournament.state === "setup" || tournament.state === "seating") {
+  if (isBeforeStart(tournament)) {
     return (
       <section
         role="status"
