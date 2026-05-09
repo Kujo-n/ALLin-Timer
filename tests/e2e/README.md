@@ -56,7 +56,6 @@ tests/e2e/
 │   ├── TopPage.ts
 │   ├── LoginPage.ts
 │   ├── GroupsPage.ts
-│   ├── AudioSettingsPage.ts
 │   ├── TournamentsPage.ts
 │   └── JoinPage.ts
 ├── fixtures/

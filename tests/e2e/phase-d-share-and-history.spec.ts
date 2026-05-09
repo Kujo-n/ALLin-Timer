@@ -128,7 +128,7 @@ test.describe("Phase D: シェアボタン render gating", () => {
   });
 });
 
-test.describe("Phase D: シーズン履歴 accordion", () => {
+test.describe("Phase D: シーズン履歴一覧と詳細ページ", () => {
   test("履歴 0 件のとき『過去シーズン』セクションは描画されない", async ({ page }) => {
     const organizer = randomOrganizer();
     await registerOrganizer(page, organizer);
@@ -151,7 +151,7 @@ test.describe("Phase D: シーズン履歴 accordion", () => {
   });
 
   test(
-    "シーズン切替後、過去シーズン accordion が 1 件表示され、展開で top1 が見える",
+    "シーズン切替後、過去シーズン一覧が 1 件表示され、『詳細を見る』で全員分のテーブルに遷移する",
     async ({ page, tournamentDashboardPage }) => {
       const organizer = randomOrganizer();
       const { gid, tid } = await seedOrganizerTournament(page, { organizer });
@@ -178,8 +178,9 @@ test.describe("Phase D: シーズン履歴 accordion", () => {
         // auto-finish 経由で finishTournament tx commit (seasonStats 加算含む)
         await expect(dash.stateBadge).toHaveText("終了", { timeout: 15_000 });
 
-        // ---------- サークル詳細 → 「シーズンを開始する」 ----------
-        await page.goto(`/groups/${gid}`);
+        // ---------- サークル詳細「シーズン」タブ → 「シーズンを開始する」 ----------
+        // PRD 02 polish (タブ化) 後: SeasonCard は「シーズン」タブに移動した。
+        await page.goto(`/groups/${gid}?tab=season`);
         // SeasonCard が render されたら開始ボタン押下
         const startSeasonButton = page.getByRole("button", {
           name: /^シーズンを開始する$/,
@@ -202,7 +203,10 @@ test.describe("Phase D: シーズン履歴 accordion", () => {
           timeout: 15_000,
         });
 
-        // ---------- 過去シーズンランキング画面で履歴 accordion 検証 ----------
+        // ---------- 過去シーズンランキング画面で履歴一覧 + 詳細ページ遷移を検証 ----------
+        // commit be7228f で SeasonHistoryList は accordion → 詳細ページ Link 形式にリファクタ済み。
+        // 一覧では「期間 + 首位」のみを表示し、全員分のランキングは
+        // /groups/{gid}/season/history/{seasonId} で確認する。
         await page.goto(`/groups/${gid}/season`);
 
         const section = page.getByTestId("season-history-section");
@@ -211,27 +215,39 @@ test.describe("Phase D: シーズン履歴 accordion", () => {
           page.getByRole("heading", { name: "過去シーズン" }),
         ).toBeVisible();
 
-        // accordion 行は 1 件。trigger button のテキストに首位（Bob = bust されなかった残り）が含まれる
+        // 一覧行は 1 件。テキストに首位（Bob = bust されなかった残り）が含まれる
         const items = page.locator(
           '[data-testid^="season-history-item-"]',
         );
         await expect(items).toHaveCount(1);
         await expect(items.first()).toContainText("首位: Bob");
 
-        // 展開すると top3 (このケースは Alice + Bob = top2 のみ) が見える。
-        // 折り畳まれた状態では Alice は表示されない（首位行に Bob のみ書いてある）
-        await expect(
-          section.getByRole("listitem", { name: /Alice/ }),
-        ).toHaveCount(0);
+        // 一覧では Alice（非首位）の表示名は出ない（首位行に Bob のみ書いてある）。
+        // 詳細ページに遷移して初めて全員分が見える契約。
+        await expect(items.first()).not.toContainText("Alice");
 
-        const toggle = page.locator(
-          '[data-testid^="season-history-toggle-"]',
+        // 「詳細を見る」 Link をクリックして履歴詳細ページへ遷移。
+        const detailLink = page.locator(
+          '[data-testid^="season-history-detail-link-"]',
         );
-        await toggle.first().click();
+        await expect(detailLink).toHaveCount(1);
+        await Promise.all([
+          page.waitForURL(/\/groups\/[^/]+\/season\/history\/[^/]+/, {
+            timeout: 15_000,
+          }),
+          detailLink.first().click(),
+        ]);
 
-        // 展開後は <ol> 内の <li> として Alice / Bob が並ぶ
-        await expect(section.getByText(/Bob —/)).toBeVisible();
-        await expect(section.getByText(/Alice —/)).toBeVisible();
+        // 詳細ページのヘッダ + ランキングテーブルで Alice / Bob 両方が見える
+        await expect(
+          page.getByRole("heading", { name: "シーズン履歴" }),
+        ).toBeVisible({ timeout: 15_000 });
+        const detailTable = page.locator("main table");
+        await expect(detailTable).toBeVisible();
+        await expect(detailTable.getByText("Bob", { exact: true })).toBeVisible();
+        await expect(
+          detailTable.getByText("Alice", { exact: true }),
+        ).toBeVisible();
       } finally {
         for (const ctx of guestContexts) await ctx.close();
       }

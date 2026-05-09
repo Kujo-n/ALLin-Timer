@@ -65,23 +65,23 @@ test.describe("Phase 4.13: nav shell", () => {
     await expect(sidebar.getByRole("link", { name: "トーナメント一覧" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "ストラクチャ" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "テンプレート" })).toHaveCount(0);
-    await expect(sidebar.getByRole("link", { name: "サウンド設定" })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "アカウント設定" })).toHaveCount(0);
   });
 
-  test("organizer + currentGroupId: 全 authOnly 項目 + サウンド設定 が見え、active 状態が aria-current で示される", async ({
+  test("organizer + currentGroupId: 全 authOnly 項目が見え、active 状態が aria-current で示される", async ({
     page,
   }) => {
     const organizer = randomOrganizer("nav-op");
     await registerOrganizer(page, organizer);
-    const gid = await createGroup(page, "Nav Org Group");
+    await createGroup(page, "Nav Org Group");
 
     // /groups/[gid] に遷移済み。currentGroupId は createGroup 後に gid が選ばれている。
     const sidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
     await expect(sidebar).toBeVisible();
 
-    // authOnly 項目すべて + サウンド設定（organizer && currentGroupId）が表示
+    // authOnly 項目すべてが表示される
     // Phase 4.14: 「サークル」/「トーナメント」を「サークル一覧」/「トーナメント一覧」に rename
+    // PRD 02 polish: 「サウンド設定」エントリ廃止（サークル詳細「設定」タブに集約）
     //
     // `exact: true`: サイドバー footer の user プロファイル link は accessible name に
     // `${userLabel}（アカウント設定を開く）` が入り「アカウント設定」を含むため、partial
@@ -92,7 +92,6 @@ test.describe("Phase 4.13: nav shell", () => {
       "トーナメント一覧",
       "ストラクチャ",
       "テンプレート",
-      "サウンド設定",
       "アカウント設定",
     ]) {
       await expect(
@@ -106,17 +105,22 @@ test.describe("Phase 4.13: nav shell", () => {
     await expect(groupsLink).not.toHaveAttribute("aria-current", "page");
     const groupSubLink = sidebar.getByRole("link", { name: "Nav Org Group" });
     await expect(groupSubLink).toHaveAttribute("aria-current", "page");
-
-    // サウンド設定の href は /groups/{gid}/audio-settings に解決される
-    const audioLink = sidebar.getByRole("link", { name: "サウンド設定" });
-    await expect(audioLink).toHaveAttribute("href", `/groups/${gid}/audio-settings`);
   });
 
-  test("一般メンバー: sidebar に『サウンド設定』が出ない（organizer gate）", async ({ page }) => {
+  test("PRD 02 polish: 全ロールの sidebar に『サウンド設定』 link が無い（タブ集約後の regression guard）", async ({
+    page,
+  }) => {
     const owner = randomOrganizer("nav-ow");
     await registerOrganizer(page, owner);
-    const gid = await createGroup(page, "Nav Member Gate");
+    const gid = await createGroup(page, "Nav Sound Guard");
     const inviteUrl = await issueInviteUrl(page, gid);
+
+    // organizer 視点でも sidebar に「サウンド設定」 link が存在しない
+    const ownerSidebar = page.getByRole("complementary", { name: SIDEBAR_LABEL });
+    await expect(ownerSidebar).toBeVisible();
+    await expect(
+      ownerSidebar.getByRole("link", { name: "サウンド設定", exact: true }),
+    ).toHaveCount(0);
 
     const browser = page.context().browser();
     if (!browser) throw new Error("browser unavailable");
@@ -127,14 +131,13 @@ test.describe("Phase 4.13: nav shell", () => {
       await registerOrganizer(memberPage, member);
       await consumeInviteUrl(memberPage, inviteUrl);
 
-      // group 加入後の /groups/[gid] で sidebar を確認
-      const sidebar = memberPage.getByRole("complementary", { name: SIDEBAR_LABEL });
-      await expect(sidebar).toBeVisible();
-      // メンバー視点でも他の authOnly 項目は出る
-      await expect(sidebar.getByRole("link", { name: "サークル一覧" })).toBeVisible();
-      await expect(sidebar.getByRole("link", { name: "トーナメント一覧" })).toBeVisible();
-      // サウンド設定だけは hidden
-      await expect(sidebar.getByRole("link", { name: "サウンド設定" })).toHaveCount(0);
+      // member 視点でも同じく無い
+      const memberSidebar = memberPage.getByRole("complementary", { name: SIDEBAR_LABEL });
+      await expect(memberSidebar).toBeVisible();
+      await expect(memberSidebar.getByRole("link", { name: "サークル一覧" })).toBeVisible();
+      await expect(
+        memberSidebar.getByRole("link", { name: "サウンド設定", exact: true }),
+      ).toHaveCount(0);
     } finally {
       await memberCtx.close();
     }
@@ -211,7 +214,7 @@ test.describe("Phase 4.13: SoundToggleButton in-place toggle", () => {
   test("dashboard で OFF をクリックすると group の audioSettings.enabled が true に flip する", async ({
     page,
     request,
-    groupAudioSettingsPage,
+    groupDetailPage,
     tournamentDashboardPage,
   }) => {
     // 前提: organizer 登録 → group → structure → tournament（setup）→ running 化。
@@ -223,14 +226,15 @@ test.describe("Phase 4.13: SoundToggleButton in-place toggle", () => {
     const tid = await createTournament(page, "Nav Toggle Tournament");
 
     // 先に audioSettings.enabled=false に倒しておき、dashboard で OFF アイコンを観測する。
-    const audioPage = groupAudioSettingsPage(gid);
-    await audioPage.goto();
-    await audioPage.expectLoaded();
-    await audioPage.enabledCheckbox.uncheck();
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}`, { timeout: 15_000 }),
-      audioPage.saveButton.click(),
-    ]);
+    // PRD 02 polish (タブ化) 後: サウンド設定はサークル詳細「設定」タブ内 Card に統合。
+    const detail = groupDetailPage(gid);
+    await detail.goto();
+    await detail.expectLoaded();
+    await detail.selectTab("settings");
+    await detail.expectAudioCardLoaded();
+    await detail.audioEnabledCheckbox.uncheck();
+    await detail.audioSaveButton.click();
+    await expect(detail.audioSavedFlash).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(async () => {
         const snap = await getDocument(request, `groups/${gid}`);

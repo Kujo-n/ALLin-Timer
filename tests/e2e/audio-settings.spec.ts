@@ -13,14 +13,20 @@ import {
 /**
  * Phase 4.9: Audio Notifications.
  *
+ * PRD 02 polish (タブ化) でサウンド設定は独立ページから「設定」タブ内 Card に統合された。
+ * 本 spec は同統合後の振る舞い前提で書かれている。旧 URL `/groups/[gid]/audio-settings`
+ * は thin redirect で `/groups/[gid]?tab=settings` に転送される（`?from=` `?tid=` クエリ保持）。
+ *
  * 検証対象:
- *   1. organizer は `/groups/[gid]/audio-settings` で設定を変更・保存でき、
- *      Firestore の `groups/{gid}.audioSettings` に書込まれる。
- *   2. 一般メンバーが同 URL を踏むと `/groups/[gid]` にリダイレクトされる
- *      （UI 側 role gate）。
- *   3. dashboard で organizer は `SoundUnlockBanner` を確認できる。
+ *   1. organizer は「設定」タブ内 Card で設定を変更・保存でき、Firestore の
+ *      `groups/{gid}.audioSettings` に書込まれる。保存後は同一画面に留まる。
+ *   2. 一般メンバーが旧 URL を踏むと redirect で `/groups/[gid]?tab=settings` に着地し、
+ *      `AudioSettingsCard` 自体が render されない（親側 organizer gate）。
+ *   3. dashboard で organizer は `SoundToggleButton` を確認できる。
  *      audioSettings.enabled=false に切替えると banner は非表示になる。
- *   4. `/live` で member は banner が出ない（operator gate）。
+ *   4. `?from=live&tid=` 経由で開くと Card 内に「← 全画面表示へ戻る」が出て、
+ *      保存後に `/tournaments/{tid}/live` に遷移する。
+ *   5. `/live` で member は banner が出ない（operator gate）。
  *
  * 検証外:
  *   - 実際の音声再生（headless Chromium で `HTMLAudioElement.play` は autoplay
@@ -73,11 +79,11 @@ function readAudioSettings(doc: Record<string, unknown>): AudioSettingsSnapshot 
   return { enabled, levelUpSoundId, winnerSoundId, volume };
 }
 
-test.describe("Phase 4.9: audio settings", () => {
-  test("organizer は設定を変更して保存でき、Firestore に反映される", async ({
+test.describe("Phase 4.9: audio settings (tab-integrated)", () => {
+  test("organizer は設定タブの Card で設定を変更して保存でき、Firestore に反映される", async ({
     page,
     request,
-    groupAudioSettingsPage,
+    groupDetailPage,
   }) => {
     const organizer = randomOrganizer("audio-op");
     await registerOrganizer(page, organizer);
@@ -94,27 +100,20 @@ test.describe("Phase 4.9: audio settings", () => {
       volume: 0.7,
     });
 
-    // /groups/[gid] 上の "サウンド設定" ボタンから遷移できることも確認する。
-    // Phase 4.13 でサイドバーにも同名の「サウンド設定」リンクが追加されたため、
-    // page-level の `<main id="main">` 配下に絞り込んで strict-mode violation を回避する。
-    await page.goto(`/groups/${gid}`);
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}/audio-settings`, { timeout: 15_000 }),
-      page.locator("#main").getByRole("link", { name: /^サウンド設定$/ }).click(),
-    ]);
-
-    const audioPage = groupAudioSettingsPage(gid);
-    await audioPage.expectLoaded();
+    const detail = groupDetailPage(gid);
+    await detail.goto();
+    await detail.expectLoaded();
+    await detail.selectTab("settings");
+    await detail.expectAudioCardLoaded();
 
     // enabled を off → 音量 50% → 各 select は default のまま、保存。
-    await audioPage.enabledCheckbox.uncheck();
+    await detail.audioEnabledCheckbox.uncheck();
     // <Input type="range"> は fill での値入力を Playwright がサポートする。
-    await audioPage.volumeRange.fill("0.5");
+    await detail.audioVolumeRange.fill("0.5");
 
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}`, { timeout: 15_000 }),
-      audioPage.saveButton.click(),
-    ]);
+    await detail.audioSaveButton.click();
+    // 保存後は同一画面に留まり savedFlash「保存しました」が表示される（`?from=` 無し経路）。
+    await expect(detail.audioSavedFlash).toBeVisible({ timeout: 10_000 });
 
     // Firestore 側に反映されたことを REST 直読みで検証。
     // emulator は rule を bypass する admin token で読めるので即時確認可能。
@@ -135,9 +134,8 @@ test.describe("Phase 4.9: audio settings", () => {
       });
   });
 
-  test("一般メンバーは /groups/[gid]/audio-settings から /groups/[gid] にリダイレクトされる", async ({
+  test("一般メンバーは旧 URL から /groups/[gid]?tab=settings にリダイレクトされ、Card は render されない", async ({
     page,
-    groupAudioSettingsPage,
   }) => {
     // owner: group 作成 + 招待コード発行
     const owner = randomOrganizer("audio-ow");
@@ -145,7 +143,7 @@ test.describe("Phase 4.9: audio settings", () => {
     const gid = await createGroup(page, "Audio Member Gate");
     const inviteUrl = await issueInviteUrl(page, gid);
 
-    // member: 別 context で加入 → audio-settings へ直接アクセス
+    // member: 別 context で加入 → 旧 audio-settings URL へ直接アクセス
     const browser = page.context().browser();
     if (!browser) throw new Error("browser unavailable");
     const memberCtx = await browser.newContext();
@@ -157,21 +155,20 @@ test.describe("Phase 4.9: audio settings", () => {
       expect(joinedGid).toBe(gid);
 
       await memberPage.goto(`/groups/${gid}/audio-settings`);
-      // member は audio-settings-client.tsx 内で role 判定後に
-      // router.replace(`/groups/${gid}`) される。
-      await memberPage.waitForURL(`**/groups/${gid}`, { timeout: 15_000 });
-      // group 詳細ページが描画されていること（"メンバー" カード）。
-      await expect(
-        memberPage.getByText("メンバー", { exact: true }),
-      ).toBeVisible();
-      // 念のため見出しが出ていないことも確認（リダイレクト前 flash 防止）。
-      const settingsHeading = memberPage.getByRole("heading", {
-        name: "サウンド設定",
-      });
-      await expect(settingsHeading).toHaveCount(0);
+      // page.tsx の redirect で /groups/${gid}?tab=settings に着地
+      await memberPage.waitForURL(
+        new RegExp(`/groups/${gid}\\?.*tab=settings`),
+        { timeout: 15_000 },
+      );
 
-      // 同じ gid の POM を作っても goto を呼ばない限り副作用なし。型チェック用に参照だけしておく。
-      void groupAudioSettingsPage(gid);
+      // 設定タブ panel は visible（読取専用 Card 群が見える）
+      await expect(memberPage.locator("#group-detail-panel-settings")).toBeVisible();
+      // 開催数（read-only 表示）は member にも見える
+      await expect(memberPage.getByText("開催数")).toBeVisible();
+      // ただしサウンド設定 Card は organizer gate により render されない（aria-label scope で判定）
+      await expect(
+        memberPage.locator('[aria-label="audio-settings-card"]'),
+      ).toHaveCount(0);
     } finally {
       await memberCtx.close();
     }
@@ -180,7 +177,7 @@ test.describe("Phase 4.9: audio settings", () => {
   test("dashboard の SoundToggleButton は organizer に表示され、enabled=false で OFF アイコンに切り替わる", async ({
     page,
     request,
-    groupAudioSettingsPage,
+    groupDetailPage,
     tournamentDashboardPage,
   }) => {
     // Phase 4.11: dashboard の SoundUnlockBanner は撤去され、TimerControls 内の
@@ -205,15 +202,15 @@ test.describe("Phase 4.9: audio settings", () => {
       page.getByRole("button", { name: /^サウンドON/ }),
     ).toBeVisible({ timeout: 15_000 });
 
-    // 設定ページで enabled を off にして保存。
-    const audioPage = groupAudioSettingsPage(gid);
-    await audioPage.goto();
-    await audioPage.expectLoaded();
-    await audioPage.enabledCheckbox.uncheck();
-    await Promise.all([
-      page.waitForURL(`**/groups/${gid}`, { timeout: 15_000 }),
-      audioPage.saveButton.click(),
-    ]);
+    // 設定タブで enabled を off にして保存（同一画面 polish 後経路）。
+    const detail = groupDetailPage(gid);
+    await detail.goto();
+    await detail.expectLoaded();
+    await detail.selectTab("settings");
+    await detail.expectAudioCardLoaded();
+    await detail.audioEnabledCheckbox.uncheck();
+    await detail.audioSaveButton.click();
+    await expect(detail.audioSavedFlash).toBeVisible({ timeout: 10_000 });
 
     // Firestore に enabled=false が落ちたことを確認してから dashboard を再訪。
     await expect
@@ -261,13 +258,13 @@ test.describe("Phase 4.9: audio settings", () => {
     await expect(page.getByRole("link", { name: /^設定$/ })).toHaveCount(0);
   });
 
-  test("audio-settings に ?from=live&tid= を直接渡すと『全画面表示へ戻る』が出る（URL 契約）", async ({
+  test("audio-settings に ?from=live&tid= を直接渡すと redirect 後 Card 内に『全画面表示へ戻る』が出て、保存で /live に遷移する", async ({
     page,
-    groupAudioSettingsPage,
+    groupDetailPage,
   }) => {
-    // Phase 4.13 で本 UI 経路（banner からのリンク）は無くなったが、audio-settings-client.tsx の
-    // `from=live` 解釈は残っている（将来の再導線追加に備える）。URL 契約として
-    // 振る舞いが維持されているか直接ナビゲーションで確認する。
+    // Phase 4.13 で本 UI 経路（banner からのリンク）は無くなったが、`?from=live` 解釈は
+    // タブ統合後も `AudioSettingsCard` で維持されている（将来の再導線追加に備える）。
+    // page.tsx の redirect が `?from` `?tid` を保持して `?tab=settings` に転送する契約も同時に検証する。
     const organizer = randomOrganizer("audio-fl");
     await registerOrganizer(page, organizer);
     const gid = await createGroup(page, "Audio From Live");
@@ -275,16 +272,20 @@ test.describe("Phase 4.9: audio settings", () => {
     const tid = await createTournament(page, "Audio From Live Tournament");
 
     await page.goto(`/groups/${gid}/audio-settings?from=live&tid=${tid}`);
-    const audioPage = groupAudioSettingsPage(gid);
-    await audioPage.expectLoaded();
+    // redirect で /groups/${gid}?tab=settings&from=live&tid=${tid} に着地（順序は緩く）
+    await page.waitForURL(
+      new RegExp(`/groups/${gid}\\?(?=.*tab=settings)(?=.*from=live)(?=.*tid=${tid})`),
+      { timeout: 15_000 },
+    );
+    const detail = groupDetailPage(gid);
+    await detail.expectAudioCardLoaded();
 
-    await expect(
-      page.getByRole("link", { name: /全画面表示へ戻る/ }),
-    ).toBeVisible();
+    await expect(detail.audioBackLink).toBeVisible();
+    await expect(detail.audioBackLink).toHaveText(/全画面表示へ戻る/);
 
     await Promise.all([
       page.waitForURL(`**/tournaments/${tid}/live`, { timeout: 15_000 }),
-      audioPage.saveButton.click(),
+      detail.audioSaveButton.click(),
     ]);
   });
 

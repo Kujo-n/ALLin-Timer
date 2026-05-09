@@ -3,7 +3,6 @@ import { test as base } from "@playwright/test";
 import { LoginPage } from "../pages/LoginPage";
 import { TopPage } from "../pages/TopPage";
 import { GroupsPage, GroupNewPage, GroupDetailPage } from "../pages/GroupsPage";
-import { GroupAudioSettingsPage } from "../pages/AudioSettingsPage";
 import {
   TournamentsPage,
   TournamentNewPage,
@@ -25,7 +24,6 @@ export const test = base.extend<{
   groupsPage: GroupsPage;
   groupNewPage: GroupNewPage;
   groupDetailPage: (gid: string) => GroupDetailPage;
-  groupAudioSettingsPage: (gid: string) => GroupAudioSettingsPage;
   tournamentsPage: TournamentsPage;
   tournamentNewPage: TournamentNewPage;
   tournamentDashboardPage: (tid: string) => TournamentDashboardPage;
@@ -52,8 +50,6 @@ export const test = base.extend<{
   groupsPage: async ({ page }, use) => use(new GroupsPage(page)),
   groupNewPage: async ({ page }, use) => use(new GroupNewPage(page)),
   groupDetailPage: async ({ page }, use) => use((gid: string) => new GroupDetailPage(page, gid)),
-  groupAudioSettingsPage: async ({ page }, use) =>
-    use((gid: string) => new GroupAudioSettingsPage(page, gid)),
   tournamentsPage: async ({ page }, use) => use(new TournamentsPage(page)),
   tournamentNewPage: async ({ page }, use) => use(new TournamentNewPage(page)),
   tournamentDashboardPage: async ({ page }, use) =>

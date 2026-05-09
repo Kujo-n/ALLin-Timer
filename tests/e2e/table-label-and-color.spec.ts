@@ -189,7 +189,8 @@ test.describe("Phase C: Table Label & Color", () => {
       const joinedGid = await consumeInviteUrl(memberPage, inviteUrl);
       expect(joinedGid).toBe(gid);
 
-      await memberPage.goto(`/groups/${gid}`);
+      // PRD 02 polish (タブ化) 後: Table 名デフォルトカードは「設定」タブに移動した。
+      await memberPage.goto(`/groups/${gid}?tab=settings`);
       // カード自体は read-only で表示される（label "赤卓" は見える）が、編集ボタンは無い。
       await expect(memberPage.getByText("Table 名デフォルト")).toBeVisible({
         timeout: 15_000,

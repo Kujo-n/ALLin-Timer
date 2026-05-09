@@ -58,8 +58,58 @@ export class GroupDetailPage extends BasePage {
   }
 
   async expectLoaded() {
-    // 「メンバー」カードの見出しが出たら読込完了。CardTitle は div 実装なので getByText 利用。
-    await expect(this.page.getByText("メンバー", { exact: true })).toBeVisible();
+    // PRD 02 polish (タブ化) 後: 「メンバー」は tab ラベル + MemberRoleList の Card 見出しの
+    // 両方に出るため、getByText("メンバー") は strict-mode 違反になる。tab button が見えた
+    // 時点で client-side fetch + render 完了とみなす（hidden 属性は tablist 自体には付かない）。
+    await expect(this.tabButton("members")).toBeVisible();
+  }
+
+  // PRD 02 polish (タブ化): 3 タブ切替 helper。
+  private tabLabel(key: "members" | "season" | "settings"): string {
+    if (key === "members") return "メンバー";
+    if (key === "season") return "シーズン";
+    return "設定";
+  }
+
+  tabButton(key: "members" | "season" | "settings"): Locator {
+    return this.page.getByRole("tab", { name: this.tabLabel(key), exact: true });
+  }
+
+  /** 指定タブをクリックし、対応 panel が visible になるまで待つ。 */
+  async selectTab(key: "members" | "season" | "settings"): Promise<void> {
+    await this.tabButton(key).click();
+    await expect(this.page.locator(`#group-detail-panel-${key}`)).toBeVisible();
+  }
+
+  // === サウンド設定 Card 内 locator（PRD 02 polish で旧 AudioSettingsPage.ts から移行）===
+  // 「設定」タブ内の `<Card aria-label="audio-settings-card">` に scope を絞り、
+  // 同タブ内の `defaultTableLabelsSaveButton` (`name=/^保存$/`) と衝突しないようにする。
+  readonly audioSettingsCard: Locator = this.page.locator(
+    '[aria-label="audio-settings-card"]',
+  );
+  // CardTitle は shadcn の <div> で render される（heading role を持たない）。
+  // Card scope 内の text matching で「サウンド設定」見出しの presence を確認する。
+  readonly audioCardTitle: Locator = this.audioSettingsCard
+    .getByText("サウンド設定", { exact: true })
+    .first();
+  readonly audioEnabledCheckbox: Locator = this.audioSettingsCard.getByRole("checkbox", {
+    name: /通知音を有効にする/,
+  });
+  readonly audioLevelUpSelect: Locator = this.audioSettingsCard.getByLabel(/ブラインド変更時:/);
+  readonly audioWinnerSelect: Locator = this.audioSettingsCard.getByLabel(/優勝確定時:/);
+  readonly audioVolumeRange: Locator = this.audioSettingsCard.getByLabel(/音量:/);
+  readonly audioSaveButton: Locator = this.audioSettingsCard.getByRole("button", {
+    name: /^保存$/,
+  });
+  readonly audioSavedFlash: Locator = this.audioSettingsCard
+    .getByRole("status")
+    .filter({ hasText: "保存しました" });
+  readonly audioBackLink: Locator = this.audioSettingsCard.getByRole("link", {
+    name: /(トーナメント受付へ戻る|全画面表示へ戻る)/,
+  });
+
+  async expectAudioCardLoaded(): Promise<void> {
+    await expect(this.audioCardTitle).toBeVisible({ timeout: 15_000 });
   }
 
   // Phase C: 「Table 名デフォルト」カード（GroupDefaultTableLabelsCard）。
@@ -99,8 +149,15 @@ export class GroupDetailPage extends BasePage {
   /**
    * 「編集」→ N 件分 [+ 追加] → 各 Input を fill → [保存] までを 1 操作にまとめる。
    * defaultTableLabels が空の状態から呼ぶ前提（既存 entry を編集する場合は別途扱う）。
+   *
+   * PRD 02 polish (タブ化) 後は Card が「設定」タブ内にあるため、active tab を確認し、
+   * 必要なら設定タブへ切り替えてから編集する。
    */
   async setDefaultTableLabels(labels: string[]): Promise<void> {
+    const settingsPanel = this.page.locator("#group-detail-panel-settings");
+    if (!(await settingsPanel.isVisible())) {
+      await this.selectTab("settings");
+    }
     await this.defaultTableLabelsEditButton.click();
     for (let i = 0; i < labels.length; i += 1) {
       await this.defaultTableLabelsAddButton.click();

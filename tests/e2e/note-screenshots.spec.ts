@@ -68,8 +68,10 @@ test("note 用キャプチャ: 全画面通し撮影", async ({ page }) => {
   await shot(page, "04-group-new.png");
 
   // 6. サークル作成 → 詳細
+  // PRD 02 polish (タブ化) 後は default tab = members で「招待コードを発行」が見える。
+  // screenshot の安定化のため明示的に `?tab=members` を指定する。
   const gid = await createGroup(page, "ALLin サークル例");
-  await page.goto(`/groups/${gid}`);
+  await page.goto(`/groups/${gid}?tab=members`);
   await expect(page.getByRole("button", { name: "招待コードを発行" })).toBeVisible();
   await shot(page, "05-group-detail.png");
 
