@@ -262,6 +262,7 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run test:rules-limits`              | `src/lib/limits.ts` と `firestore.rules` のリテラル一致を機械検査                   |
 | `npm run test:rules-clone-players`       | `players` create ルールを emulator 上で検証（Phase 5.4 organizer-clone ブランチ） |
 | `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
+| `npm run test:rules-season-points-rule`  | `groups/{gid}.seasonPointsRule` ルールを emulator 上で検証（Phase E）             |
 | `npm run test:rules-table-labels`        | `defaultTableLabels` / `tables/{n}.label` / `.color` ルールを emulator 上で検証（Phase C） |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
@@ -304,6 +305,7 @@ Playwright + Firebase Emulator で統合テストを自動化している。`npm
 ```
 src/
 ├─ app/                           # Next.js App Router
+│  ├─ api/og/                     # Open Graph 画像生成 API Route（season / winner、Phase D Web Share 用）
 │  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
@@ -321,6 +323,7 @@ src/
 │  ├─ globals.css
 │  ├─ layout.tsx                  # AuthProvider + GroupProvider + NavStateProvider でラップし
 │  │                              # HeaderMenuButton + AuthBadge + AppShell を常設（Phase 4.13）
+│  ├─ manifest.ts                 # PWA Web App Manifest（Phase A 以降、`/manifest.webmanifest`）
 │  └─ page.tsx                    # 未ログイン時はログインボタンのみ、ログイン後はサークル/トーナメント導線（Phase 4.5）
 ├─ components/
 │  ├─ audio/                      # SoundUnlockBanner（AudioContext unlock 導線、Phase 4.9）
@@ -328,6 +331,8 @@ src/
 │  │                              # / LinkAccountDialog / DisplayNameDialog
 │  ├─ group/                      # InlineNumberEditCard（サークル詳細の inline 数値編集、Phase 4.16+）
 │  ├─ nav/                        # AppShell / HeaderMenuButton / PrimaryNav / nav-state（Phase 4.13 ナビ刷新）
+│  ├─ pwa/                        # ServiceWorkerRegistration / PwaInstallPromotion / IOsInstallHint
+│  │                              # / install-dismiss-storage（Phase A PWA インストール導線）
 │  ├─ qr/                         # QrPanel（受付 URL + QR）
 │  ├─ structure/                  # StructureForm / LevelTable
 │  │                              # / StructureTemplateCard / StructureTemplatePicker（Phase 4.8）
@@ -366,7 +371,11 @@ src/
 │  │                              # / useAudioPlayer（Phase 4.9）/ useGroupRole / useFullscreen
 │  │                              # / useAutoFinish / useImplicitAudioUnlock（Phase 5.1）
 │  │                              # / useInlineNumberEdit / useManualSeatChange
+│  │                              # / useOrientationLock / useWakeLock（ライブビュー画面常時表示）
 │  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
+│                                 # / account-delete（通常アカウント自己削除 orchestrator、Phase 5.5）
+│                                 # / firestore-offline（offline 検知 helper）
+│                                 # / format-table-label（卓ラベル整形の純関数）
 │                                 # / tournament-state（state ガードの純関数集約、Phase 4 architect-refactor）
 │                                 # / tournament-clone（同参加者クローンの orchestrator、Phase 5.4）
 │                                 # / season-points（シーズンポイント計算の純関数、Phase A）
@@ -374,9 +383,11 @@ src/
 │                                 # / pd（PD rotation pure function、Phase 5.1）
 │                                 # / same-table（同卓判定 helper）/ prng
 scripts/
+├─ generate-pwa-icons.mjs         # PWA アイコン再生成（`public/icons/icon_pwa.png` を source に 4 サイズ書出し）
 ├─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
 └─ test-rules-*.mjs               # Firestore Rules emulator validator（limits / clone-players / season /
-                                  # default-seats / finished-count / pd / table-labels の 7 本。手動 / CI 対象外）
+                                  # season-points-rule / default-seats / finished-count / pd / table-labels
+                                  # の 8 本。手動 / CI 対象外）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```
