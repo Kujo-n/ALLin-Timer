@@ -56,7 +56,7 @@ export function useAudioPlayer({
   useImplicitAudioUnlock();
 
   // AudioContext は 1 タブ singleton なので、複数の useAudioPlayer 呼び出し
-  // （dashboard / live / audio-settings）で unlock 状態を共有する必要がある。
+  // （dashboard / live / 設定タブの AudioSettingsCard）で unlock 状態を共有する必要がある。
   // useSyncExternalStore で global な statechange イベントを購読し、どこで unlock しても
   // すべての mount 中 hook が即時に再レンダリングされる。
   // server snapshot は null（SSR では AudioContext を触らない）。

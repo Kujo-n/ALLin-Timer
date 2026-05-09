@@ -19,7 +19,6 @@ interface GroupHeaderCardProps {
   /** ログイン中ユーザーの role（自身が member でない場合は null）。 */
   myRole: MemberRole | null;
   isOwner: boolean;
-  isOrganizer: boolean;
   /** 親の「他の操作中」フラグ。 */
   working: boolean;
   /** rename 確定処理（owner のみ）。AppError throw を期待する。 */
@@ -38,12 +37,15 @@ interface GroupHeaderCardProps {
  * Phase 4 architect-refactor (P5-1) で `group-detail-client.tsx` から分離。
  * `useInlineNumberEdit` 相当の string 版が必要なため、本 component 内に小さな state
  * machine を内蔵する（数値 hook の汎用化は scope 外）。
+ *
+ * PRD 02 polish (タブ化) でルートを `flex-col` 縦 2 段（タイトル行 + アクション行）に
+ * 変更し、モバイル幅で rename form と右ボタン群が重なる問題を構造的に解消。
+ * 同 polish で「サウンド設定」リンクボタンを削除（タブの設定パネルに集約）。
  */
 export function GroupHeaderCard({
   group,
   myRole,
   isOwner,
-  isOrganizer,
   working,
   onRename,
   onRequestDelete,
@@ -94,7 +96,7 @@ export function GroupHeaderCard({
   }
 
   return (
-    <header className="flex items-start justify-between gap-4">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1">
         {isOwner && editing ? (
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -148,19 +150,12 @@ export function GroupHeaderCard({
           {myRole ? ` / あなたは${roleLabel(myRole)}` : ""}
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 self-start sm:self-auto">
         <Link href="/groups">
           <Button variant="outline" size="sm">
             一覧へ
           </Button>
         </Link>
-        {isOrganizer ? (
-          <Link href={`/groups/${group.id}/audio-settings`}>
-            <Button variant="outline" size="sm">
-              サウンド設定
-            </Button>
-          </Link>
-        ) : null}
         {isOwner ? (
           <Button variant="destructive" size="sm" onClick={onRequestDelete}>
             削除

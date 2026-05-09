@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { InlineNumberEditCard } from "@/components/group/InlineNumberEditCard";
@@ -40,7 +40,9 @@ import {
 } from "@/lib/services/group";
 import type { SeasonPointsRule } from "@/lib/services/season-points";
 
+import { AudioSettingsCard } from "./_components/AudioSettingsCard";
 import { GroupDefaultTableLabelsCard } from "./_components/GroupDefaultTableLabelsCard";
+import { GroupDetailTabs, isTabKey, type TabKey } from "./_components/GroupDetailTabs";
 import { GroupHeaderCard } from "./_components/GroupHeaderCard";
 import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
@@ -61,6 +63,8 @@ function originSafe(): string {
 export function GroupDetailClient({ gid }: { gid: string }) {
   const { user } = useAuthUser();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { refreshGroups, setCurrentGroupId, currentGroupId } = useCurrentGroup();
   const [group, setGroup] = useState<GroupDoc | null>(null);
   const [members, setMembers] = useState<MemberLine[]>([]);
@@ -136,6 +140,21 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // PRD 02 polish (タブ化): `?tab=members|season|settings` で active tab を駆動。
+  // 不正値 / 未指定は `members` にフォールバック（isTabKey type guard 経由）。
+  const tabParam = searchParams.get("tab");
+  const activeTab: TabKey = isTabKey(tabParam) ? tabParam : "members";
+  const searchParamsString = searchParams.toString();
+  const onChangeTab = useCallback(
+    (next: TabKey) => {
+      const sp = new URLSearchParams(searchParamsString);
+      sp.set("tab", next);
+      // タブ切替で履歴を残さないよう replace。`scroll: false` で panel 高さ変化時の jump を抑止。
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParamsString],
+  );
 
   // 数値 inline edit 2 枚は useInlineNumberEdit に集約。validate / onSaved /
   // errorCode/Message を渡し、view は InlineNumberEditCard で共通化する。
@@ -333,7 +352,6 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         group={group}
         myRole={myRole}
         isOwner={isOwner}
-        isOrganizer={isOrganizer}
         working={working}
         onRename={onRename}
         onRequestDelete={() => setConfirmDeleteOpen(true)}
@@ -341,105 +359,126 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         onError={setError}
       />
 
-      <InlineNumberEditCard
-        title="開催数"
-        description="終了したトーナメントの累計数。新規作成画面のデフォルト名連番に使用されます。"
-        unit="回"
-        displayPrefix="終了したトーナメント:"
-        inputAriaLabel="開催数"
-        editButtonAriaLabel="開催数を修正"
-        editButtonLabel="修正"
-        min={0}
-        step={1}
-        displayValue={group.finishedTournamentCount}
-        canEdit={isOrganizer}
-        editor={finishedCountEditor}
-      />
-
-      <InlineNumberEditCard
-        title="1 Table あたりの席数（デフォルト）"
-        description={`新規トーナメント作成時の「1 Table あたりの席数」初期値（${MIN_SEATS_PER_TABLE}〜${MAX_SEATS_PER_TABLE}）。`}
-        unit="席"
-        inputAriaLabel="1 Table あたりの席数（デフォルト）"
-        editButtonAriaLabel="デフォルト席数を変更"
-        editButtonLabel="変更"
-        min={MIN_SEATS_PER_TABLE}
-        max={MAX_SEATS_PER_TABLE}
-        step={1}
-        displayValue={group.defaultSeatsPerTable}
-        canEdit={isOrganizer}
-        editor={defaultSeatsEditor}
-      />
-
-      <GroupDefaultTableLabelsCard
-        labels={group.defaultTableLabels ?? []}
-        colors={group.defaultTableColors ?? []}
-        canEdit={isOrganizer}
-        onSave={async (labels, colors) => {
-          await setDefaultTableSettings({ gid, uid: user.uid, labels, colors });
-          await reload();
-          await refreshGroups();
+      <GroupDetailTabs activeTab={activeTab} onChange={onChangeTab}>
+        {{
+          members: (
+            <>
+              {isOrganizer ? (
+                <InviteCodeCard
+                  issuedCode={issuedCode}
+                  onIssue={() => void onIssueCode()}
+                  working={working}
+                  origin={originSafe()}
+                  onCopyError={setError}
+                />
+              ) : null}
+              <MemberRoleList
+                group={group}
+                members={members}
+                selfUid={user.uid}
+                isOwner={isOwner}
+                working={working}
+                onPromoteOrganizer={(targetUid) =>
+                  void runRoleAction(
+                    () => promoteToOrganizer({ gid, actorUid: user.uid, targetUid }),
+                    "運営へ昇格に失敗しました",
+                  )
+                }
+                onPromoteOwner={(targetUid) =>
+                  void runRoleAction(
+                    () => promoteToOwner({ gid, actorUid: user.uid, targetUid }),
+                    "オーナー昇格に失敗しました",
+                  )
+                }
+                onDemoteToMember={(targetUid) =>
+                  void runRoleAction(
+                    () => demoteToMember({ gid, actorUid: user.uid, targetUid }),
+                    "一般へ降格に失敗しました",
+                  )
+                }
+                onDemoteOwner={(targetUid) =>
+                  void runRoleAction(
+                    () => demoteOwner({ gid, actorUid: user.uid, targetUid }),
+                    "オーナー降格に失敗しました",
+                  )
+                }
+              />
+            </>
+          ),
+          season: (
+            <>
+              <SeasonCard
+                gid={gid}
+                seasonStartDate={group.seasonStartDate}
+                isOrganizer={isOrganizer}
+                onRequestStartSeason={() => setConfirmStartSeasonOpen(true)}
+                working={working}
+              />
+              <SeasonPointsRuleCard
+                rule={group.seasonPointsRule ?? null}
+                isOrganizer={isOrganizer}
+                working={working}
+                onSave={(next) => void onSaveSeasonPointsRule(next)}
+                onReset={() => void onResetSeasonPointsRule()}
+              />
+            </>
+          ),
+          settings: (
+            <>
+              <InlineNumberEditCard
+                title="開催数"
+                description="終了したトーナメントの累計数。新規作成画面のデフォルト名連番に使用されます。"
+                unit="回"
+                displayPrefix="終了したトーナメント:"
+                inputAriaLabel="開催数"
+                editButtonAriaLabel="開催数を修正"
+                editButtonLabel="修正"
+                min={0}
+                step={1}
+                displayValue={group.finishedTournamentCount}
+                canEdit={isOrganizer}
+                editor={finishedCountEditor}
+              />
+              <InlineNumberEditCard
+                title="1 Table あたりの席数（デフォルト）"
+                description={`新規トーナメント作成時の「1 Table あたりの席数」初期値（${MIN_SEATS_PER_TABLE}〜${MAX_SEATS_PER_TABLE}）。`}
+                unit="席"
+                inputAriaLabel="1 Table あたりの席数（デフォルト）"
+                editButtonAriaLabel="デフォルト席数を変更"
+                editButtonLabel="変更"
+                min={MIN_SEATS_PER_TABLE}
+                max={MAX_SEATS_PER_TABLE}
+                step={1}
+                displayValue={group.defaultSeatsPerTable}
+                canEdit={isOrganizer}
+                editor={defaultSeatsEditor}
+              />
+              <GroupDefaultTableLabelsCard
+                labels={group.defaultTableLabels ?? []}
+                colors={group.defaultTableColors ?? []}
+                canEdit={isOrganizer}
+                onSave={async (labels, colors) => {
+                  await setDefaultTableSettings({ gid, uid: user.uid, labels, colors });
+                  await reload();
+                  await refreshGroups();
+                }}
+                onError={setError}
+              />
+              {isOrganizer ? (
+                <AudioSettingsCard
+                  group={group}
+                  role={myRole}
+                  onSaved={async () => {
+                    await reload();
+                    await refreshGroups();
+                  }}
+                  onError={setError}
+                />
+              ) : null}
+            </>
+          ),
         }}
-        onError={setError}
-      />
-
-      <SeasonCard
-        gid={gid}
-        seasonStartDate={group.seasonStartDate}
-        isOrganizer={isOrganizer}
-        onRequestStartSeason={() => setConfirmStartSeasonOpen(true)}
-        working={working}
-      />
-
-      <SeasonPointsRuleCard
-        rule={group.seasonPointsRule ?? null}
-        isOrganizer={isOrganizer}
-        working={working}
-        onSave={(next) => void onSaveSeasonPointsRule(next)}
-        onReset={() => void onResetSeasonPointsRule()}
-      />
-
-      <MemberRoleList
-        group={group}
-        members={members}
-        selfUid={user.uid}
-        isOwner={isOwner}
-        working={working}
-        onPromoteOrganizer={(targetUid) =>
-          void runRoleAction(
-            () => promoteToOrganizer({ gid, actorUid: user.uid, targetUid }),
-            "運営へ昇格に失敗しました",
-          )
-        }
-        onPromoteOwner={(targetUid) =>
-          void runRoleAction(
-            () => promoteToOwner({ gid, actorUid: user.uid, targetUid }),
-            "オーナー昇格に失敗しました",
-          )
-        }
-        onDemoteToMember={(targetUid) =>
-          void runRoleAction(
-            () => demoteToMember({ gid, actorUid: user.uid, targetUid }),
-            "一般へ降格に失敗しました",
-          )
-        }
-        onDemoteOwner={(targetUid) =>
-          void runRoleAction(
-            () => demoteOwner({ gid, actorUid: user.uid, targetUid }),
-            "オーナー降格に失敗しました",
-          )
-        }
-      />
-
-      {isOrganizer ? (
-        <InviteCodeCard
-          issuedCode={issuedCode}
-          onIssue={() => void onIssueCode()}
-          working={working}
-          origin={originSafe()}
-          onCopyError={setError}
-        />
-      ) : null}
+      </GroupDetailTabs>
 
       <LeaveDeleteDialogs
         groupName={group.name}
