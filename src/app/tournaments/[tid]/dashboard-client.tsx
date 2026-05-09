@@ -14,6 +14,7 @@ import { OfflineBanner } from "@/components/tournament/OfflineBanner";
 import { PlayerList } from "@/components/tournament/PlayerList";
 import { PlayersCard } from "@/components/tournament/PlayersCard";
 import { SeatingBoard } from "@/components/tournament/SeatingBoard";
+import { SpectateModeCard } from "@/components/tournament/SpectateModeCard";
 import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
@@ -533,6 +534,20 @@ export function DashboardClient({ tid }: { tid: string }) {
         }}
       />
 
+      {/*
+        Phase 3 (04-spectate-mode): 観戦モード toggle / URL コピー / QR。
+          - ページ最下部に配置（運営の core UX を阻害せず、観戦は補助機能の位置付け）。
+          - dashboard 自体が organizer-only redirect 済み（line 167-174 / 256-258）。
+          - Card 内部でも防御として props.uid を必須化し、role check の最終ラインは Firestore Rules。
+          - 後続 <Dialog>（削除確認）はモーダルで通常非描画のため、本 Card が <main> 内の最終
+            visible 要素になる（winner 確定時でも上半分にしか出ない WinnerBanner / ShareCard より下）。
+      */}
+      <SpectateModeCard
+        tid={tid}
+        enabled={data.spectateEnabled}
+        uid={user.uid}
+        onError={setError}
+      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

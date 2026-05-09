@@ -136,7 +136,7 @@ export function TournamentsClient() {
               <Card
                 key={t.id}
                 role="group"
-                aria-label={`${t.name}（${tone.label}）`}
+                aria-label={`${t.name}（${tone.label}${t.spectateEnabled ? "・観戦公開中" : ""}）`}
                 className={cn(
                   "border-2 transition",
                   tone.border,
@@ -154,6 +154,16 @@ export function TournamentsClient() {
                     >
                       {tone.label}
                     </span>
+                    {/* Phase 3 (04-spectate-mode): 公開中の tournament を一目で識別。
+                        色は state badge と被らない sky 系。member にも見せて誤公開放置の検知に使う。 */}
+                    {t.spectateEnabled ? (
+                      <span
+                        className="mr-2 rounded bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300"
+                        aria-label="観戦モード公開中"
+                      >
+                        観戦公開中
+                      </span>
+                    ) : null}
                     {t.structureSnapshot.levels.length} レベル / 初期{" "}
                     {t.structureSnapshot.initialStack}
                   </CardDescription>
