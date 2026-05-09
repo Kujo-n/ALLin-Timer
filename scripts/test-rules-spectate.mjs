@@ -33,11 +33,18 @@
  *
  *   delete 経路の回帰:
  *    14. organizer が tournaments/{tid} を delete → allow（rule 分割の回帰確認）
+ *    14b. owner が tournaments/{tid} を delete → allow（owner ⊆ organizer の回帰確認）
  *
  *   list 列挙の防御（MEDIUM 修正後）:
  *    15. anon が `tournaments` collection を list → deny
  *        （`allow read` を `allow get + allow list: if isSignedIn()` に分割した defense-in-depth）
  *    16. signed-in member が `tournaments` collection を list → allow（既存挙動の回帰確認）
+ *
+ *   collectionGroup query 経路の防御（04-spectate-mode 設計判断の pin、Phase 1 LOW-2 follow-up）:
+ *    17. anon が collectionGroup("players") query を runQuery で叩く → deny
+ *        （PRD「`match /{path=**}/players/{pid}` は触らない」設計を機械検証。
+ *          path-specific rule で観戦 read を開いても、wildcard 経路は signed-in のみに据え置き）
+ *    18. signed-in member が collectionGroup("players") query → allow（既存 JoinedTournamentsNav 経路の回帰確認）
  */
 
 const PROJECT_ID = "allin-pokertimer-e2e";
@@ -157,6 +164,39 @@ async function listCollectionAuth(idToken, collection) {
   });
 }
 
+// runQuery REST endpoint: POST /v1/projects/{p}/databases/(default)/documents:runQuery
+//   structuredQuery.from に `allDescendants: true` を渡すと collectionGroup query になり、
+//   `match /{path=**}/players/{pid}` の rule path で評価される。
+//   pageSize 等は structuredQuery.limit で渡す（最低 1 件で十分）。
+async function runCollectionGroupQueryAnon(collectionId) {
+  return fetch(`${FS_BASE}:runQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId, allDescendants: true }],
+        limit: 1,
+      },
+    }),
+  });
+}
+
+async function runCollectionGroupQueryAuth(idToken, collectionId) {
+  return fetch(`${FS_BASE}:runQuery`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId, allDescendants: true }],
+        limit: 1,
+      },
+    }),
+  });
+}
+
 async function deleteDocAuth(idToken, path) {
   return fetch(`${FS_BASE}/${path}`, {
     method: "DELETE",
@@ -249,6 +289,7 @@ async function main() {
   const tidB = `t-spectate-off-${stamp}`;
   const tidC = `t-spectate-legacy-${stamp}`;
   const tDelete = `t-spectate-delete-${stamp}`;
+  const tDeleteByOwner = `t-spectate-delete-by-owner-${stamp}`;
 
   function tournamentSeed({ withSpectate, value }) {
     const body = {
@@ -327,6 +368,18 @@ async function main() {
   if (!seedDel.ok) {
     const body = await seedDel.text();
     throw new Error(`seed tDelete failed: ${seedDel.status} ${body}`);
+  }
+  const seedDelOwner = await createDoc(
+    owner.idToken,
+    "tournaments",
+    tDeleteByOwner,
+    tournamentSeed({ withSpectate: true, value: false }),
+  );
+  if (!seedDelOwner.ok) {
+    const body = await seedDelOwner.text();
+    throw new Error(
+      `seed tDeleteByOwner failed: ${seedDelOwner.status} ${body}`,
+    );
   }
 
   // 各 tournament に players/{owner.uid} と tables/{1} を seed
@@ -450,6 +503,12 @@ async function main() {
     deleteDocAuth(org.idToken, `tournaments/${tDelete}`),
   );
 
+  // owner ⊆ organizer のため owner も rule 経路 `isOrganizer(...)` で allow される回帰確認。
+  await expectAllow(
+    "(14b) owner delete tournament (owner ⊆ organizer regression)",
+    () => deleteDocAuth(owner.idToken, `tournaments/${tDeleteByOwner}`),
+  );
+
   // ────────────────────────────────────────────────
   // list 列挙の防御（MEDIUM 修正: allow read → allow get + allow list 分割）
   await expectDeny(
@@ -459,6 +518,21 @@ async function main() {
   await expectAllow(
     "(16) signed-in member list tournaments (regression: 既存挙動を維持)",
     () => listCollectionAuth(member.idToken, "tournaments"),
+  );
+
+  // ────────────────────────────────────────────────
+  // collectionGroup query 経路の防御（PRD 設計判断: wildcard 経路は anon に開けない）
+  //   `match /{path=**}/players/{pid}` は `if isSignedIn()` のみで定義されているため、
+  //   spectateEnabled=true の親 tournament を持つ players も collectionGroup query 経由では anon read できない。
+  //   これにより「観戦は path-specific rule（match /tournaments/{tid}/players/{pid}）経由でのみ通る」
+  //   設計を機械検証する（将来 wildcard を緩めた場合に検出する安全網）。
+  await expectDeny(
+    "(17) anon collectionGroup query players (wildcard 経路は signed-in only)",
+    () => runCollectionGroupQueryAnon("players"),
+  );
+  await expectAllow(
+    "(18) signed-in member collectionGroup query players (JoinedTournamentsNav regression)",
+    () => runCollectionGroupQueryAuth(member.idToken, "players"),
   );
 
   // ────────────────────────────────────────────────
