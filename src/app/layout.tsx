@@ -7,7 +7,6 @@ import { AppShell } from "@/components/nav/AppShell";
 import { HeaderMenuButton } from "@/components/nav/HeaderMenuButton";
 import { NavStateProvider } from "@/components/nav/nav-state";
 import { PageTitleProvider, PageTitleSlot } from "@/components/nav/page-title";
-import { IOsInstallHint } from "@/components/pwa/IOsInstallHint";
 import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 import { AuthProvider } from "@/lib/firebase/AuthProvider";
 import { GroupProvider } from "@/lib/services/current-group";
@@ -78,7 +77,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     <AuthBadge />
                   </div>
                 </header>
-                <IOsInstallHint />
                 <AppShell>{children}</AppShell>
               </PageTitleProvider>
             </NavStateProvider>
