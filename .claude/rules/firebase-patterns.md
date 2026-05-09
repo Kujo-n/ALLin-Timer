@@ -288,6 +288,16 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
   - 20 人 × 月 1〜2 回規模では総量的に問題は出ないが、UI 側で無駄な re-subscribe を避ける
 - group ベース権限モデルの全容は [group-membership.md](group-membership.md) を参照
 
+### Phase 2 (04-spectate-mode): 観戦経路の rule read 消費
+
+`/spectate/[tid]` の `subscribePlayers(tid)` / `subscribeTables(tid)` は anon でも通すために、
+配下 doc の rule 評価で `exists() + get()` で親 tournament の `spectateEnabled` を毎回参照する。
+20 人 × 6 卓規模では、初回 listen 時に players 20 件 + tables 6 件 ≈ 26 件の rule 評価が走り、
+各 1 read（同一 rule 評価内では Firebase が path を cache する）。snapshot 更新のたびに
+同様の cost が発生する。会場規模では無視できるが、不特定多数公開（公開リンク拡散など）を
+想定する将来 PRD では再評価する。spectate ON/OFF toggle 直後の re-subscribe による刹那的
+spike も同方針で許容。
+
 ## Structure Templates / templateAdmins 運用（Phase 4.8 以降）
 
 サークル横断の `structureTemplates/{tid}` コレクションと、そのクリーンアップ権限を持つ
