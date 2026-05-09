@@ -13,10 +13,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
-import { logger } from "@/lib/logger";
 
 import { TableColorPresetRadioGroup } from "./TableColorPresetRadioGroup";
 import { isPresetTableColor } from "./table-color-presets";
@@ -75,15 +74,12 @@ export function TableLabelEditPopover({ table, onSave, onError }: Props) {
       });
       setOpen(false);
     } catch (e) {
-      const wrapped = AppError.from(
+      // repository 側で warn 済み — UI catch は表示用 message 抽出のみ
+      const wrapped = unwrapOrFrom(
         e,
         "firestore/write_failed",
         "Table 名の更新に失敗しました",
       );
-      logger.warn(wrapped.message, {
-        code: wrapped.code,
-        tableNum: table.tableNum,
-      });
       onError?.(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       setSaving(false);

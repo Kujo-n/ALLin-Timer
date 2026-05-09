@@ -14,10 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AppError } from "@/lib/errors";
+import { unwrapOrFrom } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentState } from "@/lib/firebase/schemas/tournament";
-import { logger } from "@/lib/logger";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
 import { getSameTableActivePdOtherIds } from "@/lib/services/seating/same-table";
 
@@ -61,8 +60,8 @@ export function PlayerList({
       await cancelPlayerEntry(tid, cancelTarget.id);
       setCancelTarget(null);
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "取消に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code, tid, pid: cancelTarget.id });
+      // service 側で warn 済み — UI catch は表示用 message 抽出のみ
+      const wrapped = unwrapOrFrom(e, "firestore/write_failed", "取消に失敗しました");
       setLocalError(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       setCancelling(false);
@@ -111,16 +110,12 @@ export function PlayerList({
                         checked={p.isPlayingDealer}
                         onChange={(e) => {
                           void onTogglePd!(p, e.target.checked).catch((err) => {
-                            const wrapped = AppError.from(
+                            // orchestrator 側で warn 済み — UI catch は表示用 message 抽出のみ
+                            const wrapped = unwrapOrFrom(
                               err,
                               "firestore/write_failed",
                               "PD 設定に失敗しました",
                             );
-                            logger.warn(wrapped.message, {
-                              code: wrapped.code,
-                              tid,
-                              pid: p.id,
-                            });
                             setLocalError(`${wrapped.code}: ${wrapped.message}`);
                           });
                         }}

@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { AppError } from "@/lib/errors";
-import { logger } from "@/lib/logger";
+import { unwrapOrFrom } from "@/lib/errors";
 import { bustPlayer, unbustPlayer } from "@/lib/services/seating/orchestrator";
 
 interface Props {
@@ -49,8 +48,8 @@ export function BustButton({ tid, pid, isBusted, sameTablePlayerIds, onError }: 
         await bustPlayer(tid, pid, sameTablePlayerIds ?? []);
       }
     } catch (e) {
-      const wrapped = AppError.from(e, "firestore/write_failed", "バスト処理に失敗しました");
-      logger.warn(wrapped.message, { code: wrapped.code, tid, pid });
+      // orchestrator 側で warn 済み — UI catch は表示用 message 抽出のみ
+      const wrapped = unwrapOrFrom(e, "firestore/write_failed", "バスト処理に失敗しました");
       if (mounted.current) onError?.(`${wrapped.code}: ${wrapped.message}`);
     } finally {
       if (mounted.current) setBusy(false);
