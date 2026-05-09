@@ -18,6 +18,7 @@ import { finishTournament } from "@/lib/firebase/repositories/tournaments";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
+import { isFinished, isSeating, isSetup } from "@/lib/services/tournament-state";
 
 import { TimerControlsFinished } from "./_timer-controls/TimerControlsFinished";
 import { TimerControlsRunningPaused } from "./_timer-controls/TimerControlsRunningPaused";
@@ -131,7 +132,7 @@ export function TimerControls({
   ) : null;
 
   function renderForState() {
-    if (tournament.state === "setup") {
+    if (isSetup(tournament)) {
       return (
         <TimerControlsSetup
           tid={tid}
@@ -145,7 +146,7 @@ export function TimerControls({
         />
       );
     }
-    if (tournament.state === "seating") {
+    if (isSeating(tournament)) {
       return (
         <TimerControlsSeating
           tid={tid}
@@ -159,7 +160,7 @@ export function TimerControls({
         />
       );
     }
-    if (tournament.state === "finished") {
+    if (isFinished(tournament)) {
       return (
         <TimerControlsFinished
           connectionBadge={connectionBadge}

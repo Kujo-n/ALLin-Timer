@@ -2,7 +2,12 @@
 
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import type { LevelInfo } from "@/lib/services/timer";
-import { isBeforeStart as isBeforeStartState } from "@/lib/services/tournament-state";
+import {
+  isBeforeStart as isBeforeStartState,
+  isFinished,
+  isPaused,
+  isRunning,
+} from "@/lib/services/tournament-state";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -25,16 +30,15 @@ function formatRemaining(ms: number | null): string {
 export function TimerDisplay({ tournament, remainingMs, levelInfo, className }: Props) {
   const isBeforeStart = isBeforeStartState(tournament);
 
-  const stateBadge =
-    tournament.state === "paused"
-      ? { label: "一時停止中", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }
-      : tournament.state === "finished"
-        ? { label: "終了", tone: "bg-muted text-muted-foreground" }
-        : tournament.state === "running"
-          ? { label: "進行中", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" }
-          : isBeforeStart
-            ? { label: "開始前", tone: "bg-muted text-muted-foreground" }
-            : { label: "未開始", tone: "bg-muted text-muted-foreground" };
+  const stateBadge = isPaused(tournament)
+    ? { label: "一時停止中", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }
+    : isFinished(tournament)
+      ? { label: "終了", tone: "bg-muted text-muted-foreground" }
+      : isRunning(tournament)
+        ? { label: "進行中", tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" }
+        : isBeforeStart
+          ? { label: "開始前", tone: "bg-muted text-muted-foreground" }
+          : { label: "未開始", tone: "bg-muted text-muted-foreground" };
 
   // setup / seating 中は Lv1 をプレビュー表示する。
   const previewLevel =
