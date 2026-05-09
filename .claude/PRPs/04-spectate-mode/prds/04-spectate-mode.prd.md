@@ -177,9 +177,9 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 | #   | Phase                                  | Description                                                                                                                | Status  | Parallel    | Depends | PRP Plan |
 | --- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------- | ----------- | ------- | -------- |
 | 1   | Schema + Rule + Emulator Validator     | `spectateEnabled` field 追加、firestore.rules 4 経路更新、test-rules-spectate.mjs 追加、`spectate/*` error prefix 追加     | complete    | -           | -       | [phase-1-schema-rule-emulator.plan.md](../plans/completed/phase-1-schema-rule-emulator.plan.md) ([report](../reports/phase-1-schema-rule-emulator-report.md)) |
-| 2   | `/spectate/[tid]` Read-only Page       | page.tsx + spectate-client.tsx（タイマー / ブラインド / 残人数 / 席表 / レイトレジ banner / OFF 後の graceful handling）。`/live` を参照に独立実装 | pending | with 3, 4   | 1       | -        |
-| 3   | Toggle UI + 共有導線（dashboard）       | owner / organizer 限定の spectate toggle、確認 dialog、URL コピー button、QR code 表示、tournament 一覧 badge、`setSpectateEnabled` service + `updateSpectateEnabled` repository | pending | with 2, 4   | 1       | -        |
-| 4   | PWA Cache Allowlist 追加                | `public/sw.js` の `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` 追加、CACHE_VERSION bump、stale 許容 = 数分（network-first or 短い max-age） | pending | with 2, 3   | -       | -        |
+| 2   | `/spectate/[tid]` Read-only Page       | page.tsx + spectate-client.tsx（タイマー / ブラインド / 残人数 / 席表 / レイトレジ banner / OFF 後の graceful handling）。`/live` を参照に独立実装 | in-progress | with 3, 4   | 1       | [phase-2-spectate-readonly-page.plan.md](../plans/phase-2-spectate-readonly-page.plan.md) |
+| 3   | Toggle UI + 共有導線（dashboard）       | owner / organizer 限定の spectate toggle、確認 dialog、URL コピー button、QR code 表示、tournament 一覧 badge、`setSpectateEnabled` service + `updateSpectateEnabled` repository | in-progress | with 2, 4   | 1       | [phase-3-toggle-ui-and-share.plan.md](../plans/phase-3-toggle-ui-and-share.plan.md) |
+| 4   | PWA Cache Allowlist 追加                | `public/sw.js` の `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` 追加、CACHE_VERSION bump、stale 許容 = 数分（network-first or 短い max-age） | in-progress | with 2, 3   | -       | [phase-4-pwa-cache-allowlist.plan.md](../plans/phase-4-pwa-cache-allowlist.plan.md) |
 
 ### Phase Details
 
