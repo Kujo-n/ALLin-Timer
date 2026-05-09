@@ -400,17 +400,54 @@ service cloud.firestore {
 
     // tournaments: read は認証済み（受付参加者向け）／write は organizer のみ
     match /tournaments/{tid} {
-      allow read: if isSignedIn();
+      // Phase 1 (04-spectate-mode): 観戦モード公開時は unauthenticated **get** を許可する。
+      //   `allow read` 複合形のままだと anon が `where("spectateEnabled", "==", true)` で公開中の
+      //   全 tournament を列挙できる discovery 経路が成立する（PRD「tid は base62 ≈ 117bit で
+      //   推測困難」は GET の推測困難性であり、LIST 経由 discovery には効かない）。
+      //   `groupJoinCodes` と同方針（`allow get` + `allow list: if false`）で明示分割し、
+      //   anon に対する collection 列挙経路を defense-in-depth で塞ぐ。
+      //   field 自体が無い旧 doc は `.get('spectateEnabled', false)` で false 扱い。
+      allow get: if isSignedIn()
+                 || resource.data.get('spectateEnabled', false) == true;
+      // 既存の signed-in 経由 list（`listTournamentsByGroup` などの `where("groupId","==",gid)`）
+      // は維持。anon の collection 列挙のみ deny。
+      allow list: if isSignedIn();
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
                     && isOrganizer(request.resource.data.groupId);
-      allow update, delete: if isOrganizer(resource.data.groupId);
+      // Phase 1 (04-spectate-mode): tournaments の update は 2 経路の OR:
+      //   経路 A (既存): organizer は全フィールド update 可（structure 編集 / level 進行 / state 遷移 等）
+      //   経路 B (本 Phase): spectateEnabled + updatedAt のみの単独書換。affectedKeys で他フィールド汚染を deny。
+      //
+      //   経路 A が広いため、行動上は経路 B が必須でない（organizer は経路 A で書ける）。
+      //   それでも明示するのは:
+      //   - groups/{gid} の単独フィールド書換 rule 経路（finishedTournamentCount / defaultSeatsPerTable /
+      //     seasonStartDate / defaultTableLabels / seasonPointsRule）と設計を揃え、将来 organizer 経路を
+      //     狭める際の足場とするため
+      //   - emulator validator で「spectateEnabled の単独書換が allow / member は deny / 値が non-bool は deny」
+      //     を独立に確認できるようにするため
+      allow update: if isOrganizer(resource.data.groupId)
+                    || (
+                      isOrganizer(resource.data.groupId)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['spectateEnabled', 'updatedAt'])
+                      && request.resource.data.spectateEnabled is bool
+                    );
+      allow delete: if isOrganizer(resource.data.groupId);
 
       // 参加者ドキュメント: 本人による自己作成／更新／取消を許容（Phase 2: 受付フロー）
       // Phase 4: update を「self: displayName のみ変更可」と「organizer: bust/seat 変更可」に分岐。
       // Phase 4.6: organizer 経路は isOrganizer に強化（一般メンバーは他人を bust/seat できない）。
       match /players/{pid} {
-        allow read: if isSignedIn();
+        // Phase 1 (04-spectate-mode): 親 tournament が観戦モード公開中なら unauthenticated read 可。
+        //   exists() ガードを必ず併用（外部 doc 参照規約）。
+        //   .get('spectateEnabled', false) で field 未保有の旧 doc を false として評価。
+        allow read: if isSignedIn()
+                    || (
+                      exists(/databases/$(database)/documents/tournaments/$(tid))
+                      && get(/databases/$(database)/documents/tournaments/$(tid))
+                           .data.get('spectateEnabled', false) == true
+                    );
         // Phase 5.1: isPlayingDealer は create 時 false 固定（self-stamp PD 防止）。
         //   self-update 分岐で immutable 強制されているため、create を抜け道にされると
         //   組織者の同卓 1 PD 制約 (orchestrator.setIsPlayingDealer の tx) を bypass され
@@ -538,7 +575,14 @@ service cloud.firestore {
       // ⚠ DRIFT WARNING: TABLE_LABEL_MAX_LENGTH は src/lib/limits.ts の同名定数と一致させる。
       //   drift 検出は `scripts/test-rules-limits.mjs`（`npm run test:rules-limits`）で機械的に行う。
       match /tables/{tableId} {
-        allow read: if isSignedIn();
+        // Phase 1 (04-spectate-mode): 親 tournament が観戦モード公開中なら unauthenticated read 可。
+        //   players と同型。exists() ガードを必ず併用。
+        allow read: if isSignedIn()
+                    || (
+                      exists(/databases/$(database)/documents/tournaments/$(tid))
+                      && get(/databases/$(database)/documents/tournaments/$(tid))
+                           .data.get('spectateEnabled', false) == true
+                    );
         allow create: if isSignedIn()
                       && exists(/databases/$(database)/documents/tournaments/$(tid))
                       && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId);
