@@ -33,7 +33,8 @@ Phase 1 で確立。Phase 4 architect-refactor で helper を 3 種類に拡張�
   - `seating/*` — 席決め起因
   - `group/*` — group 操作起因
   - `season/*` — シーズン管理起因（Phase A 追加。`startNewSeason` の tx 失敗 / pre-check 違反等）
-  - 例: `firestore/permission-denied`, `auth/email-already-in-use`, `tournament/seat-conflict`, `season/start-failed`, `season/in-progress-tournament`
+  - `pwa/*` — PWA インストール / Service Worker / ブラウザストレージ起因（Phase D 追加。`pwa/storage-failed` / `pwa/install-prompt-failed` 等）
+  - 例: `firestore/permission-denied`, `auth/email-already-in-use`, `tournament/seat-conflict`, `season/start-failed`, `season/in-progress-tournament`, `pwa/storage-failed`
 - `throw new Error(...)` の直接使用は禁止（`AppError` でラップ）
 
 ## エラー helper の使い分け（Phase 4 architect-refactor 以降）
