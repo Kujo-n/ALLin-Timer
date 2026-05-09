@@ -47,7 +47,7 @@ async function dispatchBeforeInstallPrompt(
   ).toBeVisible({ timeout: 15_000 });
 
   await page.evaluate(
-    ({ outcome }) => {
+    ({ outcome }: { outcome: "accepted" | "dismissed" }) => {
       const ev = new Event("beforeinstallprompt") as Event & {
         prompt: () => Promise<void>;
         userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;

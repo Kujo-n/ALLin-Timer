@@ -1,5 +1,7 @@
 import { test as base } from "@playwright/test";
 
+export type { Page } from "@playwright/test";
+
 import { LoginPage } from "../pages/LoginPage";
 import { TopPage } from "../pages/TopPage";
 import { GroupsPage, GroupNewPage, GroupDetailPage } from "../pages/GroupsPage";
