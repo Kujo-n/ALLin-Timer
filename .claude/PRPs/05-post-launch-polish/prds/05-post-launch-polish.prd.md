@@ -1,53 +1,103 @@
-# Result Card Background Image（優勝・シーズン首位カード 背景画像カスタマイズ）
+# Post-Launch Polish（リリース後の小規模 UX 改善・プロモーション集約 PRD）
 
 ## Problem Statement
 
-Phase B（02-season-stats-and-share）で `@vercel/og` ベースの優勝カード / シーズン首位カードの SSR 生成が完成し、Web Share API（Phase D）まで揃ったが、すべてのサークルが同じ amber/navy グラデーション背景なため、カードを SNS シェアしても「どのサークルも同じに見える」「サークルの個性が出ない」状態。サークル代表が新規メンバー勧誘・既存メンバーの帰属意識醸成に活用しづらい。
+PRD 01〜04（Foundation / シーズン戦績 / PWA / 観戦モード）が完了しドライラン投入直前のフェーズに
+入った時点で、コア機能の追加開発は概ね一段落している。一方で、ドライラン参加サークルからのフィードバック
+や運営者ヒアリングを通じて、**「PRD として独立させるほど大きくはないが、ドライラン投入の効果を
+左右する小〜中粒度の UX 改善 / プロモーション動線追加」**が継続的に発生する見込み。
+
+これらを毎回新規 PRD として立てるのは粒度が合わず、かといって完了済み PRD（01〜04）に追記すると
+[完了済み PRD への plan 後追い禁止](memory: feedback_no_plan_in_completed_prd) に抵触する。
+そこで本 PRD は「リリース後の小規模 UX 改善 / プロモーション施策の集約コンテナ」として位置付け、
+複数の独立 Track（カード装飾・公開記事リンク・将来の小改善 ...）を並列に持つ親 PRD とする。
 
 ## Evidence
 
-- 観察: 現状の `WINNER_CARD_STYLE.background = "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)"` (`src/app/api/og/_lib/og-card-styles.ts:11-21`) は全サークル共通固定。サークル名・トーナメント名以外に視覚的差別化要素なし
-- ドライラン由来の声: 「他サークルとの差別化要素が薄い」「もっと盛り上がる絵にしたい」（Foundation 質問の回答 — 「見た目が単調で SNS シェアしたくならない」「カードを保存・シェアしても上手く記念にならない」）
-- 仮説検証手段: ドライラン参加サークル / 初期サークル代表からの「使いたくなる / 使いたくない」フィードバック（Foundation 回答 — 主成功シグナル）
+- ドライラン由来の声（Foundation 質問の回答）:
+  - 「結果カードに個性が無く SNS シェアしたくならない」
+  - 「note 記事を書いたが、アプリのトップから記事への動線が無い」
+- 観察:
+  - 結果カード SSR は全サークル同一の amber/navy グラデーション固定
+    （`src/app/api/og/_lib/og-card-styles.ts:11-21`）
+  - トップ画面 `/`（`src/app/page.tsx`）はログイン CTA と一覧 CTA のみ。アプリ概要や運営チートシートへの
+    動線ゼロ
+  - PRD 01〜04 はいずれも `plans/` 直下が空（completed のみ）= immutable アーカイブ状態
+- 仮説検証手段:
+  - 各 Track 完了後にドライラン参加サークル代表からの定性フィードバック
+  - 結果カード装飾は「使いたくなる / 使いたくない」「次回も使う」
+  - 記事リンクは「アプリ説明をしやすくなった / 当日参照しやすくなった」
 
 ## Proposed Solution
 
-`groups/{gid}` に `winnerCardBackground` / `seasonCardBackground` の 2 フィールドを additive 追加し、owner が **サークル詳細画面**から背景画像をアップロード・差し替え・解除できるようにする。画像は **Firebase Storage**（`groups/{gid}/bgImages/{assetId}`）で管理し、OG SSR route が公開 URL を fetch → data URI 変換 → Satori `<img>` で root 背景にレンダリング。背景画像が入った状態でも文字が読めるよう、上下に黒グラデーションスクリムとテキストグループ背景に rgba 半透明 block を重ねる readability layer を導入。owner は「ライト / ダーク」テキストテーマも選択可。
+リリース後の polish を **Track 単位**に分けて並列に進める。各 Track は独立にデプロイ可能で、
+単一の Implementation Phase 群を持つ。Track 自体の追加（新 Track 起こし）は本 PRD の Decisions Log に
+追記し、新規 plan を `.claude/PRPs/05-post-launch-polish/plans/` 配下に sequential に追加する形で運用する。
 
-代替案として検討した「リポジトリ同梱プリセット (A)」「URL 直接入力 (D)」「Firestore data URI (E)」は、サークル独自画像の自由度・UX・スケーラビリティで Storage 方式に劣ると判断。Phase 4.10 で deferred されていた Firebase Storage / Blaze プラン移行を本 PRD で先行導入する（owner のみ書込・公開 read のシンプル設計で複雑度を抑える）。
+現時点で確定している Track:
+
+- **Track A: Result Card Background Image**（結果カード背景画像カスタマイズ）
+  - 旧 PRD `05-result-card-image-bg` の全内容を内包。Phase 1〜3 の構成は維持
+- **Track B: Top Page Promotion**（トップ画面プロモーション動線）
+  - note 公開記事 2 本（アプリ紹介 / 運営チートシート）へのリンク追加から開始
+
+将来的な追加 Track 候補（着手は別途判断）:
+
+- Track C: ダッシュボード入場後の onboarding hint（初回 owner 向け tooltip）
+- Track D: 結果カードのテキストスタイル選択肢拡張
+- Track E: 共有 URL 短縮 / カスタム OG image preset
+- 他、ドライラン中に発生する小〜中規模の polish
 
 ## Key Hypothesis
 
-**サークル独自の背景画像でカードに個性を持たせれば**、トーナメント終了後の優勝カード / シーズン首位カードが SNS シェア・サークル内 LINE / Discord 共有のモチベーションを生み、**サークル代表・参加者から「使いたくなる」フィードバックが得られる**。
-**仮説検証**: ドライラン投入後 1〜2 ヶ月以内に、初期サークル代表 3 名以上が背景画像を設定し、設定したサークル内で「次回も使いたい」「他サークルにも勧めたい」の定性フィードバックが得られる。
+**リリース直後の polish を「単一の集約 PRD」に束ねて段階的にリリースすれば**、ドライラン参加サークル
+からの「使いたくなる / 次回も使う」シグナルが早期に集まり、コア機能開発の中断なく改善ループを
+回せる。**仮説検証**: 本 PRD の Track A / Track B 完了後 1〜2 ヶ月で、初期サークル代表 3 名以上から
+「ドライラン継続したい」「他サークルにも勧めたい」のポジティブフィードバックが得られる。
 
 ## What We're NOT Building
 
-- **トーナメント単位の個別背景設定** - サークル単位の 1 枚で十分。`tournaments/{tid}` に背景フィールドは追加しない
-- **コラボ画像・ロゴ重ね・ステッカー装飾などのデザインエディタ** - 1 枚画像をそのまま使うのみ。owner が外部ツールで事前加工する
-- **シーズンごとに異なる背景** - `startNewSeason` 時の背景アーカイブはしない。シーズンを跨いで同じ背景が継続
-- **owner 以外の設定・画像アップロード** - organizer / member は閲覧のみ。owner だけが書込権限を持つ
-- **画像タイル / クロップ / 位置調整 のエディタ機能** - 1200×630 への cover/contain フィットのみ。位置調整 UI は出さない
-- **複数の背景画像のストック・切替** - サークル × カード種別あたり 1 枚のシンプルリプレースモデル。複数保持・選択拡張は将来対応
-- **シーズンスナップショット (シーズン切替時の背景アーカイブ)** - `seasonHistory/{seasonId}` に背景 URL は snapshot しない。過去シーズン詳細は現在の背景で表示
-- **テキスト色・レイアウトの per-card override (画像とセット)** - 画像ごとの text-theme プリセット保存はしない。owner は画像交換時に都度テーマ選択
-- **背景画像の AI 生成・テンプレート提供** - 画像はあくまで owner が自前で用意
+PRD 全体共通の非対象:
+
+- **新規コア機能（席決めアルゴリズム / シーズン戦績 / PWA / 観戦モード等の本質的拡張）** —
+  これらは独立 PRD として立てる
+- **PRD 01〜04 で deferred 済みの大型機能** — 該当 PRD で reactivate するか新 PRD を立てる
+- **ドライラン投入後 6 ヶ月以上経過しても採用シグナルが出ない場合のリブランド / 再設計** —
+  別判断
+- **本 PRD 内の Track をまたぐ機能横断ロジック** — 各 Track は独立性を保つ。横断的な共通 helper が
+  必要になった時点で `src/lib/**` への抽出を別 plan で行う
+
+Track A の非対象（旧 PRD から継承）:
+
+- トーナメント単位の個別背景設定 / コラボ画像エディタ / シーズンごとに異なる背景 /
+  owner 以外の設定権限拡張 / 画像タイル・クロップ UI / 複数画像ストック /
+  シーズンスナップショット背景 / per-card text-theme override / AI 画像生成・テンプレート提供
+
+Track B の非対象（plan ファイル参照）:
+
+- URL 定数の external-links.ts への切り出し（YAGNI）
+- 新規 e2e spec 作成（PageObject の locator 追加で十分）
+- ログイン状態によるリンク出し分け（両方常時表示）
+- PWA manifest / install promotion への変更
 
 ## Success Metrics
 
 | Metric | Target | How Measured |
 | --- | --- | --- |
-| 設定サークル数 | ドライラン後 1〜2 ヶ月以内に 3 サークル以上が `winnerCardBackground.imageUrl != null` | Firestore コンソールで `groups` collection の手動カウント（v1 では analytics 計測なし） |
-| 定性フィードバック（主シグナル） | サークル代表 3 名以上から「使いたくなる」「次回も使う」のポジティブフィードバック | ドライラン後ヒアリング・Issue / Discord での声 |
-| 既存機能の regression | カード生成 SSR の p95 latency が +200ms 以内、CDN cache hit rate 維持 | Vercel Analytics / `cache-control: s-maxage=86400` の挙動確認 |
-| 背景画像なしの既存挙動互換 | 既存 group（`winnerCardBackground == null`）のカード PNG が完全に同一 | Visual regression（手動比較）+ E2E スナップショット |
+| Track A: 設定サークル数 | ドライラン後 1〜2 ヶ月以内に 3 サークル以上が `winnerCardBackground.imageUrl != null` | Firestore コンソールで `groups` collection の手動カウント |
+| Track A: 定性フィードバック | サークル代表 3 名以上から「使いたくなる」「次回も使う」 | ドライラン後ヒアリング・Issue / Discord での声 |
+| Track A: regression | カード生成 SSR の p95 latency が +200ms 以内、CDN cache hit rate 維持 | Vercel Analytics |
+| Track B: 記事到達率 | リンク追加後 1 ヶ月で、note 記事の参照経由（リファラ allin-pokertimer.app）からの記事閲覧が月 10 回以上 | note アクセス解析（リファラ別） |
+| Track B: 定性フィードバック | サークル代表から「アプリ説明がしやすくなった」または「当日参照しやすい」のポジティブ声 | ドライラン後ヒアリング |
+| 全 Track 共通: 既存機能 regression | コア機能（タイマー / 席決め / シーズン戦績 / 観戦）のテスト全 green、E2E 全 green | `npm run test` / `npx playwright test` |
 
 ## Open Questions
 
-- [ ] 画像クライアント圧縮の上限値（quality 0.8 / 1200×630 jpg で typical 150-250KB は問題ないが、上限 1MB を超える場合は弾くか自動再圧縮するか）— Phase 1 実装計画で確定
-- [ ] storage.rules の content-type / size 制約をどこまで厳格に書くか（emulator validator のテストケース粒度）— Phase 1 実装計画で確定
-- [ ] テキストテーマ「ライト / ダーク」だけで足りるか、それとも auto（背景平均輝度から自動判定）も提供するか — Phase 3 実装計画で UX 検証
-- [ ] Storage の bgImages 旧バージョン（差し替え後の前画像）は **物理削除する** か **孤児として放置** するか — Phase 2 実装計画で確定（current active のみ参照、孤児削除を 1 ファイル単位で best-effort 実行が現実解）
+- [ ] Track A: 画像クライアント圧縮の上限値 / storage.rules の content-type / size 制約 / テキストテーマ
+      auto モード提供有無 / Storage 旧 asset の物理削除 vs 孤児放置 — Track A 各 Phase 実装計画で確定
+- [ ] Track B: note 記事 URL の最終確定（実装直前にユーザ確認） / PWA standalone モードでの target="_blank" 挙動
+      の OS 別差異の許容範囲 — Track B Phase 1 plan の Validation で確認
+- [ ] 追加 Track（C 以降）の優先順位 — ドライラン投入後のフィードバック収集後に判断
 
 ---
 
@@ -55,19 +105,22 @@ Phase B（02-season-stats-and-share）で `@vercel/og` ベースの優勝カー�
 
 **Primary User**
 
-- **Who**: サークル代表（owner）。20 人前後のサークルを運営し、月 1〜2 回トーナメントを主催。Phase B のカードを既に Twitter/X や LINE グループで共有している
-- **Current behavior**: トーナメント終了時にダッシュボードから「カードをダウンロード」「シェア」を 1 回押し、保存または共有。ただし「他サークルとの差別化を意識して保存・共有する」段階には至っていない
-- **Trigger**: 新規メンバー勧誘投稿を作るとき / シーズン首位カードを月例まとめでサークル LINE に流すとき
-- **Success state**: 「あ、これうちのサークルだ」と一目で分かり、保存・スクショ・シェアが自然に増える状態
+- **Who**: サークル代表（owner）+ サークル運営担当（organizer）+ サークル参加者（member）。
+  Track ごとに primary user が異なる
+- **Track A primary**: サークル代表（owner） — ブランディング / 新規勧誘の文脈
+- **Track B primary**: サークル代表 + 一般運営者 — 「アプリ何だっけ?」「操作どこだっけ?」の文脈
 
 **Job to Be Done**
-When サークルのトーナメント / シーズンの結果を SNS / サークル内チャットで共有するとき、I want カードに自分のサークルらしさ（会場写真・チームロゴ・象徴的なポーカーシーン等）を反映したい、so I can 既存メンバーの帰属意識を高め、新規メンバー勧誘の説得力を増せる。
+
+- Track A: When サークルのトーナメント / シーズン結果を SNS / サークル内チャットで共有するとき、
+  I want カードに自分のサークルらしさを反映したい
+- Track B: When 新規メンバーにアプリを紹介するとき / 当日操作を素早く確認したいとき、
+  I want アプリのトップから記事に直接飛びたい
 
 **Non-Users**
 
-- organizer / member（v1 では設定不可、閲覧のみ）
-- 個人プレイヤー（サークル所属していないユーザー）
-- 「カードのデザインに凝りたいデザイナー」（編集機能は提供しないため、外部ツール前提）
+- Track A: organizer / member（v1 では設定不可、閲覧のみ）
+- Track B: 全員に有効（出し分けなし）
 
 ---
 
@@ -75,83 +128,136 @@ When サークルのトーナメント / シーズンの結果を SNS / サー�
 
 ### Core Capabilities (MoSCoW)
 
+Track A:
+
 | Priority | Capability | Rationale |
 | --- | --- | --- |
-| Must | owner がサークル詳細画面で **画像アップロード → 即時 Storage upload → groups doc update** | コア機能。これが無いと PRD 自体が成立しない |
-| Must | owner が **背景画像を解除（null に戻す）** できる | 失敗時のリカバリ・テスト時に必須 |
-| Must | owner が **「ライト / ダーク」テキストテーマ**を選べる | 背景画像の輝度に応じてテキスト色を切り替えないと可読性ゼロになる |
-| Must | OG SSR route が **背景画像 URL を query param で受け取り、fetch + data URI で Satori に渡す** | これが無いと PNG に背景が乗らない |
-| Must | OG SSR route で **テキスト可読性を担保する readability layer**（上下黒グラデーションスクリム + テキストグループ背景に rgba 半透明 block） | 任意の画像が来ても文字が読める保証 |
-| Must | サークル詳細の編集カードで **保存前にプレビュー表示** | 「保存したけど想像と違う」を防ぐ最低限の UX |
-| Must | 既存 group（背景未設定）の **カード生成挙動が完全に同一** | 既存サークルへの regression ゼロ |
-| Should | アップロード時の **クライアント側自動リサイズ + 圧縮**（1200×630 jpg quality 0.8 → ≤ 1MB） | Storage egress / latency / 1MB ハード上限への耐性 |
-| Should | Storage 差し替え時に **旧 asset を best-effort で削除** | 孤児を防ぎ Storage コストを抑える |
-| Could | テキストテーマに **auto モード** （画像平均輝度ベースで自動判定） | UX 向上だが MVP には不要 |
-| Won't | 画像エディタ / クロップ UI / タイル / 位置調整 | 編集は外部ツール前提 |
-| Won't | 複数画像ストック / 履歴 / シーズン別アーカイブ | 1 枚 active のみのシンプルモデル |
-| Won't | organizer / member への upload 権限拡張 | owner-only でブランド一貫性確保 |
-| Won't | トーナメント単位の個別背景 / per-card override | サークル単位で十分 |
+| Must | owner がサークル詳細画面で **画像アップロード → 即時 Storage upload → groups doc update** | コア機能 |
+| Must | owner が **背景画像を解除（null に戻す）** できる | 失敗時のリカバリ |
+| Must | owner が **「ライト / ダーク」テキストテーマ**を選べる | 任意画像の可読性確保 |
+| Must | OG SSR route が **背景画像 URL を query param で受け取り、fetch + data URI で Satori に渡す** | PNG への背景反映 |
+| Must | OG SSR route で **テキスト可読性を担保する readability layer** | 任意の画像で文字が読める保証 |
+| Must | サークル詳細の編集カードで **保存前にプレビュー表示** | UX 必須 |
+| Must | 既存 group（背景未設定）の **カード生成挙動が完全に同一** | regression ゼロ |
+| Should | アップロード時の **クライアント側自動リサイズ + 圧縮**（1200×630 jpg quality 0.8 → ≤ 1MB） | egress / latency 対応 |
+| Should | Storage 差し替え時に **旧 asset を best-effort で削除** | コスト抑制 |
+| Could | テキストテーマに **auto モード**（画像平均輝度ベース） | UX 向上だが MVP 不要 |
+
+Track B:
+
+| Priority | Capability | Rationale |
+| --- | --- | --- |
+| Must | トップ画面 `/` に note 記事 2 本（アプリ紹介 / 運営チートシート）へのリンクを常時表示 | コア機能 |
+| Must | リンクは新しいタブで開く（`target="_blank"` + `rel="noopener noreferrer"`）| 外部遷移の標準 |
+| Must | a11y: 「新しいタブで開く」を SR に通知（aria-label） | WCAG 2.4.4 / 3.2.5 |
+| Must | sign-in / sign-out / loading 全状態で表示 | ログイン前にもアプリ概要が見える |
+| Should | 外部リンクアイコン（lucide `ExternalLink`）でビジュアル明示 | UX 向上 |
+| Could | 出し分け（未ログインなら紹介、ログイン済みなら運営ガイド） | YAGNI: 両方常時表示で十分 |
 
 ### MVP Scope
 
-- v1 リリース時点で含めるもの
-  - Firebase Storage 初期導入（SDK / firebase.json / storage.rules / Blaze プラン移行）
-  - `groups/{gid}.winnerCardBackground` / `groups/{gid}.seasonCardBackground` の additive 追加
-  - サークル詳細画面に編集カード × 2（優勝・シーズン首位用）。ファイル選択 / プレビュー / 保存 / 解除 / テキストテーマ切替
-  - OG SSR route（winner / season 両方）への背景画像レンダリング + readability layer
-  - クライアント側画像リサイズ + 圧縮
-  - 既存挙動の regression なし
+v1 リリース時点で含めるもの:
 
-- v1 では含めないが将来的に検討
-  - auto テキストテーマ
-  - 複数画像ストック / プリセット同梱
-  - シーズンスナップショットへの背景アーカイブ
-  - organizer 以上への権限拡張
-  - 画像クロップ / タイル UI
+- Track A: Phase 1〜3 完了（旧 PRD と同じスコープ）
+- Track B: Phase 1 完了（note 記事 2 本のリンク追加）
+
+v1 では含めないが将来的に検討:
+
+- Track C 以降の polish 系 Track
+- Track A の auto テキストテーマ / 複数画像ストック / シーズンスナップショット背景 / organizer 権限拡張
 
 ### User Flow
 
-```
-1. owner がサークル詳細画面 (/groups/[gid]) を開く
-2. 「優勝カード背景」カードの「画像を選択」ボタンを押す → ファイルピッカー
-3. クライアントが画像をリサイズ・圧縮（1200×630 jpg quality 0.8）
-4. プレビュー表示（圧縮後の画像をその場で <img> 表示、テキストテーマも切替可能）
-5. 「保存」を押す → Storage upload → groups doc update（imageUrl + storageAssetId + textTheme）
-6. 旧 asset があれば best-effort で削除
-7. ダッシュボードから「カードダウンロード / シェア」 → OG route が新背景でレンダリング
-8. （シーズン首位カードも同様に別カードで設定）
-9. （解除したい場合）「解除」を押す → groups doc を null に戻し、Storage asset も削除
-```
+各 Track の User Flow は Track 詳細セクションを参照。
 
 ---
 
-## Technical Approach
+## Track A: Result Card Background Image
+
+### Track A Overview
+
+旧 PRD `05-result-card-image-bg` の全内容を本 Track に内包。Problem Statement / Proposed Solution /
+Technical Approach / Implementation Phases は旧 PRD のまま維持する。
+
+### Track A: Technical Approach
 
 **Feasibility**: HIGH
 
-既存パターン（Phase 4.16 / 4.17 / Phase A / Phase C / Phase E の `groups/{gid}` 単独フィールド additive 追加）と Phase B の OG route の組み合わせで成立。新規導入要素は (1) Firebase Storage 初期化 / Blaze プラン、(2) クライアント側画像処理（canvas API）の 2 つのみ。
+既存パターン（Phase 4.16 / 4.17 / Phase A / Phase C / Phase E の `groups/{gid}` 単独フィールド additive 追加）と
+Phase B の OG route の組み合わせで成立。新規導入要素は (1) Firebase Storage 初期化 / Blaze プラン、
+(2) クライアント側画像処理（canvas API）の 2 つのみ。
 
 **Architecture Notes**
 
-- **データ構造**: `groups/{gid}.winnerCardBackground` / `groups/{gid}.seasonCardBackground` を `{ imageUrl: string | null, storageAssetId: string | null, textTheme: "light" | "dark" }` で additive 追加。`null` 互換のため schema は `.default(null)` で legacy doc を hydrate
-- **Storage path**: `groups/{gid}/bgImages/{assetId}`。`assetId` は `crypto.randomUUID()`。差し替え時は新 asset upload → groups doc update → 旧 asset を best-effort delete
-- **Storage rules**: deny-by-default。`groups/{gid}/bgImages/{assetId}` のみ public read（OG SSR route の Vercel Node から fetch するため）。write は owner のみ（Storage rules の `request.auth.token` で `groups/{gid}.ownerUids` 参照は不可なため、Storage rules は「authenticated user の write」+ クライアント / Firestore rules 側で「owner のみが groups doc を更新できる」二重防御）
-- **OG route 拡張**: `WINNER_CARD_QUERY_SCHEMA` / `SEASON_CARD_QUERY_SCHEMA` に `bgImageUrl` / `bgTextTheme` を additive 追加。route 内で `bgImageUrl` を fetch → ArrayBuffer → base64 data URI に変換し、Satori `<img src={dataUri}>` で root 背景に重ねる。fetch 失敗時はフォールバック（既存グラデーション背景にフォールバック + warn ログ）
-- **Readability layer**: `<div style={{ position: ..., background: "linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.5) 100%)" }}>` を画像の上に重ねる。テキストグループ自体にも `background: "rgba(0,0,0,0.4)"` の rounded box overlay を入れる。Satori 制約の `textShadow` 未対応はこのスクリム + box overlay で代替
-- **CDN キャッシュ**: 既存の `s-maxage=86400` を維持。`bgImageUrl` が query param に入るため、画像差し替え時は URL も変わる（assetId が UUID で変わる）→ 自動的に cache invalidation が成立
-- **クライアント画像処理**: canvas API で `drawImage(img, 0, 0, 1200, 630)` → `canvas.toBlob(blob, "image/jpeg", 0.8)`。Blob を Storage に直接 upload
+- **データ構造**: `groups/{gid}.winnerCardBackground` / `groups/{gid}.seasonCardBackground` を
+  `{ imageUrl: string | null, storageAssetId: string | null, textTheme: "light" | "dark" }` で
+  additive 追加。`null` 互換のため schema は `.default(null)` で legacy doc を hydrate
+- **Storage path**: `groups/{gid}/bgImages/{assetId}`。`assetId` は `crypto.randomUUID()`。差し替え時は
+  新 asset upload → groups doc update → 旧 asset を best-effort delete
+- **Storage rules**: deny-by-default。`groups/{gid}/bgImages/{assetId}` のみ public read（OG SSR route
+  の Vercel Node から fetch するため）。write は authenticated user + クライアント / Firestore rules 側で
+  「owner のみが groups doc を更新できる」二重防御
+- **OG route 拡張**: `WINNER_CARD_QUERY_SCHEMA` / `SEASON_CARD_QUERY_SCHEMA` に `bgImageUrl` /
+  `bgTextTheme` を additive 追加。route 内で `bgImageUrl` を fetch → ArrayBuffer → base64 data URI に変換し、
+  Satori `<img src={dataUri}>` で root 背景に重ねる。fetch 失敗時はフォールバック（既存グラデーション
+  背景にフォールバック + warn ログ）
+- **Readability layer**: 上下黒グラデーションスクリム + テキストグループ rgba 半透明 box overlay の
+  二段重ね。`textShadow` / `filter` 未対応の Satori 制約をスクリム + box overlay で代替
+- **CDN キャッシュ**: 既存の `s-maxage=86400` を維持。`bgImageUrl` が query param に入るため、
+  画像差し替え時は URL も変わる（assetId が UUID で変わる）→ 自動的に cache invalidation が成立
+- **クライアント画像処理**: canvas API で `drawImage(img, 0, 0, 1200, 630)` →
+  `canvas.toBlob(blob, "image/jpeg", 0.8)`。Blob を Storage に直接 upload
 
 **Technical Risks**
 
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
-| Blaze プラン移行をユーザー（プロジェクト所有者）が忘れて Storage が動かない | M | README + Phase 1 plan に「Blaze 移行が前提」を明記。`storageBucket` 接続失敗時の error handling を OG route に入れる（背景なしフォールバック） |
-| 任意の画像で readability が破綻する（白文字 + 白背景画像など） | H | 上下黒グラデーションスクリム + テキストグループ背景 rgba block + テキストテーマ切替の三段構え。最悪でも owner が theme を切り替えれば読める |
-| Storage 公開 read で誤って機密画像を upload してしまう（画像内に個人情報など） | L | UI に「公開 URL になります」「メンバー / 観戦者全員に見えます」の注意文を表示 |
-| OG route の画像 fetch 失敗（Storage 障害 / token 期限切れ） | L | route 内で try/catch、失敗時は背景なしでフォールバック + `logger.warn`。CDN キャッシュは新規 fetch のみ影響 |
-| クライアント画像処理が大きい画像（10MB+）で UI フリーズ | M | upload 前に file.size でチェック → 5MB 超は事前 reject。canvas resize は worker 化までは v1 では不要 |
-| Storage egress が予想を超える | L | Vercel CDN cache（`s-maxage=86400`）でほぼ初回 fetch のみ。20 人 × 月 1〜2 回サークルでは月 1MB 以下、Spark 無料枠（1GB/日）の遥か内側 |
-| Firebase Storage の SDK 更新で破壊的変更 | L | `firebase` SDK は package.json で固定 version 管理。Phase 1 で動作確認 |
+| Blaze プラン移行をユーザー（プロジェクト所有者）が忘れて Storage が動かない | M | README + Phase A.1 plan に「Blaze 移行が前提」を明記。`storageBucket` 接続失敗時の error handling を OG route に入れる |
+| 任意の画像で readability が破綻する（白文字 + 白背景画像など） | H | 上下黒グラデーションスクリム + テキストグループ背景 rgba block + テキストテーマ切替の三段構え |
+| Storage 公開 read で誤って機密画像を upload してしまう | L | UI に「公開 URL になります」「メンバー / 観戦者全員に見えます」の注意文を表示 |
+| OG route の画像 fetch 失敗（Storage 障害 / token 期限切れ） | L | route 内で try/catch、失敗時は背景なしでフォールバック + `logger.warn` |
+| クライアント画像処理が大きい画像（10MB+）で UI フリーズ | M | upload 前に file.size でチェック → 5MB 超は事前 reject |
+| Storage egress が予想を超える | L | Vercel CDN cache（`s-maxage=86400`）でほぼ初回 fetch のみ |
+| Firebase Storage の SDK 更新で破壊的変更 | L | `firebase` SDK は package.json で固定 version 管理 |
+
+---
+
+## Track B: Top Page Promotion
+
+### Track B Overview
+
+note 公開記事 2 本（アプリ紹介 / 運営チートシート）へのリンクをトップ画面 `/` に追加し、
+未導入者 / 既存運営者の双方に対する記事到達動線を確保する。今後の小〜中規模 UX 改善（onboarding
+hint / 共有動線追加 / 一覧画面の polish 等）も本 Track 配下に plan を追加する形で扱う。
+
+### Track B: Technical Approach
+
+**Feasibility**: HIGH
+
+既存パターン（`src/app/page.tsx` の `<Link><Button>` ラッピング / `lucide-react` アイコン使用 /
+shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestore / 認証への依存ゼロ。
+
+**Architecture Notes**
+
+- **トップ画面修正**: `src/app/page.tsx` に外部リンクセクションを追加。既存の sign-in / sign-out
+  分岐の **外側**（常時表示）に配置
+- **外部リンクパターン**: `<Button asChild variant="link" size="sm">` + 子 `<a target="_blank"
+  rel="noopener noreferrer" aria-label="...">` で role を `"link"` として描画。既存の
+  `getByRole("button", ...)` e2e は汚染しない
+- **URL 定数**: `page.tsx` 冒頭に const で閉じる。external-links.ts ファイル新設は YAGNI
+- **a11y**: `aria-label` に「新しいタブで開く」を含め WCAG 2.4.4 / 3.2.5 に準拠
+- **e2e**: `tests/e2e/pages/TopPage.ts` PageObject に link locator を追加し、
+  `expectSignedOutLayout` / `expectSignedInLayout` で visible 検証
+
+**Technical Risks**
+
+| Risk | Likelihood | Mitigation |
+| --- | --- | --- |
+| 実装時に URL が確定せず placeholder のまま commit される | M | plan の Task 1 GOTCHA で明示。実装直前にユーザに最終 URL を確認 |
+| `Button asChild` の Slot エラー（複数子要素を並べる）で build fail | L | plan の Task 3 GOTCHA に明示。`<a>` を単一子要素として、その内側にテキスト + アイコンを並べる |
+| PWA standalone モードでの target="_blank" 挙動が iOS / Android / Desktop で異なる | L | OS デフォルト動作で十分（仕様として「外部記事は外部ブラウザで開く」が自然） |
+| note 記事が将来削除・URL 変更されたときにリンク切れ | L | URL 定数を `page.tsx` 冒頭に集約しているため、URL 変更時の修正点が 1 ファイルに閉じる |
+| 新リンクが既存 e2e の `getByRole("button")` を汚染する | L | `Button asChild` + `<a>` で role は "link" になるため "button" には混ざらない |
 
 ---
 
@@ -159,33 +265,40 @@ When サークルのトーナメント / シーズンの結果を SNS / サー�
 
 <!--
   STATUS: pending | in-progress | complete
-  PARALLEL: phases that can run concurrently (e.g., "with 3" or "-")
+  PARALLEL: phases that can run concurrently (e.g., "with N" or "-")
   DEPENDS: phases that must complete first (e.g., "1, 2" or "-")
   PRP: link to generated plan file once created
 -->
 
-| #   | Phase                       | Description                                                                                  | Status  | Parallel | Depends | PRP Plan |
-| --- | --------------------------- | -------------------------------------------------------------------------------------------- | ------- | -------- | ------- | -------- |
-| 1   | Storage Foundation          | Firebase Storage 初期化、Blaze プラン移行手順、firebase.json / storage.rules / SDK singleton 追加、emulator 統合、`groups/{gid}` schema 拡張、repository / service / rules ブランチ、emulator validator | pending | -        | -       | -        |
-| 2   | Background Image UI & SSR   | サークル詳細画面に WinnerCardBackgroundCard / SeasonCardBackgroundCard を追加（ファイル選択 / クライアント圧縮 / プレビュー / 保存 / 解除）、Storage upload + 旧 asset 削除、OG route 拡張（bgImageUrl 受取 + fetch + Satori 画像表示） | pending | -        | 1       | -        |
-| 3   | Layout Polish & Readability | 上下黒グラデーションスクリム + テキストグループ rgba 背景 box overlay、ライト / ダーク テキストテーマトグル、テキスト位置の最終調整、E2E + visual regression、ドキュメント整備 | pending | -        | 2       | -        |
+| #     | Phase                                       | Description                                                                                                                                          | Status      | Parallel | Depends | PRP Plan                                                                                       |
+| ----- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ---------------------------------------------------------------------------------------------- |
+| A.1   | Track A: Storage Foundation                 | Firebase Storage 初期化、Blaze プラン移行手順、firebase.json / storage.rules / SDK singleton 追加、emulator 統合、`groups/{gid}` schema 拡張、repository / service / rules ブランチ、emulator validator | pending     | with B.1 | -       | -                                                                                              |
+| A.2   | Track A: Background Image UI & SSR          | サークル詳細画面に WinnerCardBackgroundCard / SeasonCardBackgroundCard を追加（ファイル選択 / クライアント圧縮 / プレビュー / 保存 / 解除）、Storage upload + 旧 asset 削除、OG route 拡張（bgImageUrl 受取 + fetch + Satori 画像表示） | pending     | -        | A.1     | -                                                                                              |
+| A.3   | Track A: Layout Polish & Readability        | 上下黒グラデーションスクリム + テキストグループ rgba 背景 box overlay、ライト / ダーク テキストテーマトグル、テキスト位置の最終調整、E2E + visual regression、ドキュメント整備 | pending     | -        | A.2     | -                                                                                              |
+| B.1   | Track B: Top Page Promotion (note 記事リンク)   | トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを常時表示。`Button asChild` + `<a>` パターンで描画、a11y / e2e PageObject 対応 | in-progress | with A.1 | -       | [note-articles-link-on-top-page.plan.md](../plans/note-articles-link-on-top-page.plan.md) |
 
 ### Phase Details
 
-**Phase 1: Storage Foundation**
+**Phase A.1: Track A: Storage Foundation**
 
-- **Goal**: Firebase Storage を repository に組み込み、`groups/{gid}` の背景画像メタデータフィールド（imageUrl / storageAssetId / textTheme）をクライアント / Firestore rules / Storage rules すべて経由で書き込み・読み出しできる状態にする。UI / OG route 変更は本 phase では行わない
+- **Goal**: Firebase Storage を repository に組み込み、`groups/{gid}` の背景画像メタデータフィールド
+  （imageUrl / storageAssetId / textTheme）をクライアント / Firestore rules / Storage rules すべて経由で
+  書き込み・読み出しできる状態にする。UI / OG route 変更は本 phase では行わない
 - **Scope**:
   - Blaze プラン移行手順を README に追加（実プロジェクト切替はユーザー作業）
   - `src/lib/firebase/client.ts` に `firebaseStorage` singleton と emulator connect を追加
   - `firebase.json` に `"storage": { "rules": "storage.rules" }` と `emulators.storage.port = 9199` を追加
-  - `storage.rules` を新規作成（deny-by-default + `groups/{gid}/bgImages/{assetId}` のみ public read + authenticated write）
-  - `src/lib/firebase/schemas/group.ts` に `winnerCardBackground` / `seasonCardBackground` を additive 追加（zod schema 定義）
-  - `src/lib/firebase/repositories/groups.ts` に `updateWinnerCardBackground` / `updateSeasonCardBackground` を `wrapFirestoreWrite` 経由で追加
-  - `src/lib/services/group.ts` に `setWinnerCardBackground` / `setSeasonCardBackground` を `assertOwner` ロールゲート付きで追加
-  - `firestore.rules` の `groups/{gid}` `allow update` に owner-only `affectedKeys.hasOnly(['winnerCardBackground'])` / `'seasonCardBackground'` ブランチを追加
-  - `scripts/test-rules-card-background.mjs` emulator validator を新規作成（owner 書込 OK / organizer 拒否 / member 拒否 / shape 不正拒否）
-  - `scripts/test-storage-rules.mjs` emulator validator を新規作成（authenticated upload OK / unauth upload deny / 公開 read OK）
+  - `storage.rules` を新規作成（deny-by-default + `groups/{gid}/bgImages/{assetId}` のみ public read +
+    authenticated write）
+  - `src/lib/firebase/schemas/group.ts` に `winnerCardBackground` / `seasonCardBackground` を additive 追加
+  - `src/lib/firebase/repositories/groups.ts` に `updateWinnerCardBackground` /
+    `updateSeasonCardBackground` を `wrapFirestoreWrite` 経由で追加
+  - `src/lib/services/group.ts` に `setWinnerCardBackground` / `setSeasonCardBackground` を
+    `assertOwner` ロールゲート付きで追加
+  - `firestore.rules` の `groups/{gid}` `allow update` に owner-only
+    `affectedKeys.hasOnly(['winnerCardBackground'])` / `'seasonCardBackground'` ブランチを追加
+  - `scripts/test-rules-card-background.mjs` emulator validator を新規作成
+  - `scripts/test-storage-rules.mjs` emulator validator を新規作成
   - `package.json` に `test:rules-card-background` / `test:storage-rules` script を追加
 - **Success signal**:
   - `npm run test:rules-card-background` および `npm run test:storage-rules` が green
@@ -193,47 +306,75 @@ When サークルのトーナメント / シーズンの結果を SNS / サー�
   - 既存テストすべて green、`npm run typecheck` と `npm run lint` が clean
   - 既存 group doc が `winnerCardBackground == null` で hydrate される（破壊的 migration なし）
 
-**Phase 2: Background Image UI & SSR**
+**Phase A.2: Track A: Background Image UI & SSR**
 
-- **Goal**: owner がサークル詳細画面から背景画像をアップロード・差し替え・解除でき、その画像が OG SSR route で出力される状態にする。読みやすさ調整は最低限の textTheme 切替まで（本格的なレイアウト polish は Phase 3）
+- **Goal**: owner がサークル詳細画面から背景画像をアップロード・差し替え・解除でき、その画像が
+  OG SSR route で出力される状態にする。読みやすさ調整は最低限の textTheme 切替まで
+  （本格的なレイアウト polish は Phase A.3）
 - **Scope**:
   - サークル詳細画面に `WinnerCardBackgroundCard` / `SeasonCardBackgroundCard` を追加
-  - ファイル選択 → canvas API で 1200×630 jpg quality 0.8 にリサイズ・圧縮（共通 helper `src/lib/utils/image-resize.ts` を新規作成）
-  - upload 前にクライアントでファイルサイズ check（5MB 超は reject、reject 後の error 表示）
-  - プレビュー表示（圧縮後の Blob を `URL.createObjectURL` で `<img>` 表示、対応する OG レイアウトのモック）
-  - 保存ボタン押下で Storage upload（`uploadBytes` 経由）→ groups doc update → 旧 asset を best-effort delete（`deleteObject`）
+  - ファイル選択 → canvas API で 1200×630 jpg quality 0.8 にリサイズ・圧縮
+    （共通 helper `src/lib/utils/image-resize.ts` を新規作成）
+  - upload 前にクライアントでファイルサイズ check（5MB 超は reject）
+  - プレビュー表示（圧縮後の Blob を `URL.createObjectURL` で `<img>` 表示）
+  - 保存ボタン押下で Storage upload → groups doc update → 旧 asset を best-effort delete
   - 解除ボタン押下で groups doc を null に戻し、Storage asset を削除
-  - `src/app/api/og/_lib/og-payload.ts` の `WINNER_CARD_QUERY_SCHEMA` / `SEASON_CARD_QUERY_SCHEMA` に `bgImageUrl: z.string().url().optional()` と `bgTextTheme: z.enum(['light', 'dark']).optional()` を追加
-  - `buildWinnerShareInputs` / `buildSeasonShareInputs` で `groups/{gid}` の背景設定を読んで query param に流す
-  - OG route で `bgImageUrl` 指定時は fetch → ArrayBuffer → `data:image/jpeg;base64,...` 変換 → Satori `<img>` で背景レンダリング
+  - `src/app/api/og/_lib/og-payload.ts` の query schema に `bgImageUrl` / `bgTextTheme` を additive 追加
+  - `buildWinnerShareInputs` / `buildSeasonShareInputs` で `groups/{gid}` の背景設定を読んで query に流す
+  - OG route で `bgImageUrl` 指定時は fetch → ArrayBuffer → data URI 変換 → Satori `<img>` で背景レンダリング
   - fetch 失敗時は背景なしでフォールバック + `logger.warn`
   - 単体テスト（repository / service / OG route のキャラクタリゼーション）
 - **Success signal**:
-  - owner がアップロード → 画像が即座にプレビューで見える → 保存後にダッシュボードからカード DL すると新背景で出力される
+  - owner がアップロード → 即座にプレビュー → 保存後にダッシュボードからカード DL すると新背景で出力
   - 既存 group（背景未設定）のカード PNG が完全に同一（visual diff なし）
   - 旧 asset 削除が best-effort で動作（失敗してもメイン flow は止まらず warn のみ）
   - 単体テスト・既存 E2E 全 green
 
-**Phase 3: Layout Polish & Readability**
+**Phase A.3: Track A: Layout Polish & Readability**
 
-- **Goal**: 任意の画像が背景に来てもテキストが読める状態にする。上下スクリム + テキストグループ背景 box overlay + テキストテーマトグルの三段構えで readability を担保し、ドライランで「実用に耐える」状態に仕上げる
+- **Goal**: 任意の画像が背景に来てもテキストが読める状態にする。スクリム + box overlay + テキストテーマ
+  トグルの三段構えで readability を担保し、ドライランで「実用に耐える」状態に仕上げる
 - **Scope**:
-  - 上下黒グラデーションスクリム overlay を OG route に追加（`linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0.5) 100%)`）
-  - テキストグループ（タイトル / 中央 WINNER 名 / footer）それぞれに `background: rgba(0,0,0,0.4)` + `borderRadius` の box overlay を追加（背景画像を活かしつつ局所的に文字背景を確保）
-  - `bgTextTheme === "light"` で foreground を白系（`#ffffff` / `#fde68a`）、`"dark"` で foreground を黒系（既存 `#451a03` / `#1e3a8a`）に切替
-  - テキスト位置の最終調整（中央 WINNER 名のフォントサイズが 120 のままで box overlay からはみ出さないか、padding を調整）
-  - サークル詳細編集カードに「テキストテーマ ライト / ダーク」の切替トグルとプレビュー反映を追加
-  - 編集カードのプレビューが OG route と同じ readability layer を反映するように整合
-  - E2E（Playwright）でアップロード → 保存 → ダウンロード → 画像内容アサート（文字が含まれる / 背景画像が含まれる）
-  - visual regression（手動）+ ドライラン用ドキュメント（README / `docs/specification/` 該当箇所）
+  - 上下黒グラデーションスクリム overlay を OG route に追加
+  - テキストグループ（タイトル / 中央 WINNER 名 / footer）それぞれに rgba 半透明 box overlay 追加
+  - `bgTextTheme === "light"` で foreground 白系、`"dark"` で foreground 黒系に切替
+  - テキスト位置の最終調整（フォントサイズ / padding 調整）
+  - サークル詳細編集カードに「テキストテーマ ライト / ダーク」の切替トグルとプレビュー反映
+  - 編集カードのプレビューが OG route と同じ readability layer を反映
+  - E2E（Playwright）でアップロード → 保存 → ダウンロード → 画像内容アサート
+  - visual regression（手動）+ ドライラン用ドキュメント
 - **Success signal**:
   - 明るい画像 + dark theme / 暗い画像 + light theme / 中間画像 + 両 theme で文字が読める
   - 既存 group（背景未設定）のカード PNG が完全に同一（regression ゼロ）
   - ドライラン投入準備完了（README / 運営ガイドへの記載完了、Codex review 通過）
 
+**Phase B.1: Track B: Top Page Promotion (note 記事リンク)**
+
+- **Goal**: トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを
+  常時表示し、未導入者 / 既存運営者双方の記事到達動線を確保する
+- **Scope**:
+  - `src/app/page.tsx` 冒頭に note 記事 URL 定数 2 件を追加（`<NOTE_INTRO_URL>` / `<NOTE_GUIDE_URL>`、
+    実装直前にユーザから確定 URL を受領）
+  - `lucide-react` から `ExternalLink` icon を import
+  - 既存の sign-in / sign-out CTA `<div>` の直下に、外部リンク 2 件のセクションを常時表示で追加
+    （`<Button asChild variant="link" size="sm">` + `<a target="_blank" rel="noopener noreferrer">`）
+  - `aria-label` で「新しいタブで開く」を SR に通知
+  - `tests/e2e/pages/TopPage.ts` に `noteIntroLink` / `noteOperatingGuideLink` の Locator を追加し、
+    `expectSignedOutLayout` / `expectSignedInLayout` で visible 検証
+- **Success signal**:
+  - sign-out / sign-in / loading 全状態で 2 リンクが visible
+  - 両リンクが新タブで note 記事を開き、`rel="noopener noreferrer"` / `aria-label` が付与されている
+  - `npm run typecheck` / `npm run lint` / `npm run build` / `npx playwright test` 全 green
+  - 既存 e2e の `getByRole("button")` が新リンクで汚染されていない
+
 ### Parallelism Notes
 
-Phase 1 → 2 → 3 は厳密に直列依存。Phase 1 が完了しないと Storage への書込ができないため Phase 2 が実装不能、Phase 2 が完了しないと OG route が背景画像を読まないため Phase 3 のレイアウト調整が無意味。各 phase は独立に deploy / dogfood 可能で、Phase 1 完了時点では「設定はできるが見た目に変化なし（OG 未拡張）」、Phase 2 完了時点では「背景は出るが任意画像で文字が読めない可能性あり」、Phase 3 完了時点で v1 完成。
+- **A.1 と B.1 は並列可能**。Track A は Storage / Firestore / OG route 系の変更で、Track B は
+  トップ画面の static リンク追加のみ。両者の touch ファイルは重ならない
+- **Track A 内**: A.1 → A.2 → A.3 は厳密直列（A.1 が完了しないと Storage 書込不可、
+  A.2 が完了しないと OG route が背景画像を読まない）
+- **将来追加 Track**: Track C 以降が立ち上がる場合、原則として既存 Track と並列。Track 間で共通
+  helper / lib に touch する場合は別 plan で抽出を分離
 
 ---
 
@@ -241,18 +382,25 @@ Phase 1 → 2 → 3 は厳密に直列依存。Phase 1 が完了しないと Sto
 
 | Decision | Choice | Alternatives | Rationale |
 | --- | --- | --- | --- |
-| 画像配信方式 | (C) Firebase Storage 導入 + Blaze プラン移行 | (A) リポジトリ同梱プリセット / (D) URL 直接入力 / (E) Firestore data URI | サークル独自画像の自由度が必須。(A) は自由度ゼロ、(D) は SSRF / 外部依存リスク + UX 悪化、(E) は 1MB doc 上限 + Firestore コスト増。Phase 4.10 で deferred だった Storage 導入を本 PRD で先行実施 |
-| 適用範囲 | 優勝カード + シーズン首位カード（別フィールド） | 優勝のみ / 1 フィールドにネスト | サークル代表が両方をブランドに揃えたいケースが想定される。1 フィールドネストは rules `affectedKeys` ブランチが 1 つで済むが、map shape 検証が複雑化。別フィールドの方が `affectedKeys.hasOnly(['winnerCardBackground'])` だけで済み、UI / service / repository も対称的にシンプル |
-| 設定者ロール | owner only | owner + organizer / member 自身 | 「サークル代表のブランディング表現」が主目的。複数人が変えるとブランド一貫性が崩れる。Phase 4.6 ロール定義で owner = サークル代表という階層が確立済み |
-| ストレージ path | `groups/{gid}/bgImages/{assetId}` | サブコレクション + Storage / Firestore メタデータ管理 | Phase 4.10 の `audioAssets` 設計を踏襲。assetId は `crypto.randomUUID()`。差し替え時は新 upload → groups doc update → 旧削除のシンプルなライフサイクル |
-| Storage 公開設定 | `bgImages` path のみ public read | signed URL / Cloud Functions 経由 | OG SSR route（Vercel Node）から fetch する必要があり、signed URL は Cloud Functions / Admin SDK が必要で複雑度大。背景画像は装飾目的で個人情報を含まない前提。UI に「公開 URL になります」を明示 |
-| OG route のデータ取得方式 | クライアントが query param で bgImageUrl を渡す（Phase B 設計踏襲） | OG route が SSR で `getDoc(groups/{gid})` | 既存の CDN キャッシュ（`s-maxage=86400`）が「同一 query = 決定的に同じ PNG」を前提。query param 経由なら画像 URL が変わるたびに自動的に cache 無効化。SSR Firestore read だと cache が機能しなくなる |
-| Phase 分割 | 3 phases (Storage 基盤 → UI / OG → Layout polish) | 2 phases / 4 phases | 各 phase が独立 deploy / dogfood 可能、PR サイズが適度。2 phases だと Phase 2 が肥大化、4 phases だと細切れすぎて OG 単独 phase の deploy 価値が薄い |
-| テキスト可読性デフォルト | 上下黒グラデーションスクリム + テキストグループ背景に rgba 半透明 box | 全画面 50% 黒 overlay / カード型 rounded box overlay | 全画面 overlay は背景画像の雰囲気を冷重金化、カード型は装飾的すぎる。スクリム + テキスト box は背景を活かしつつ局所可読性確保 |
-| readability layer の Satori 互換性 | rgba 半透明 div + linear-gradient overlay | textShadow / drop-shadow filter | Satori は `textShadow` / `filter: drop-shadow()` 未対応。`opacity` / `linear-gradient` / `rgba()` は実績あり |
-| 旧 asset の扱い | best-effort 削除（deleteObject 失敗してもメイン flow は止めない） | 物理削除を tx 化 / 永続保持 | Storage の delete は別 SDK 呼び出しで Firestore tx に組み込めない。失敗時は孤児になるが Storage コスト的に無視可能（150-250KB × 数枚） |
-| クライアント画像処理 | canvas API で 1200×630 jpg quality 0.8 に圧縮 | Web Worker 化 / 外部ライブラリ | 月 1〜2 回の利用頻度で worker は overkill。外部ライブラリは依存追加コスト。canvas API は標準 API、テスト容易 |
-| Storage 上限 | 1 ファイル 1MB（Phase 4.10 と同方針） | 500KB / 5MB | 1200×630 jpg quality 0.8 が typical 150-250KB なので 1MB は十分余裕。Storage rules でも `request.resource.size < 1 * 1024 * 1024` で enforce |
+| PRD 構成 | 「リリース後の polish 集約 PRD」として Track 単位で並列運用 | 各 Track を独立 PRD（06 / 07 / ...）として立てる / 完了済み PRD に追記 | Track 単位の粒度が小〜中で独立 PRD は粒度過剰。完了済み PRD への追記は memory 規則違反。集約 PRD で各 Track を Phase 群として持つ運用が現状の最適解 |
+| Track A データ構造 | `groups/{gid}.{winnerCardBackground, seasonCardBackground}` を別フィールド additive 追加 | 1 フィールドにネスト / `cardBackground` map で統合 | rules `affectedKeys` ブランチが対称的にシンプル。UI / service / repository も同様 |
+| Track A 設定者ロール | owner only | owner + organizer / member 自身 | 「サークル代表のブランディング表現」が主目的。複数人が変えるとブランド一貫性が崩れる |
+| Track A 画像配信方式 | Firebase Storage 導入 + Blaze プラン移行 | リポジトリ同梱プリセット / URL 直接入力 / Firestore data URI | サークル独自画像の自由度が必須。他案は自由度・スケール・UX で劣る |
+| Track A Storage path | `groups/{gid}/bgImages/{assetId}` | サブコレクション + Storage / Firestore メタデータ管理 | Phase 4.10 の `audioAssets` 設計を踏襲。シンプルなライフサイクル |
+| Track A Storage 公開設定 | `bgImages` path のみ public read | signed URL / Cloud Functions 経由 | OG SSR route から fetch する必要があり、signed URL は Cloud Functions / Admin SDK が必要で複雑度大。装飾目的で個人情報を含まない前提 |
+| Track A OG データ取得 | クライアントが query param で bgImageUrl を渡す | OG route が SSR で `getDoc(groups/{gid})` | 既存の CDN キャッシュ（`s-maxage=86400`）が「同一 query = 決定的に同じ PNG」を前提。query param 経由なら自動的に cache 無効化が成立 |
+| Track A Phase 分割 | 3 phases（Storage 基盤 → UI / OG → Layout polish） | 2 phases / 4 phases | 各 phase が独立 deploy / dogfood 可能、PR サイズが適度 |
+| Track A 可読性デフォルト | 上下黒グラデーションスクリム + テキストグループ rgba 半透明 box | 全画面 50% 黒 overlay / カード型 rounded box overlay | 全画面 overlay は背景画像を冷重金化、カード型は装飾的すぎる。スクリム + テキスト box が背景を活かしつつ局所可読性確保 |
+| Track A readability 実装 | rgba 半透明 div + linear-gradient overlay | textShadow / drop-shadow filter | Satori は `textShadow` / `filter: drop-shadow()` 未対応 |
+| Track A 旧 asset の扱い | best-effort 削除 | 物理削除を tx 化 / 永続保持 | Storage delete は別 SDK 呼び出しで Firestore tx に組み込めない。失敗時は孤児になるが Storage コスト的に無視可能 |
+| Track A クライアント画像処理 | canvas API で 1200×630 jpg quality 0.8 | Web Worker 化 / 外部ライブラリ | 月 1〜2 回利用で worker は overkill。canvas API は標準で依存追加なし |
+| Track A Storage 上限 | 1 ファイル 1MB | 500KB / 5MB | 1200×630 jpg quality 0.8 が typical 150-250KB なので 1MB は十分余裕 |
+| Track B URL 定数の置き場所 | `page.tsx` 冒頭に const で閉じる | `src/lib/external-links.ts` 新設 | URL 2 件のみで早すぎる抽象。CLAUDE.md「3 行類似ロジックは早すぎる抽象より具体」方針 |
+| Track B リンク表示の出し分け | sign-in / sign-out / loading 全状態で常時表示 | 未ログインなら紹介 / ログイン済みなら運営ガイド | 両方常時表示で「未導入の人がトップを見たときに即座に何のアプリか分かる」かつ「既存運営者がいつでも操作リファレンスに飛べる」両方を成立 |
+| Track B Button のラッピング | `Button asChild` + 子 `<a>` | `<a>` 内に `<Button>` をネスト / 素の `<a>` + Button class 直接適用 | role を "link" にして既存 `getByRole("button")` e2e を汚染しない。Button styling 維持 |
+| Track B e2e の扱い | PageObject に locator 追加のみ、新規 spec は作らない | 専用 spec 新設 | testing.md 規約「観測可能な振る舞い」を既存 spec 経由で検証可能 |
+| Track B a11y | aria-label に「新しいタブで開く」を含める | 視覚的なアイコンのみ / sr-only span 別出し | WCAG 2.4.4 / 3.2.5 を最小コードで担保 |
+| 旧 PRD `05-result-card-image-bg` のリネーム | フォルダ + PRD ファイル両方を `05-post-launch-polish` にリネーム | フォルダ番号変更 / 旧 PRD を complete 化して新 PRD（06）を起こす | git mv でリネームし内容を Track A として包含。番号 05 を維持することで既存の plan ファイル参照や Implementation Phases の番号空間を破壊しない |
 
 ---
 
@@ -260,18 +408,32 @@ Phase 1 → 2 → 3 は厳密に直列依存。Phase 1 が完了しないと Sto
 
 **Market Context**
 
-- 同種の参考実装を探索した範囲では、ポーカートーナメント管理 OSS で「優勝者カード SSR 生成 + サークル別背景」を提供している例は限定的（多くは静的テンプレート）。本機能はサークル内部 SNS / LINE 共有で差別化要素を提供する独自路線
-- Twitter / X / Instagram など SNS 投稿用 OG カード生成は Notion / Linear / Vercel 自体が広く実装。テンプレート背景 + ロゴ重ねが標準
-- ポーカー業界の WSOP / Hendon Mob などのプロ向け統計サイトは 1 サークル単位ではなく公式テンプレートのみ。本 PRD の「サークル単位カスタマイズ」はアマ向けトーナメント管理 OSS のニッチを攻める設計
+- 同種の参考実装を探索した範囲では、ポーカートーナメント管理 OSS で「優勝者カード SSR 生成 +
+  サークル別背景」を提供している例は限定的。本機能はサークル内部 SNS / LINE 共有で差別化要素を提供
+- Twitter / X / Instagram など SNS 投稿用 OG カード生成は Notion / Linear / Vercel 自体が広く実装。
+  テンプレート背景 + ロゴ重ねが標準
+- ポーカー業界の WSOP / Hendon Mob などのプロ向け統計サイトは公式テンプレートのみ。本 PRD の
+  「サークル単位カスタマイズ」はアマ向けトーナメント管理 OSS のニッチを攻める設計
+- note 記事を「アプリ説明資産」として活用し、トップから直リンクするパターンは個人開発系 OSS で
+  一般的（Next.js / Remix / Astro など）
 
 **Technical Context**
 
-- 既存 PRD 02 Phase B が `next/og` ImageResponse + Noto Sans JP self-host + client-pass-data + CDN cache のパターンを確立。本 PRD はその上に「クエリで bgImageUrl を渡す」だけの additive 拡張
-- Firebase Storage 導入は Phase 4.10 で deferred されていた話題。実装規模はそれほど大きくないが、Blaze プラン移行（プロジェクト所有者の Firebase コンソール作業）が一度きりの前提となる
-- Satori（next/og の rendering engine）は `textShadow` / `filter` 未対応。代わりに `opacity` / `linear-gradient` / `rgba()` / 半透明 div overlay を使う readability layer 設計が固定パターン
-- クライアント側画像処理（canvas + toBlob）の先行事例が repo にゼロ。本 PRD で `src/lib/utils/image-resize.ts` を新規作成し、将来の avatar / thumbnail 機能などで再利用可能な helper として育てる
+- 既存 PRD 02 Phase B が `next/og` ImageResponse + Noto Sans JP self-host + client-pass-data + CDN cache
+  のパターンを確立。Track A はその上に「クエリで bgImageUrl を渡す」だけの additive 拡張
+- Firebase Storage 導入は Phase 4.10 で deferred されていた話題。実装規模はそれほど大きくないが、
+  Blaze プラン移行（プロジェクト所有者の Firebase コンソール作業）が一度きりの前提
+- Satori（next/og の rendering engine）は `textShadow` / `filter` 未対応。代わりに `opacity` /
+  `linear-gradient` / `rgba()` / 半透明 div overlay を使う readability layer 設計が固定パターン
+- クライアント側画像処理（canvas + toBlob）の先行事例が repo にゼロ。Track A で
+  `src/lib/utils/image-resize.ts` を新規作成し、将来の avatar / thumbnail 機能などで再利用可能な
+  helper として育てる
+- Track B の外部リンクパターン（`Button asChild` + `<a target="_blank" rel="noopener noreferrer">`）は
+  shadcn/ui のドキュメントで推奨されるパターン。既存 repo に外部リンクの先行事例ゼロ（src 配下に
+  `target="_blank"` 検索結果ゼロ）のため、本 Track が初の外部リンクパターン導入
 
 ---
 
-_Generated: 2026-05-10_
-_Status: DRAFT - needs validation_
+_Originally generated as `05-result-card-image-bg.prd.md`: 2026-05-10_
+_Renamed and re-scoped to `05-post-launch-polish.prd.md`: 2026-05-10_
+_Status: DRAFT - Track A pending / Track B in-progress_
