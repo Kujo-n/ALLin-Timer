@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { AppError, getErrorCode, unwrapOrFrom } from "./errors";
+import {
+  AppError,
+  assertNonEmptyString,
+  formatErrorForDisplay,
+  getErrorCode,
+  unwrapOrFrom,
+} from "./errors";
 
 describe("AppError", () => {
   it("holds code and wrapped cause", () => {
@@ -86,5 +92,69 @@ describe("getErrorCode", () => {
 
   it("returns 'unknown' for object with non-string code", () => {
     expect(getErrorCode({ code: 500 })).toBe("unknown");
+  });
+});
+
+describe("formatErrorForDisplay", () => {
+  it("formats an AppError as `<code>: <message>`", () => {
+    const err = new AppError("失敗しました", "firestore/write_failed");
+    expect(formatErrorForDisplay(err)).toBe(
+      "firestore/write_failed: 失敗しました",
+    );
+  });
+
+  it("formats a FirebaseError-like object", () => {
+    expect(
+      formatErrorForDisplay({ code: "auth/popup-blocked", message: "popup" }),
+    ).toBe("auth/popup-blocked: popup");
+  });
+});
+
+describe("assertNonEmptyString", () => {
+  it("passes through non-empty strings", () => {
+    expect(() => assertNonEmptyString("abc", "tid")).not.toThrow();
+    expect(() => assertNonEmptyString("a b c", "name")).not.toThrow();
+  });
+
+  it("throws AppError(validation/empty-string) for empty string", () => {
+    let caught: unknown = null;
+    try {
+      assertNonEmptyString("", "tid");
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(AppError);
+    expect((caught as AppError).code).toBe("validation/empty-string");
+    expect((caught as AppError).message).toBe("tid を指定してください");
+  });
+
+  it("throws for whitespace-only string", () => {
+    expect(() => assertNonEmptyString("   ", "uid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+    expect(() => assertNonEmptyString("\t\n", "uid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+  });
+
+  it("throws for non-string values (null / undefined / number / object)", () => {
+    expect(() => assertNonEmptyString(null, "gid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+    expect(() => assertNonEmptyString(undefined, "gid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+    expect(() => assertNonEmptyString(0, "gid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+    expect(() => assertNonEmptyString({}, "gid")).toThrow(
+      expect.objectContaining({ code: "validation/empty-string" }),
+    );
+  });
+
+  it("includes the paramName in the thrown message", () => {
+    expect(() => assertNonEmptyString("", "myParam")).toThrow(
+      "myParam を指定してください",
+    );
   });
 });

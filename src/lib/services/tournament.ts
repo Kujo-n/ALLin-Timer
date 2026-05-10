@@ -1,4 +1,4 @@
-import { AppError } from "@/lib/errors";
+import { AppError, assertNonEmptyString } from "@/lib/errors";
 import { getGroup } from "@/lib/firebase/repositories/groups";
 import {
   getTournament,
@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
  *     （rule の `isOrganizer(resource.data.groupId)` と同じ判定形）。
  *   - rule + service の二重防御で member の write を deny する。
  *   - 失敗時の AppError code:
+ *     - `validation/empty-string`: 引数 tid / uid が empty / whitespace-only（fail-fast guard）
  *     - `validation/spectate-enabled-invalid`: 引数 value が boolean でない（型穴ガード）
  *     - `firestore/not-found`: tournament が存在しない（getTournament 経由で素通し）
  *     - `group/not-organizer`: 呼出 uid が tournament.groupId の organizer ではない
@@ -29,6 +30,8 @@ export async function setSpectateEnabled({
   uid: string;
   value: boolean;
 }): Promise<void> {
+  assertNonEmptyString(tid, "tid");
+  assertNonEmptyString(uid, "uid");
   if (typeof value !== "boolean") {
     throw new AppError(
       "観戦モードフラグは boolean で指定してください",
