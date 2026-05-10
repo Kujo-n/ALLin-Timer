@@ -102,11 +102,15 @@ export function LiveClient({ tid }: { tid: string }) {
   //   member / 非メンバー / 匿名は role が member or null になり、useAudioPlayer 内で no-op。
   const { group: tournamentGroup, role: audioRole } = useGroupRole(tournament?.groupId);
   const isAudioOperator = audioRole === "owner" || audioRole === "organizer";
+  const [audioError, setAudioError] = useState<string | null>(null);
   const audioPlayer = useAudioPlayer({
     tournament,
     group: tournamentGroup,
     players,
     role: audioRole,
+    // 再生失敗時は dashboard と同等に画面上のエラー表示で見せる。/live は organizer が
+    // 会場ディスプレイに投影しているケースを含むため、サイレント failure は避ける。
+    onError: setAudioError,
   });
 
   // 30 秒のバナー表示判定用に 1 秒間隔で再描画。
@@ -205,6 +209,15 @@ export function LiveClient({ tid }: { tid: string }) {
               enabled={tournamentGroup.audioSettings.enabled}
               onUnlock={audioPlayer.unlock}
             />
+          ) : null}
+
+          {audioError ? (
+            <p
+              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100"
+              role="alert"
+            >
+              {audioError}
+            </p>
           ) : null}
 
           {winner ? (

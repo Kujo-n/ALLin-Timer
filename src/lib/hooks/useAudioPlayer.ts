@@ -27,6 +27,11 @@ interface UseAudioPlayerArgs {
   players: readonly PlayerDoc[];
   /** view している user の current role */
   role: AudioRole;
+  /**
+   * 再生失敗時に親へ通知する callback。設定変更ページ / dashboard / live で UI に
+   * エラーメッセージを出すために使う。logger.warn でも記録するため省略可。
+   */
+  onError?: (message: string) => void;
 }
 
 interface UseAudioPlayerState {
@@ -50,7 +55,12 @@ export function useAudioPlayer({
   group,
   players,
   role,
+  onError,
 }: UseAudioPlayerArgs): UseAudioPlayerState {
+  // onError は呼出毎に identity が変わる可能性があるため ref に逃がす。
+  // playInternal の deps に入れずに、参照は最新の値を使う。
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   // Phase 5.1: 任意の pointerdown で AudioContext を 1 回 resume する
   // （明示「サウンドを有効化」ボタンを押さない参加者でも音が鳴る経路を確保）。
   useImplicitAudioUnlock();
@@ -87,28 +97,38 @@ export function useAudioPlayer({
   // 実再生の共通処理。gate（role / enabled / unlocked）は呼び出し側で判定する。
   // preview は unlock 直後の sync block を維持するため unlocked state を経由せず呼ぶ
   // 必要があり、play は逆に unlocked を gate に含める必要があるため引数で切り替える。
+  //
+  // 旧実装は audioElRef を再利用していたが、`pause() → src=` → play() の遷移途中で
+  // 直前の play() Promise が AbortError で reject すると次の play() まで element 状態が
+  // 不整合のままになるケースがあった。毎回 fresh Audio() を生成することで状態汚染を回避し、
+  // unmount cleanup 用に audioElRef は「最後に再生した element」のみ保持する。
   const playInternal = useCallback(
     async (soundId: string) => {
       if (typeof window === "undefined") return;
       const sound = resolveSound(soundId);
-      if (!audioElRef.current) {
-        audioElRef.current = new Audio();
-      }
-      const audio = audioElRef.current;
-      // ogg → mp3 fallback。canPlayType で先頭 supported を選択。
+      // canPlayType を probe するための一時 element。fresh Audio() で十分。
+      const probe = new Audio();
       const supported = sound.sources.find(
-        (s) => audio.canPlayType(s.type) !== "",
+        (s) => probe.canPlayType(s.type) !== "",
       );
-      if (!supported) return;
+      if (!supported) {
+        const message =
+          "音声再生に失敗しました（対応する音声フォーマットが見つかりません）";
+        logger.warn(message, { code: "audio/no-supported-source", soundId });
+        onErrorRef.current?.(message);
+        return;
+      }
+      const audio = new Audio(supported.src);
+      audio.volume = Math.max(0, Math.min(1, volume));
+      // 直前の再生が走っていれば中断しておく（同時複数再生で耳障りなのを防ぐ）。
+      audioElRef.current?.pause();
+      audioElRef.current = audio;
       try {
-        audio.pause();
-        audio.currentTime = 0;
-        audio.src = supported.src;
-        audio.volume = Math.max(0, Math.min(1, volume));
         await audio.play();
       } catch (e) {
         const wrapped = AppError.from(e, "audio/play-failed", "音声再生に失敗しました");
         logger.warn(wrapped.message, { code: wrapped.code, soundId });
+        onErrorRef.current?.(wrapped.message);
       }
     },
     [volume],

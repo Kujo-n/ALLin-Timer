@@ -178,11 +178,14 @@ export function DashboardClient({ tid }: { tid: string }) {
 
   // Phase 4.9: 音声通知。早期 return 前に呼ぶことで hooks の呼び出し順を一定に保つ。
   // 引数は null 許容で、role が owner/organizer 以外なら hook 内部で no-op になる。
+  // onError: 再生失敗（autoplay block / 出力デバイス不在 / SW cache 破損 等）を運営者に
+  // 可視化する。logger.warn と二重通知になるが、開発者ツールを開かない運用者向けに UI で見せる。
   const audioPlayer = useAudioPlayer({
     tournament: data,
     group: tournamentGroup,
     players,
     role: myRole,
+    onError: setError,
   });
 
   async function onDelete() {

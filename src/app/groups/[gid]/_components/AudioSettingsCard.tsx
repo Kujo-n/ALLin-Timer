@@ -85,6 +85,8 @@ export function AudioSettingsCard({
     group,
     players: [],
     role,
+    // 試聴ボタン押下時の play 失敗を Card 上のエラー領域へ伝える。
+    onError: onError,
   });
 
   const onSave = useCallback(async () => {
