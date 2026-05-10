@@ -11,12 +11,18 @@
 //   会場 Wi-Fi 瞬断時に予備モニタが直前 HTML を保持できるようにする。
 //   network-first のため stale 許容範囲は数分以内。CACHE_VERSION v2 → v3 に bump し旧 cache を一掃。
 //
+// v4: HTMLAudioElement の Range request に対する 206 Partial Content 応答を
+//   `cache.put` しようとして TypeError を投げ、`.catch(() => null)` 経由で SW が
+//   合成 504 を返していた `/sounds/blind-up.ogg` 再生不能バグを修正。cache.put
+//   失敗時も res 自体は forward するよう try/catch で防御。CACHE_VERSION v3 → v4
+//   に bump して新 SW activate 時に旧 cache を一掃する。
+//
 // 本ファイルは vanilla JS（ESM 不可 / TS 不可）。Next.js は中身を transform しない。
 
 /* eslint-disable */
 // @ts-nocheck
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const SHELL_CACHE = `allin-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `allin-runtime-${CACHE_VERSION}`;
 
@@ -129,9 +135,15 @@ async function networkFirst(req, url) {
     if (res && res.ok && shouldCacheNavigate(url.pathname)) {
       // put → trim を順序保証する。await せず trim を先に走らせると新エントリが
       // cache.keys() に乗らず間引きが 1 cycle 遅れて 50 → 51 に振れる。
-      await cache.put(req, res.clone());
-      // eviction 失敗は次の put で再評価されるため握る。
-      trimCache(RUNTIME_CACHE, MAX_RUNTIME_ENTRIES).catch(() => {});
+      // cache.put は status 206 (Partial Content) や opaque response で TypeError を
+      // 投げる仕様。HTML navigate では Range request は稀だが、保険で握って
+      // ユーザーへは res をそのまま返す（cache miss の degraded 動作）。
+      try {
+        await cache.put(req, res.clone());
+        trimCache(RUNTIME_CACHE, MAX_RUNTIME_ENTRIES).catch(() => {});
+      } catch {
+        // cache に乗せられない response は単にスキップ。本流の res は返す。
+      }
     }
     return res;
   } catch {
@@ -153,9 +165,19 @@ async function staleWhileRevalidate(req) {
       if (res && res.ok) {
         // put → trim の順序保証。await を入れずに trim を走らせると新エントリが
         // index に入る前に keys() を取られて間引きが 1 cycle 遅れる。
-        await cache.put(req, res.clone());
-        // eviction の失敗は static asset の蓄積で quota error を起こさないため握る。
-        trimCache(RUNTIME_CACHE, MAX_RUNTIME_ENTRIES).catch(() => {});
+        // cache.put は **status 206 (Partial Content) 応答で TypeError を投げる**
+        // 仕様。HTMLAudioElement は `Range: bytes=0-` を付与して 206 を引き出すため、
+        // 旧実装 (try/catch なし) では `.then` 内 throw → 外側の `.catch(() => null)`
+        // で network を null 化し、cached も無いため SW が合成 504 を返していた
+        // （本番で `/sounds/blind-up.ogg` が 504 になり音が鳴らなかった原因）。
+        // 解決策: cache.put を try/catch で握り、cache 不能でも res 自体は流す。
+        try {
+          await cache.put(req, res.clone());
+          // eviction の失敗は static asset の蓄積で quota error を起こさないため握る。
+          trimCache(RUNTIME_CACHE, MAX_RUNTIME_ENTRIES).catch(() => {});
+        } catch {
+          // 206 / opaque / その他 cache 拒否レスポンスは静かにスキップ。
+        }
       }
       return res;
     })
