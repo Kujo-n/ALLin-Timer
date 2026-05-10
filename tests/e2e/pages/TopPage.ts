@@ -11,6 +11,12 @@ export class TopPage extends BasePage {
   readonly tournamentsButton: Locator = this.page.getByRole("button", {
     name: "トーナメント一覧へ",
   });
+  readonly noteIntroLink: Locator = this.page.getByRole("link", {
+    name: /アプリ紹介を読む/,
+  });
+  readonly noteOperatingGuideLink: Locator = this.page.getByRole("link", {
+    name: /運営ガイド（操作チートシート）/,
+  });
 
   async goto() {
     await this.page.goto("/");
@@ -22,6 +28,8 @@ export class TopPage extends BasePage {
     await expect(this.loginRegisterButton).toBeVisible();
     await expect(this.groupsButton).toHaveCount(0);
     await expect(this.tournamentsButton).toHaveCount(0);
+    await expect(this.noteIntroLink).toBeVisible();
+    await expect(this.noteOperatingGuideLink).toBeVisible();
   }
 
   async expectSignedInLayout() {
@@ -29,5 +37,7 @@ export class TopPage extends BasePage {
     await expect(this.groupsButton).toBeVisible();
     await expect(this.tournamentsButton).toBeVisible();
     await expect(this.loginRegisterButton).toHaveCount(0);
+    await expect(this.noteIntroLink).toBeVisible();
+    await expect(this.noteOperatingGuideLink).toBeVisible();
   }
 }

@@ -27,6 +27,11 @@ const emulatorEnv: Record<string, string> = {
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: `${E2E_PROJECT_ID}.appspot.com`,
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "0",
   NEXT_PUBLIC_FIREBASE_APP_ID: "1:0:web:fake",
+  // note 公開記事リンク（トップ画面の TopPage PageObject 検証用）。
+  // 本番 URL に依存せず e2e が pass するよう、明らかにテスト用と分かる dummy を注入。
+  // 実 note ユーザに偶然衝突しないよう note.com 配下にはしない。
+  NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL: "https://example.test/note-intro",
+  NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL: "https://example.test/note-operating-guide",
 };
 
 export default defineConfig({
