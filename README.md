@@ -263,6 +263,7 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run test:rules-clone-players`       | `players` create ルールを emulator 上で検証（Phase 5.4 organizer-clone ブランチ） |
 | `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
 | `npm run test:rules-season-points-rule`  | `groups/{gid}.seasonPointsRule` ルールを emulator 上で検証（Phase E）             |
+| `npm run test:rules-spectate`            | `tournaments.spectateEnabled` 観戦経路ルールを emulator 上で検証（04-spectate-mode Phase 1） |
 | `npm run test:rules-table-labels`        | `defaultTableLabels` / `tables/{n}.label` / `.color` ルールを emulator 上で検証（Phase C） |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
@@ -315,6 +316,8 @@ src/
 │  ├─ join/[tid]/                 # 参加者向け受付（Google / ゲスト / ログイン）
 │  ├─ login/                      # 運営者ログイン / 新規登録
 │  ├─ settings/                   # プロフィール編集（displayName 変更）
+│  ├─ spectate/[tid]/              # 観戦モード（anon read-only ビュー、04-spectate-mode Phase 1+）
+│  │                              # / _components/SpectateLateEntryBanner（後発参加バナー）
 │  ├─ structures/                 # ストラクチャプリセット CRUD（group メンバーで共有）
 │  ├─ templates/                  # Structure Templates（サークル横断のストラクチャ図書館、Phase 4.8）
 │  ├─ tournaments/                # トーナメント一覧 / 作成 / ダッシュボード / 編集（group メンバーで共有）
@@ -386,8 +389,8 @@ scripts/
 ├─ generate-pwa-icons.mjs         # PWA アイコン再生成（`public/icons/icon_pwa.png` を source に 4 サイズ書出し）
 ├─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
 └─ test-rules-*.mjs               # Firestore Rules emulator validator（limits / clone-players / season /
-                                  # season-points-rule / default-seats / finished-count / pd / table-labels
-                                  # の 8 本。手動 / CI 対象外）
+                                  # season-points-rule / default-seats / finished-count / pd / spectate /
+                                  # table-labels の 9 本。手動 / CI 対象外）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```

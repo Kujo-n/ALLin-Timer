@@ -5,8 +5,9 @@ scope: ホーム画面アイコンからの起動（PWA 化）、運営者向け
 audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
-targetPhase: Phase A・B・C・D 完了時点（PWA 基盤・タイマーのオフライン耐性・端末制御・インストール促進）
-lastUpdated: 2026-05-09
+  - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
+targetPhase: Phase A・B・C・D 完了時点（PWA 基盤・タイマーのオフライン耐性・端末制御・インストール促進）/ 観戦モードの PWA キャッシュ拡張は 04-spectate-mode Phase 4 完了時点
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -121,6 +122,7 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 - タイマー進行中に通信が一時的に切れた場合、画面に **「通信が切れました」のバナー** と最終同期時刻が表示される
 - バナー表示中もタイマーの残り時間表示は継続し、ブラインドレベルの **自動進行も継続する**（通信が戻ったときに同期される）
 - 通信回復後はバナーが消え、最新状態に自動同期される
+- **観戦ページ（[/spectate/[tid]](/spectate/%5Btid%5D)）も同じ仕組みでオフライン耐性が効く**: 数分以内の stale 許容範囲でタイマー / 席表が表示維持される（詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md) 3.7 節）
 - 詳細仕様（オフライン時のレベル進行ロジック・手動操作・end-of-tournament の挙動）は [06-timer-and-blinds.spec.md](06-timer-and-blinds.spec.md) を参照
 
 #### 3.3.2 誰が・いつ使うか
@@ -275,7 +277,7 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 
 - **完全オフライン運用は対応外**: モバイル回線が完全に死んでいる会場（地下深部 / 山間部）は対応外。Wi-Fi が無い会場でもモバイル回線で online 保持する前提
 - **マスター機 1 台モード（運営者がメンバー / ゲストの代理受付）は未実装**: 通信障害下で運営者が代理操作する想定は将来 PRD で検討
-- **観戦モード URL（外部の観客向け公開リンク）は未実装**: 別 PRD（PRD 04 候補）として後続
+- **観戦モード URL は実装済み**（[10-spectate-mode.spec.md](10-spectate-mode.spec.md) 参照）。観戦ページも PWA キャッシュ対象で、会場の予備モニタ投影に対応する
 - **Web Push 通知は未実装**: iOS の制約（条件複雑 / 対応国限定）と必要性の低さで保留
 - **インストール促進バナーのロール限定は未実装**: 現状は全ユーザーに表示。誤表示のコストが「× で閉じるだけ」と低いためロール限定をしていない
 - **Service Worker のキャッシュ容量上限は OS 仕様**: iOS 約 50MB / Android 約 100MB。現状の本アプリは数 MB 規模で問題なし
@@ -288,15 +290,17 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 - 関連: タイマー進行のオフライン耐性の詳細は [06-timer-and-blinds.spec.md](06-timer-and-blinds.spec.md)
 - 関連: 音声通知の自動再生解除は [07-audio-notifications.spec.md](07-audio-notifications.spec.md)
 - 関連: トーナメント受付・運営の入口は [04-tournaments.spec.md](04-tournaments.spec.md)
+- 関連: 観戦モードの公開仕様（PWA キャッシュ対象に追加された経緯）は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) Phase A（PWA 基盤）/ Phase B（タイマーのオフライン耐性）/ Phase C（端末制御）/ Phase D（インストール促進・最終仕上げ）
+- 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 4（観戦ページの PWA キャッシュ追加）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
 
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
-- 画面: [/](/)（インストール促進バナーの mount 点）/ [/tournaments/[tid]](/tournaments/%5Btid%5D)（通信切れバナー / 画面消灯防止 / 横向きロックが動作）/ [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live)（同じく）
+- 画面: [/](/)（インストール促進バナーの mount 点）/ [/tournaments/[tid]](/tournaments/%5Btid%5D)（通信切れバナー / 画面消灯防止 / 横向きロックが動作）/ [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live)（同じく）/ [/spectate/[tid]](/spectate/%5Btid%5D)（観戦ページもキャッシュ対象）
 - 主な操作: ホーム画面に追加 / インストール促進バナーを閉じる / 通信切れバナー閲覧 / 複数タブ警告閲覧
 - 設定項目: なし（OS / ブラウザ標準のインストールフロー + バナーの 30 日 dismiss のみ）
-- 関連シーン: 月 1〜2 回の運営者がホーム画面追加 → 会場到着 → タイマー起動 → 通信瞬断でも進行継続 → プロジェクタ投影中も画面が消えない / 横にならない / 終了後にホーム画面アイコンから別の日も起動できる
+- 関連シーン: 月 1〜2 回の運営者がホーム画面追加 → 会場到着 → タイマー起動 → 通信瞬断でも進行継続 → プロジェクタ投影中も画面が消えない / 横にならない / 終了後にホーム画面アイコンから別の日も起動できる / 観戦モード公開時に予備モニタが Wi-Fi 瞬断でも継続表示
 - 関連 PRD: 上記参照

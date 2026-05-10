@@ -7,7 +7,7 @@ relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
 targetPhase: Phase 5.3 完了時点（進行中のレベル時間変更・末尾追加まで対応）/ オフライン耐性・デバイス制御は PRD 03 Phase B・C 完了時点
-lastUpdated: 2026-05-09
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -460,6 +460,7 @@ status: stable
 - 関連: 席決め・バランシングは [05-seating-and-balancing.spec.md](05-seating-and-balancing.spec.md)
 - 関連: トーナメント全体の運営フローは [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: PWA・インストール促進・端末対応の全容は [09-pwa-app-shell.spec.md](09-pwa-app-shell.spec.md)
+- 関連: 観戦経路（[/spectate/[tid]](/spectate/%5Btid%5D)）でもタイマー / ブラインドが読み取り専用で表示される。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md) 3.3 節
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 3（タイマー / 同期 / 接続切断 UI）/ Phase 4.7（休憩レベル）/ Phase 4.11（レイアウト）/ Phase 4.14（全画面 API）/ Phase 5.2（レベル時間動的変更）/ Phase 5.3（末尾追加）
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) Phase B（タイマーのオフライン耐性）/ Phase C（端末制御）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)

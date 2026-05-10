@@ -7,7 +7,7 @@ relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
 targetPhase: Phase 4.9 完了時点（デフォルト音源 2 種類）/ タイマー開始時の自動再生解除強化は PRD 03 Phase C 完了時点
-lastUpdated: 2026-05-09
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -242,6 +242,7 @@ status: stable
 - 「鳴る端末」は **役割ベース** で決まる。同じユーザーが運営担当者の端末（PC）と一般メンバーの端末（参加者用スマホ）を持っていた場合、PC では鳴り、スマホでは鳴らない
 - これにより、参加者のスマホで予期せず音が鳴る事故を防いでいる
 - 設定変更権限は運営担当者以上に限定（一般メンバーが勝手に OFF にできない）
+- **観戦経路（[/spectate/[tid]](/spectate/%5Btid%5D)）では音は鳴らない**: 観戦は読み取り専用で role を持たないため、ブラインドアップ音 / 優勝確定音は再生されない。会場の予備モニタ投影でも観戦経路から音は出ない設計（音は運営者の端末で鳴る）
 
 ## 5. 非機能要件（業務観点）
 
@@ -302,6 +303,7 @@ status: stable
 - 関連: トーナメントの自動終了 / Winner 演出は [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: サークル詳細画面の「設定」タブからの到達経路は [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md) 3.11 節
 - 関連: PWA / 端末制御の文脈は [09-pwa-app-shell.spec.md](09-pwa-app-shell.spec.md)
+- 関連: 観戦経路は読み取り専用で音は鳴らない設計。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 4.9（デフォルト音源）/ Phase 4.10（カスタム音源、未着手）/ Phase 4.11（タイマーコントロールへのクイック切替統合）
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) Phase C（タイマー開始時の自動再生解除強化）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)

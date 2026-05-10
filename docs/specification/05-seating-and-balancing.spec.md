@@ -7,7 +7,7 @@ relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
 targetPhase: Phase 5.4 完了時点 / Table 名カスタムは Phase C 完了時点
-lastUpdated: 2026-05-07
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -374,6 +374,7 @@ status: stable
 - 関連: タイマーとブラインド進行は [06-timer-and-blinds.spec.md](06-timer-and-blinds.spec.md)
 - 関連: サークル単位の Table 名デフォルト・席数デフォルトは [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md)
 - 関連: シーズン戦績への自動加算は [08-season-stats.spec.md](08-season-stats.spec.md)
+- 関連: 観戦モード公開時の席表 / Table 名 / 色の表示は [10-spectate-mode.spec.md](10-spectate-mode.spec.md) 3.3 節
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 4（席決め自動化）/ Phase 5.1（PD・初回ランダム抽選・進行中レイトエントリー即時自動配席）
 - 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase C（Table 名カスタム）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)

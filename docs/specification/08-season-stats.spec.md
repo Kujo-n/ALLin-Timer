@@ -6,7 +6,7 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
 targetPhase: Phase A・B・D・E 完了時点（基盤・切替・ランキング・結果カード PNG・Web Share API・過去シーズン履歴閲覧 UI・過去シーズン詳細ページ・シーズンポイント計算式の運営者カスタマイズ）
-lastUpdated: 2026-05-09
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -293,7 +293,7 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 
 - 画像生成は数秒かかる場合がある
 - 画像レイアウトは固定
-- 観戦モード URL が未実装のため、現状はサークル所属メンバーのみアクセス可能
+- 優勝カードのダウンロード / シェアは Winner 画面（運営者ダッシュボード / 参加者向け表示）に到達できる人のみが対象。観戦経路（[/spectate/[tid]](/spectate/%5Btid%5D)）は読み取り専用のためダウンロードボタン自体が表示されない
 
 ### 3.10 シーズンポイント計算式の運営者カスタマイズ
 
@@ -421,6 +421,7 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 - 全体像: [00-overview.spec.md](00-overview.spec.md)
 - 関連: トーナメント終了時の自動加算は [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: サークル単位のシーズン開始操作は [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md)
+- 関連: 観戦経路でも進行中の残人数 / 席表は見える（読み取り専用）。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase A（基盤）/ Phase B（結果カード PNG）/ Phase D（Web Share API・過去シーズン履歴閲覧 UI）/ Phase E（シーズンポイント計算式の運営者カスタマイズ）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 

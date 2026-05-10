@@ -6,7 +6,7 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
 targetPhase: Phase 5.x 完了時点（フィールドテスト中）
-lastUpdated: 2026-05-07
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -277,6 +277,7 @@ Google サインインだけだと、Google アカウントを持たない人が
 - 全体像: [00-overview.spec.md](00-overview.spec.md)
 - 関連: サークルへの加入・脱退・役割管理は [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md)
 - 関連: トーナメント受付フロー（ゲスト匿名サインインを含む）は [04-tournaments.spec.md](04-tournaments.spec.md)
+- 関連: 観戦経路はサインイン不要で URL を踏めば誰でも閲覧できる。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) の Phase 1 / Phase 4.5 / Phase 4.7 / Phase 5.1
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 

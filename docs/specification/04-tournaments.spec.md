@@ -6,8 +6,9 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
-targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）/ 優勝カードの画像保存・Web Share API は Phase B・D 完了時点
-lastUpdated: 2026-05-07
+  - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
+targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）/ 優勝カードの画像保存・Web Share API は Phase B・D 完了時点 / 観戦モード（owner / 運営担当者の opt-in 公開）は 04-spectate-mode Phase 1〜4 完了時点
+lastUpdated: 2026-05-10
 status: stable
 ---
 
@@ -93,6 +94,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 
 - [/tournaments](/tournaments) で、自分が所属するサークルの全トーナメントを一覧表示
 - カードの色で状態（準備中 / 受付中 / 進行中 / 一時停止 / 終了）を区別
+- 観戦モード ON のトーナメントには「観戦公開中」バッジが表示される（誤公開放置の検知用）。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 各カードを押すと該当トーナメントのダッシュボード or 参加者画面に遷移する
 - 一般メンバーは「受付完了している自分のトーナメント」を中心に表示される
 
@@ -157,13 +159,14 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
   - **左**: 受付 QR（受付期間中）
   - **中央**: タイマー表示 + ブラインド情報 + 操作ボタン
   - **右**: 次の休憩までの時間 / 平均持ち点 / 残人数の 3 カード
-- 下段: ストラクチャの情報 / 席表 / バランシング指示 / 参加者一覧 / バストボタン
+- 下段: ストラクチャの情報 / 席表 / バランシング指示 / 参加者一覧 / バストボタン / **観戦モードカード（owner / 運営担当者のみ）**
 - ボタンは状態に応じて切り替わる
   - 準備中: 「席を決定」ボタン / 編集 / 削除
   - 受付中: 「トーナメント開始」/ 編集 / 削除
   - 進行中: 一時停止 / 次レベル / 巻戻し / バストボタン / 全画面表示 / Table 名編集
   - 一時停止中: 再開
   - 終了: Winner 演出 / **「画像を保存」ボタン**（優勝カード PNG ダウンロード）/ Web Share API 対応端末では **「シェア」ボタン**が並列表示 / 「同じ参加者で次のトーナメントを作る」/ 削除
+- 観戦モードカード: ON/OFF スイッチ + 確認ダイアログ + 観戦 URL（フル URL）+ URL コピーボタン + QR コード。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - ヘッダーにトーナメント名がページタイトルとして表示される
 
 #### 3.4.2 誰が・いつ使うか
@@ -348,6 +351,9 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 | トーナメント削除（準備中 or 終了） | ○ | ○ | × | × |
 | 優勝カード（Winner 画面）の画像保存 | ○ | ○ | ○ | △ |
 | 優勝カード（Winner 画面）の Web Share シェア | ○ | ○ | ○ | △ |
+| 観戦モード ON/OFF（ダッシュボードのカード） | ○ | ○ | × | × |
+| 観戦 URL のコピー / QR コードの参照 | ○ | ○ | × | × |
+| トーナメント一覧の「観戦公開中」バッジ閲覧 | ○ | ○ | ○ | × |
 
 凡例: ○ 可 / × 不可 / △ ゲスト匿名は受付完了画面に留め、live 画面には進まないため Winner 演出に到達せず実質的にダウンロード / シェアできない
 
@@ -417,8 +423,8 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - **複製の上限 50 人**: 過去最大規模を超える運用は想定外（現実のサークル規模では十分）
 - **賞金計算は未実装**: 単純分配を含めて v1 では非対応
 - **リバイ・アドオンの実行操作は未実装**: ストラクチャに量フィールドはあるが、実行 UI はない
-- **観戦モード URL は未実装**: 関係者のみへの URL 配布で代替している
-- **PWA 化は未実装**: ブラウザのブックマーク等で代替
+- **観戦モードはトグル単位の opt-in**: 公開対象を絞り込む短命 token / revocable code は未提供（詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)）
+- **PWA 化は対応済み**（[09-pwa-app-shell.spec.md](09-pwa-app-shell.spec.md) 参照）。ホーム画面アイコンからの起動が可能
 
 ## 7. 関連 spec / ドキュメント
 
@@ -428,8 +434,10 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - 関連: タイマー・ブラインド進行・全画面表示・接続切断 UI は [06-timer-and-blinds.spec.md](06-timer-and-blinds.spec.md)
 - 関連: 音声通知は [07-audio-notifications.spec.md](07-audio-notifications.spec.md)
 - 関連: シーズン戦績への自動加算・優勝カードの画像保存 / Web Share API シェアの詳細は [08-season-stats.spec.md](08-season-stats.spec.md)（3.7 / 3.8）
+- 関連: 観戦モード（owner / 運営担当者の opt-in 公開）と観戦 URL 共有の詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 2（受付 / CRUD）/ Phase 4.5（自動終了 / Winner 演出）/ Phase 4.14（削除 cascade）/ Phase 5.1〜5.4（PD / レベル時間動的変更 / レベル末尾追加 / 複製）
 - 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase B（優勝カード PNG）/ Phase D（Web Share API）— Winner 演出の画像保存・シェアボタンの提供元
+- 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 3（toggle UI と共有導線）— ダッシュボード上の観戦モードカード提供元
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -437,7 +445,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
 - 画面: [/tournaments](/tournaments) / [/tournaments/new](/tournaments/new) / [/tournaments/[tid]](/tournaments/%5Btid%5D) / [/tournaments/[tid]/edit](/tournaments/%5Btid%5D/edit) / [/tournaments/[tid]/clone](/tournaments/%5Btid%5D/clone) / [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live) / [/join/[tid]](/join/%5Btid%5D)
-- 主な操作: 新規作成 / 編集（準備中）/ 受付（3 択フロー）/ 自分のキャンセル / 「席を決定」/ 開始 / 一時停止 / 巻戻し / 次レベル / 終了 / 複製 / 削除（準備中 or 終了）/ 優勝カード（Winner 画面）の画像保存・Web Share
-- 設定項目: 名前 / ストラクチャ / 1 Table あたりの席数 / 参加者選択（複製時）
-- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止 / 終了時の自動 Winner 演出 / 終了直後の優勝カード共有 / 削除 cascade
+- 主な操作: 新規作成 / 編集（準備中）/ 受付（3 択フロー）/ 自分のキャンセル / 「席を決定」/ 開始 / 一時停止 / 巻戻し / 次レベル / 終了 / 複製 / 削除（準備中 or 終了）/ 優勝カード（Winner 画面）の画像保存・Web Share / 観戦モード ON/OFF（ダッシュボード上のカード経由）/ 観戦 URL のコピー・QR 提示
+- 設定項目: 名前 / ストラクチャ / 1 Table あたりの席数 / 参加者選択（複製時）/ 観戦モード ON/OFF（既定 OFF / トーナメント単位）
+- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止 / 終了時の自動 Winner 演出 / 終了直後の優勝カード共有 / 削除 cascade / 観戦 URL の予備モニタ投影 / 一覧の「観戦公開中」バッジ確認
 - 関連 PRD: 上記参照
