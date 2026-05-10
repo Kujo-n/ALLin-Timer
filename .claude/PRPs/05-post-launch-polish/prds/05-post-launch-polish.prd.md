@@ -75,7 +75,9 @@ Track A の非対象（旧 PRD から継承）:
 
 Track B の非対象（plan ファイル参照）:
 
-- URL 定数の external-links.ts への切り出し（YAGNI）
+- URL を `src/app/page.tsx` 内に **ハードコードする**設計（MIT 公開リポジトリで個人 note アカウントが
+  特定されるのを避けるため、環境変数化が必須）
+- URL 定数の `src/lib/external-links.ts` への切り出し（env 化により定数集約は不要 / YAGNI）
 - 新規 e2e spec 作成（PageObject の locator 追加で十分）
 - ログイン状態によるリンク出し分け（両方常時表示）
 - PWA manifest / install promotion への変更
@@ -147,10 +149,13 @@ Track B:
 
 | Priority | Capability | Rationale |
 | --- | --- | --- |
-| Must | トップ画面 `/` に note 記事 2 本（アプリ紹介 / 運営チートシート）へのリンクを常時表示 | コア機能 |
+| Must | URL を環境変数（`NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL` / `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL`）で管理し、リポジトリには値をハードコードしない | MIT 公開で運営者個人の note アカウント特定を防ぐ |
+| Must | env 未設定時はリンクを非表示（fork 直後のデフォルト挙動を安全に） | 第三者 fork 時に意図せぬ個人 URL 露出を避ける |
+| Must | トップ画面 `/` に note 記事 2 本（アプリ紹介 / 運営チートシート）へのリンクを常時表示（env 設定済み時） | コア機能 |
 | Must | リンクは新しいタブで開く（`target="_blank"` + `rel="noopener noreferrer"`）| 外部遷移の標準 |
 | Must | a11y: 「新しいタブで開く」を SR に通知（aria-label） | WCAG 2.4.4 / 3.2.5 |
 | Must | sign-in / sign-out / loading 全状態で表示 | ログイン前にもアプリ概要が見える |
+| Must | `.env.local.example` をリポジトリに追加し fork 者にセットアップ手順を提示 | OSS としての導線整備 |
 | Should | 外部リンクアイコン（lucide `ExternalLink`）でビジュアル明示 | UX 向上 |
 | Could | 出し分け（未ログインなら紹介、ログイン済みなら運営ガイド） | YAGNI: 両方常時表示で十分 |
 
@@ -244,19 +249,29 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 - **外部リンクパターン**: `<Button asChild variant="link" size="sm">` + 子 `<a target="_blank"
   rel="noopener noreferrer" aria-label="...">` で role を `"link"` として描画。既存の
   `getByRole("button", ...)` e2e は汚染しない
-- **URL 定数**: `page.tsx` 冒頭に const で閉じる。external-links.ts ファイル新設は YAGNI
+- **URL の env 化**: `NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL` / `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL`
+  の 2 つの環境変数で管理。**リポジトリには URL を一切ハードコードしない**（MIT 公開リポジトリで
+  運営者個人の note アカウントが GitHub commit history から特定されるのを防ぐ）。
+  `.env.local`（gitignore 済み）+ Vercel 環境変数の両方で管理し、`.env.local.example` を
+  リポジトリに追加して fork 者がセットアップ手順を辿れるようにする
+- **未設定時のフォールバック**: いずれの env も未設定なら **リンクセクション全体を非表示**にする
+  （fork した第三者がデフォルトで個人 URL を露出させない）。env 単位で個別判定し、片方だけ
+  設定されている場合は設定された側のリンクのみ表示
 - **a11y**: `aria-label` に「新しいタブで開く」を含め WCAG 2.4.4 / 3.2.5 に準拠
 - **e2e**: `tests/e2e/pages/TopPage.ts` PageObject に link locator を追加し、
-  `expectSignedOutLayout` / `expectSignedInLayout` で visible 検証
+  `expectSignedOutLayout` / `expectSignedInLayout` で visible 検証。テスト環境では
+  `playwright.config.ts` の `webServer.env` または `tests/e2e/setup.ts` で env を注入
 
 **Technical Risks**
 
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
-| 実装時に URL が確定せず placeholder のまま commit される | M | plan の Task 1 GOTCHA で明示。実装直前にユーザに最終 URL を確認 |
-| `Button asChild` の Slot エラー（複数子要素を並べる）で build fail | L | plan の Task 3 GOTCHA に明示。`<a>` を単一子要素として、その内側にテキスト + アイコンを並べる |
+| 環境変数 (`NEXT_PUBLIC_NOTE_*`) が production の Vercel に未設定でリンクが出ない | M | デプロイ手順に env 設定を必須として明記。env 未設定時は dev で警告ログ（`logger.warn`）+ UI 上は静かに非表示 |
+| `NEXT_PUBLIC_*` プレフィックスがクライアントバンドルに含まれることへの懸念 | L | 公開 URL（note.com への外部リンク）が前提。秘匿対象ではないため `NEXT_PUBLIC_*` で正しい。security-env.md と整合 |
+| e2e テストが env 注入失敗で fail | L | `playwright.config.ts` の `webServer.env` または `globalSetup` で固定 dummy URL を注入。本番 URL に依存しないテスト構成 |
+| `Button asChild` の Slot エラー（複数子要素を並べる）で build fail | L | plan の Task GOTCHA に明示。`<a>` を単一子要素として、その内側にテキスト + アイコンを並べる |
 | PWA standalone モードでの target="_blank" 挙動が iOS / Android / Desktop で異なる | L | OS デフォルト動作で十分（仕様として「外部記事は外部ブラウザで開く」が自然） |
-| note 記事が将来削除・URL 変更されたときにリンク切れ | L | URL 定数を `page.tsx` 冒頭に集約しているため、URL 変更時の修正点が 1 ファイルに閉じる |
+| note 記事が将来削除・URL 変更されたときにリンク切れ | L | env 値を Vercel コンソールから差し替えるだけで対応可能。code change / redeploy 不要 |
 | 新リンクが既存 e2e の `getByRole("button")` を汚染する | L | `Button asChild` + `<a>` で role は "link" になるため "button" には混ざらない |
 
 ---
@@ -351,21 +366,30 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 **Phase B.1: Track B: Top Page Promotion (note 記事リンク)**
 
 - **Goal**: トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを
-  常時表示し、未導入者 / 既存運営者双方の記事到達動線を確保する
+  常時表示し、未導入者 / 既存運営者双方の記事到達動線を確保する。URL はリポジトリにハードコードせず
+  環境変数経由で読み込む
 - **Scope**:
-  - `src/app/page.tsx` 冒頭に note 記事 URL 定数 2 件を追加（`<NOTE_INTRO_URL>` / `<NOTE_GUIDE_URL>`、
-    実装直前にユーザから確定 URL を受領）
+  - `.env.local.example` を新規作成し、`NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL` /
+    `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL` のテンプレートを記載
+  - 開発者の `.env.local` および Vercel 環境変数に上記 2 つを設定（実値は code には残さない）
+  - `src/app/page.tsx` で `process.env.NEXT_PUBLIC_NOTE_*` を参照し、空文字フォールバック →
+    値がある側のリンクのみ render（両方未設定ならセクション全体非表示）
   - `lucide-react` から `ExternalLink` icon を import
-  - 既存の sign-in / sign-out CTA `<div>` の直下に、外部リンク 2 件のセクションを常時表示で追加
+  - 既存の sign-in / sign-out CTA `<div>` の **外側** に、env 設定済み時のみ表示するリンクセクションを追加
     （`<Button asChild variant="link" size="sm">` + `<a target="_blank" rel="noopener noreferrer">`）
   - `aria-label` で「新しいタブで開く」を SR に通知
   - `tests/e2e/pages/TopPage.ts` に `noteIntroLink` / `noteOperatingGuideLink` の Locator を追加し、
     `expectSignedOutLayout` / `expectSignedInLayout` で visible 検証
+  - `playwright.config.ts` の `webServer.env` に dummy URL（`https://note.com/dummy/intro` 等）を
+    注入し、本番 URL 非依存で e2e が動く構成にする
+  - README に「note 記事リンクを有効化する手順（`.env.local` への記載 + Vercel 環境変数設定）」を追記
 - **Success signal**:
-  - sign-out / sign-in / loading 全状態で 2 リンクが visible
+  - env 設定済みの local / production で sign-out / sign-in / loading 全状態で 2 リンクが visible
+  - env 未設定の dev サーバ起動時はセクション全体が非表示で、UI が破綻しない
   - 両リンクが新タブで note 記事を開き、`rel="noopener noreferrer"` / `aria-label` が付与されている
   - `npm run typecheck` / `npm run lint` / `npm run build` / `npx playwright test` 全 green
   - 既存 e2e の `getByRole("button")` が新リンクで汚染されていない
+  - リポジトリの code / commit history に note URL が一切残っていない
 
 ### Parallelism Notes
 
@@ -395,7 +419,8 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | Track A 旧 asset の扱い | best-effort 削除 | 物理削除を tx 化 / 永続保持 | Storage delete は別 SDK 呼び出しで Firestore tx に組み込めない。失敗時は孤児になるが Storage コスト的に無視可能 |
 | Track A クライアント画像処理 | canvas API で 1200×630 jpg quality 0.8 | Web Worker 化 / 外部ライブラリ | 月 1〜2 回利用で worker は overkill。canvas API は標準で依存追加なし |
 | Track A Storage 上限 | 1 ファイル 1MB | 500KB / 5MB | 1200×630 jpg quality 0.8 が typical 150-250KB なので 1MB は十分余裕 |
-| Track B URL 定数の置き場所 | `page.tsx` 冒頭に const で閉じる | `src/lib/external-links.ts` 新設 | URL 2 件のみで早すぎる抽象。CLAUDE.md「3 行類似ロジックは早すぎる抽象より具体」方針 |
+| Track B URL の管理方式 | 環境変数（`NEXT_PUBLIC_NOTE_*`）+ `.env.local` / Vercel + `.env.local.example` リポジトリ同梱 | `page.tsx` 冒頭の const ハードコード / `src/lib/external-links.ts` 新設 | MIT 公開リポジトリで運営者個人の note アカウント URL が GitHub commit history から特定されるのを防ぐ。security-env.md の `NEXT_PUBLIC_*` プレフィックス規約に従う（公開可能な URL のみ） |
+| Track B env 未設定時の挙動 | リンクセクション全体を非表示 | エラーで build fail / placeholder URL を表示 | fork した第三者がデフォルトでも UI が破綻せず、かつ意図せぬ個人 URL 露出を起こさない |
 | Track B リンク表示の出し分け | sign-in / sign-out / loading 全状態で常時表示 | 未ログインなら紹介 / ログイン済みなら運営ガイド | 両方常時表示で「未導入の人がトップを見たときに即座に何のアプリか分かる」かつ「既存運営者がいつでも操作リファレンスに飛べる」両方を成立 |
 | Track B Button のラッピング | `Button asChild` + 子 `<a>` | `<a>` 内に `<Button>` をネスト / 素の `<a>` + Button class 直接適用 | role を "link" にして既存 `getByRole("button")` e2e を汚染しない。Button styling 維持 |
 | Track B e2e の扱い | PageObject に locator 追加のみ、新規 spec は作らない | 専用 spec 新設 | testing.md 規約「観測可能な振る舞い」を既存 spec 経由で検証可能 |
