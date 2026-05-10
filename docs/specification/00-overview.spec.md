@@ -83,7 +83,7 @@ status: stable
 | 07 | 音声通知 | ブラインドアップ・優勝確定の音とサークル単位の設定 | [→](07-audio-notifications.spec.md) |
 | 08 | シーズン戦績 | シーズン累計の自動集計・履歴・シーズン首位カード・ポイント計算式カスタマイズ | [→](08-season-stats.spec.md) |
 | 09 | PWA・アプリシェル・端末対応 | ホーム画面追加 / インストール促進 / 画面消灯防止 / 横向きロック / 複数タブ警告 | [→](09-pwa-app-shell.spec.md) |
-| 10 | 観戦モード（公開 URL）| 運営者の opt-in 公開 / 観戦専用ページ / レイトレジ banner / URL コピー & QR / 一覧バッジ | [→](10-spectate-mode.spec.md) |
+| 10 | 観戦モード（公開 URL）| 運営者の opt-in 公開 / 観戦専用ページ / レイトレジスト banner / URL コピー & QR / 一覧バッジ | [→](10-spectate-mode.spec.md) |
 
 ## 5. 全体ポリシー
 

@@ -2,17 +2,17 @@
 
 ## Problem Statement
 
-会場の予備モニタを操作する運営者と、サークル開始時刻に間に合わない遅刻参加者が、現状ログイン必須の `/live` を見られないため、トーナメントの進行状況（タイマー / 残人数 / 席表）とレイトレジ可否を**手元で即座に把握できない**。運営者は会場の別画面に投影できず、遅刻参加者は会場に着くまで「もう始まっているのか / レイトレジに間に合うのか」が不明で、チャットで都度問い合わせる手間が発生する。
+会場の予備モニタを操作する運営者と、サークル開始時刻に間に合わない遅刻参加者が、現状ログイン必須の `/live` を見られないため、トーナメントの進行状況（タイマー / 残人数 / 席表）とレイトレジスト可否を**手元で即座に把握できない**。運営者は会場の別画面に投影できず、遅刻参加者は会場に着くまで「もう始まっているのか / レイトレジストに間に合うのか」が不明で、チャットで都度問い合わせる手間が発生する。
 
 ## Evidence
 
-- 入力ヒアリングで運営者本人から確認: 「会場の予備モニタに席表 / タイマーを別画面で映したい」「遅れて参加するメンバーから『もう始まってる？』『レイトレジ間に合う？』を頻繁に聞かれる」（2026-05-09 ヒアリング、`tmp/02_DryRun時の要望対応/02-03_残りアイテム.md` 記録）
+- 入力ヒアリングで運営者本人から確認: 「会場の予備モニタに席表 / タイマーを別画面で映したい」「遅れて参加するメンバーから『もう始まってる？』『レイトレジスト間に合う？』を頻繁に聞かれる」（2026-05-09 ヒアリング、`tmp/02_DryRun時の要望対応/02-03_残りアイテム.md` 記録）
 - 現状 `/live` は `RequireAuth(allowAnonymous)` のため anonymous でも login 必須（[src/app/tournaments/[tid]/live/page.tsx:1-19](src/app/tournaments/[tid]/live/page.tsx#L1-L19)）。家族 / 配信視聴者 / 会場未到着の参加者は閲覧不可
 - 既存ドライラン（`tmp/02_DryRun時の要望対応/02-01_追加機能要求.md` の「15. 観戦モード URL」）でも明示的に挙げられた要望
 
 ## Proposed Solution
 
-`tournaments/{tid}` に `spectateEnabled?: boolean` を additive 追加し、owner / organizer が明示的に ON にした tournament のみを **unauthenticated read** で公開する。新規ルート `/spectate/[tid]` で既存の `subscribeTournament` / `subscribePlayers` / `subscribeTables` をそのまま使い、タイマー・ブラインド・残人数・席表・レイトレジ banner を read-only 表示する。Firestore Rules で `spectateEnabled == true` の document のみ unauthenticated read を許可し、書込経路は既存ロールに据え置き。Service Worker の `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` を追加して会場のオフライン耐性を確保する。
+`tournaments/{tid}` に `spectateEnabled?: boolean` を additive 追加し、owner / organizer が明示的に ON にした tournament のみを **unauthenticated read** で公開する。新規ルート `/spectate/[tid]` で既存の `subscribeTournament` / `subscribePlayers` / `subscribeTables` をそのまま使い、タイマー・ブラインド・残人数・席表・レイトレジスト banner を read-only 表示する。Firestore Rules で `spectateEnabled == true` の document のみ unauthenticated read を許可し、書込経路は既存ロールに据え置き。Service Worker の `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` を追加して会場のオフライン耐性を確保する。
 
 代替案として「別 subcollection で sync」「`spectateCode` revocable token」を検討したが、実装コスト・整合性リスクが MVP に見合わないため採用しなかった（[Decisions Log](#decisions-log) 参照）。
 
@@ -57,13 +57,13 @@ _全ての open question は 2026-05-09 のヒアリングで Must 格上げに�
 **Primary User 2: 遅刻参加者**
 
 - **Who**: サークルメンバー（member ロール）で、開始時刻に間に合わず会場に向かっている途中の人
-- **Current behavior**: 会場到着前にチャット（LINE / Discord）で「もう始まってる？レイトレジ間に合う？」と運営者に問い合わせる
+- **Current behavior**: 会場到着前にチャット（LINE / Discord）で「もう始まってる？レイトレジスト間に合う？」と運営者に問い合わせる
 - **Trigger**: 開始時刻を過ぎてからの移動中（電車・タクシー）
-- **Success state**: 共有された `/spectate/[tid]` URL を開けば、現在 Level / レイトレジ受付状況 / 残人数が即座に分かり、間に合う場合は急ぐ判断ができる
+- **Success state**: 共有された `/spectate/[tid]` URL を開けば、現在 Level / レイトレジスト受付状況 / 残人数が即座に分かり、間に合う場合は急ぐ判断ができる
 
 **Job to Be Done**
 
-When 会場以外の場所からトーナメントの進行を確認したい when, I want to ログインせず即座にタイマーと残人数とレイトレジ可否を見たい to motivation, so I can 「投影できる / 急ぐべきか判断できる / 家族に状況を共有できる」 outcome.
+When 会場以外の場所からトーナメントの進行を確認したい when, I want to ログインせず即座にタイマーと残人数とレイトレジスト可否を見たい to motivation, so I can 「投影できる / 急ぐべきか判断できる / 家族に状況を共有できる」 outcome.
 
 **Non-Users**
 
@@ -82,7 +82,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 | Must     | `tournaments.spectateEnabled` field 追加（zod schema additive）             | 全機能の基盤。default false で既存 doc 互換                                |
 | Must     | Firestore Rules で `spectateEnabled == true` のとき unauthenticated read 許可 | tournaments / players / tables の 3 collection + collectionGroup wildcard  |
 | Must     | `/spectate/[tid]` page + client（タイマー / ブラインド / 残人数 / 席表）     | 主要 UX。既存 subscribe を再利用                                           |
-| Must     | レイトレジ受付 banner（`Lv X まで受付中` / `受付終了`）                     | Primary User 2 の主要 JTBD を直接解決                                      |
+| Must     | レイトレジスト受付 banner（`Lv X まで受付中` / `受付終了`）                     | Primary User 2 の主要 JTBD を直接解決                                      |
 | Must     | dashboard に owner / organizer 用 spectate toggle                           | 運営者が opt-in。誤公開防止のため確認 dialog 付き                          |
 | Must     | emulator validator（`scripts/test-rules-spectate.mjs`）                     | 「unauthenticated read が想定範囲だけ通る」を機械検証。drift 防止          |
 | Must     | Service Worker `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` を追加              | 会場予備モニタの Wi-Fi 不安定耐性。Phase D PWA 基盤の小拡張。stale 許容 = 数分（network-first / max-age 短め） |
@@ -103,7 +103,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 2. Firestore Rules 更新（4 経路: tournaments / players / tables / collectionGroup players）+ emulator validator
 3. dashboard に owner / organizer 限定の spectate toggle UI（確認 dialog + URL コピー button + QR code 表示）
 4. dashboard の tournament 一覧に「観戦モード ON 中」badge
-5. `/spectate/[tid]` page（タイマー / ブラインド / 残人数 / 席表 / レイトレジ banner）
+5. `/spectate/[tid]` page（タイマー / ブラインド / 残人数 / 席表 / レイトレジスト banner）
 6. spectateEnabled OFF 後の graceful handling（「観戦が終了しました」表示）
 7. PWA cache allowlist に `/spectate` 追加（stale 許容 = 数分。network-first または短い max-age）
 
@@ -125,7 +125,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 
 1. 運営者から共有された `/spectate/{tid}` URL を chat / SMS で受け取る
 2. 開く（ログイン不要）
-3. 上部 banner で「レイトレジ受付中（Lv 2 まで）」を確認 → 急ぐべきか判断
+3. 上部 banner で「レイトレジスト受付中（Lv 2 まで）」を確認 → 急ぐべきか判断
 4. 残人数 / 自分の知り合いが参加しているか（displayName 一覧）を確認
 5. 会場到着後、別途 `/join/[tid]` で正規参加
 
@@ -177,7 +177,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 | #   | Phase                                  | Description                                                                                                                | Status  | Parallel    | Depends | PRP Plan |
 | --- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------- | ----------- | ------- | -------- |
 | 1   | Schema + Rule + Emulator Validator     | `spectateEnabled` field 追加、firestore.rules 4 経路更新、test-rules-spectate.mjs 追加、`spectate/*` error prefix 追加     | complete    | -           | -       | [phase-1-schema-rule-emulator.plan.md](../plans/completed/phase-1-schema-rule-emulator.plan.md) ([report](../reports/phase-1-schema-rule-emulator-report.md)) |
-| 2   | `/spectate/[tid]` Read-only Page       | page.tsx + spectate-client.tsx（タイマー / ブラインド / 残人数 / 席表 / レイトレジ banner / OFF 後の graceful handling）。`/live` を参照に独立実装 | complete    | with 3, 4   | 1       | [phase-2-spectate-readonly-page.plan.md](../plans/completed/phase-2-spectate-readonly-page.plan.md) ([report](../reports/phase-2-spectate-readonly-page-report.md)) |
+| 2   | `/spectate/[tid]` Read-only Page       | page.tsx + spectate-client.tsx（タイマー / ブラインド / 残人数 / 席表 / レイトレジスト banner / OFF 後の graceful handling）。`/live` を参照に独立実装 | complete    | with 3, 4   | 1       | [phase-2-spectate-readonly-page.plan.md](../plans/completed/phase-2-spectate-readonly-page.plan.md) ([report](../reports/phase-2-spectate-readonly-page-report.md)) |
 | 3   | Toggle UI + 共有導線（dashboard）       | owner / organizer 限定の spectate toggle、確認 dialog、URL コピー button、QR code 表示、tournament 一覧 badge、`setSpectateEnabled` service + `updateSpectateEnabled` repository | complete    | with 2, 4   | 1       | [phase-3-toggle-ui-and-share.plan.md](../plans/completed/phase-3-toggle-ui-and-share.plan.md) ([report](../reports/phase-3-toggle-ui-and-share-report.md)) |
 | 4   | PWA Cache Allowlist 追加                | `public/sw.js` の `NAVIGATE_CACHE_ALLOWLIST` に `/spectate` 追加、CACHE_VERSION bump、stale 許容 = 数分（network-first or 短い max-age） | complete    | with 2, 3   | -       | [phase-4-pwa-cache-allowlist.plan.md](../plans/completed/phase-4-pwa-cache-allowlist.plan.md) ([report](../reports/phase-4-pwa-cache-allowlist-report.md)) |
 
@@ -201,7 +201,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 
 **Phase 2: `/spectate/[tid]` Read-only Page**
 
-- **Goal**: 観戦者の主要 UX（タイマー / 残人数 / 席表 / レイトレジ banner）を提供し、spectateEnabled OFF 時も graceful にハンドリングする
+- **Goal**: 観戦者の主要 UX（タイマー / 残人数 / 席表 / レイトレジスト banner）を提供し、spectateEnabled OFF 時も graceful にハンドリングする
 - **Scope**:
   - `src/app/spectate/[tid]/page.tsx`（Server Component、tid 受け取り）
   - `src/app/spectate/[tid]/spectate-client.tsx`（Client Component）
@@ -210,7 +210,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
     - ブラインド + Ante 表示
     - 残人数（`!isBusted` count）
     - 席表（卓 label / color、displayName を席に配置）
-    - レイトレジ banner（`currentLevel <= lateEntryDeadlineLevel` で「Lv X まで受付中」、超過で「受付終了」）
+    - レイトレジスト banner（`currentLevel <= lateEntryDeadlineLevel` で「Lv X まで受付中」、超過で「受付終了」）
     - tournament が見つからない / spectateEnabled=false の時の guard 表示（「観戦が公開されていません」）
     - **OFF 切替後の graceful handling**: onSnapshot error callback で `firestore/permission-denied` を捕捉し、「観戦が終了しました」に画面遷移（white screen / error 画面にならない）
   - `RequireAuth` は使わない、`useAuthUser` 経由のロジックも避ける
@@ -275,7 +275,7 @@ When 会場以外の場所からトーナメントの進行を確認したい wh
 | 賞金構造                                       | 対象外（Won't）                                                                                                       | schema 追加して含める                                                   | 現 schema に prizeStructure 不在。schema 追加は別 PRD で先行                                                                                                                                                             |
 | Toggle 権限                                    | owner + organizer                                                                                                     | owner のみ                                                              | organizer も既に structures / tournaments の CRUD を持つ信頼ロール（[group-membership.md](.claude/rules/group-membership.md) 権限マトリクス）。運営の機動性を優先                                                        |
 | PWA cache 連携                                 | この PRD に含める                                                                                                     | 別 PRD（03-pwa-app-shell の architect-refactor で）                     | 会場予備モニタ要件 1 と直結。SW の小拡張で済むため scope 内                                                                                                                                                              |
-| レイトレジ表示                                 | 明示的 banner（「Lv X まで受付中」/「受付終了」）                                                                     | currentLevel + lateEntryDeadlineLevel の生表示のみ                      | Primary User 2 の主要 JTBD 解決を最優先。生表示は計算負荷を user に押し付ける                                                                                                                                            |
+| レイトレジスト表示                                 | 明示的 banner（「Lv X まで受付中」/「受付終了」）                                                                     | currentLevel + lateEntryDeadlineLevel の生表示のみ                      | Primary User 2 の主要 JTBD 解決を最優先。生表示は計算負荷を user に押し付ける                                                                                                                                            |
 | MVP 範囲                                       | 全 Must 項目を 1 リリース                                                                                             | Phase 1: schema/timer のみ → Phase 2: 席表/banner 段階リリース           | scope コンパクト（4 Phase）で並列実装可能。1 リリースに収めて review コストを削減                                                                                                                                        |
 | URL 共有導線（Open Q1）                        | コピー button + QR code をリリース時点で必須                                                                          | feedback 待ちで段階追加                                                  | Primary User 1（運営者）の予備モニタ要件と Primary User 2（遅刻参加者）への共有要件の両方をリリース時点で満たす。後追い追加だと「一旦使って試す」初動が阻害される                                                          |
 | 一覧での視認性（Open Q2）                      | tournament 一覧に「観戦公開中」badge を必須                                                                           | badge なし、詳細画面でのみ確認                                          | 誤公開放置の検知に必須。toggle ON のまま忘れていると次回開催も公開され続けるリスク                                                                                                                                       |

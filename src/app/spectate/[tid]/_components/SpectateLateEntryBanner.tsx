@@ -2,10 +2,10 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { isBeforeStart, isFinished } from "@/lib/services/tournament-state";
 
 /**
- * Phase 2 (04-spectate-mode): 観戦者向けレイトレジ受付状況 banner。
+ * Phase 2 (04-spectate-mode): 観戦者向けレイトレジスト受付状況 banner。
  *
  * - state === "setup" / "seating": 「受付準備中」（trying to register が常に有効）
- * - state === "running" / "paused" && !lateEntryClosed: "📢 レイトレジ Lv N まで受付中"
+ * - state === "running" / "paused" && !lateEntryClosed: "📢 レイトレジスト Lv N まで受付中"
  * - state === "running" / "paused" && lateEntryClosed: "受付終了"
  * - state === "finished": "終了"
  *
@@ -51,7 +51,7 @@ export function SpectateLateEntryBanner({
         className="mx-auto w-full rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-center text-sm dark:border-amber-700 dark:bg-amber-900/20"
         data-testid="spectate-late-entry-closed"
       >
-        ⛔ レイトレジ受付終了（Lv {tournament.lateEntryDeadlineLevel} まで）
+        ⛔ レイトレジスト受付終了（Lv {tournament.lateEntryDeadlineLevel} まで）
       </section>
     );
   }
@@ -62,7 +62,7 @@ export function SpectateLateEntryBanner({
       className="mx-auto w-full rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-center text-sm dark:border-emerald-700 dark:bg-emerald-900/20"
       data-testid="spectate-late-entry-open"
     >
-      📢 レイトレジ Lv {tournament.lateEntryDeadlineLevel} まで受付中（現在 Lv{" "}
+      📢 レイトレジスト Lv {tournament.lateEntryDeadlineLevel} まで受付中（現在 Lv{" "}
       {tournament.currentLevel}）
     </section>
   );
