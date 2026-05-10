@@ -413,8 +413,12 @@ tests/
 | `NEXT_PUBLIC_FIREBASE_APP_ID`              | Yes  | 同上                                                                       |
 | `NEXT_PUBLIC_LOG_LEVEL`                    | No   | ログレベル。`debug` / `info`（既定） / `warn` / `error`                    |
 | `NEXT_PUBLIC_ENABLE_DEBUG`                 | No   | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定） |
+| `NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL`       | No   | トップ画面 `/` に表示するアプリ紹介記事の note URL（未設定なら非表示）     |
+| `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL`     | No   | トップ画面 `/` に表示する運営ガイド記事の note URL（未設定なら非表示）     |
 
 > `NEXT_PUBLIC_USE_FIREBASE_EMULATOR` は E2E テスト時に Playwright が自動で設定する変数で、`.env.local` には記載しない（`true` のとき Auth 9099 / Firestore 8080 の Emulator に接続）。
+
+> `NEXT_PUBLIC_NOTE_*` はトップ画面の外部リンク用。fork して自分のアプリとして運用する場合は自分の note 記事 URL を `.env.local`（ローカル）と Vercel Project Settings > Environment Variables（Production / Preview）に設定してください。両方未設定の場合はリンク自体が表示されません。リポジトリには実値を一切記述しないでください（公開リポジトリで個人 note アカウントが特定されるのを避けるため）。
 
 <!-- /AUTO-GENERATED -->
 
