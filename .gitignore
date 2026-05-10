@@ -19,6 +19,10 @@
 .DS_Store
 *.pem
 
+# Firebase Admin SDK service account keys（scripts/cleanup-* / migrate-* で使用）
+service-account*.json
+*-service-account.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*

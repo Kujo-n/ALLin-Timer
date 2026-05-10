@@ -57,6 +57,14 @@ _SENSITIVE_PATTERNS = [
 
     # Credentials files
     _NOT_IDENT + r'credentials(?:\.json|\.csv)?' + _TAIL,
+
+    # Firebase Admin SDK / GCP service account JSON keys.
+    # Covers: service-account.json, service_account.json, foo-service-account.json,
+    # firebase-adminsdk-xxxxx-yyyyy.json (Firebase Console download default name).
+    _NOT_IDENT + r'service[._-]account[A-Za-z0-9._-]*\.json' + _TAIL,
+    _NOT_IDENT + r'[A-Za-z0-9_-]+-service-account\.json' + _TAIL,
+    _NOT_IDENT + r'firebase-adminsdk[A-Za-z0-9._-]*\.json' + _TAIL,
+    _NOT_IDENT + r'[A-Za-z0-9_-]+-firebase-adminsdk-[A-Za-z0-9._-]*\.json' + _TAIL,
 ]
 
 SENSITIVE = '(?:' + '|'.join(_SENSITIVE_PATTERNS) + ')'
