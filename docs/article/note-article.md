@@ -1,3 +1,47 @@
+---
+title: 「ルールに詳しい人がいないとトーナメントが回らない」を、アプリで終わらせる。— ALLin-PokerTimer のご紹介
+target_audience: ALLin-PokerTimer をまだ知らない / 未導入のポーカーサークル運営者（運営兼プレイヤー）
+purpose: アプリの存在・コンセプト・主要機能を伝える導入記事（note 公開想定）
+tone: 共感誘導から始め、機能ごとにスクリーンショット + 短文で並べる。マーケティング寄りだが誇張は避け、現場のあるあるから入る
+format_notes:
+  - 各機能ブロックは画像 1 枚 + 200〜400 字程度
+  - セクション区切りは "---"
+  - 機能の "なぜ嬉しいか" を必ず添える（運営兼プレイヤーの視点）
+  - 数値リミット（最大卓数 6・1 卓 10 席・clone 50 人 など）は記事の主目的ではないので控えめに
+key_features_covered:
+  - ログイン / トップ画面
+  - サークル管理（メンバー権限 3 種類・招待コード + QR）
+  - ストラクチャ + トーナメント作成
+  - 受付 QR（Google / メール+PW / ゲスト）
+  - ダッシュボード（タイマー・席表・通知音）
+  - 自動バランシング指示
+  - 卓ラベル + 色
+  - PD（プレイングディーラー）
+  - 参加者ライブ画面
+  - 観戦モード（anon read-only URL）
+  - 同じ参加者で次のトーナメント作成（clone）
+  - シーズンランキング + 履歴
+  - 結果カード PNG 出力 + 共有
+  - PWA インストール
+  - アカウント周り（自動連携・ゲスト・表示名必須）
+source_docs:
+  - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
+  - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
+  - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
+related_articles:
+  - operating-guide.md  # 既存ユーザー向け操作チートシート
+writing_constraints:
+  - サークル固有情報・実データのスクリーンショットは載せない（images/ 配下は全てサンプル）
+  - TDA ルールの細部解釈は本記事の対象外（PRD 参照）
+  - 用語ポリシー（禁止語・言い換え辞書）は terminology_policy_ref を必ず読んでから執筆
+terminology_policy_ref: ./conventions/terminology-policy.md
+update_triggers:
+  - 新 Phase で UI / 機能が追加されたとき
+  - スクリーンショットの UI が古くなったとき（画像差し替え + 該当節更新）
+  - 競合アプリとの差分訴求点が変わったとき
+last_updated: 2026-05-10
+---
+
 # 「ルールに詳しい人がいないとトーナメントが回らない」を、アプリで終わらせる。— ALLin-PokerTimer のご紹介
 
 ![ALLin-PokerTimer 進行中のダッシュボード](images/08-dashboard-running.png)
@@ -102,11 +146,11 @@ ALLin-PokerTimer は **「席移動」「テーブルバランス調整」「ブ
 
 ## Tableの指定は番号より、参加者が見てすぐ分かる名前で
 
-![「赤卓」と名前を付けた卓カード](images/11-table-label.png)
-
 「Table 2 に移ってください」と運営者が言っても、参加者は会場のどれが Table 2 なのか分かりません。Tableの番号は運営者の頭の中にしか無いので、口頭で言われても参加者には伝わらない——これは実際の現場で起きた困りごとです。
 
 解決策は単純で、**参加者が会場をパッと見渡してすぐ分かる呼び方**——「窓側の卓」「赤色の卓」「初心者卓」のような、**卓の特徴をそのまま名前にする**ことです。
+
+![「赤卓」と名前を付けた卓カード](images/11-table-label.png)
 
 ALLin-PokerTimer は、卓ごとに **自由な名前と色** を設定できます。
 
