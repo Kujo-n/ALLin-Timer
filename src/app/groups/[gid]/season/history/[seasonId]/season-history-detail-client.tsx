@@ -149,6 +149,7 @@ export function SeasonHistoryDetailClient({
                 gid,
                 groupForShare,
                 sortedEntries,
+                { cardBackground: group.seasonCardBackground },
               );
               if (!shareInputs) return null;
               const top1 = sortedEntries[0];
@@ -176,6 +177,7 @@ export function SeasonHistoryDetailClient({
                 id: e.uid,
                 lastUpdatedAt: history.endedAt,
               }))}
+              cardBackground={group.seasonCardBackground}
             />
           </div>
           <table className="w-full text-sm">

@@ -17,12 +17,7 @@ import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
 import { formatWinnerShareText } from "@/components/share/_share-button/share-text";
-import {
-  buildWinnerCardUrl,
-  formatDateForFilename,
-  formatDateForLabel,
-  sanitizeFilename,
-} from "@/app/api/og/_lib/og-payload";
+import { buildWinnerShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
 import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
@@ -221,48 +216,49 @@ export function LiveClient({ tid }: { tid: string }) {
           ) : null}
 
           {winner ? (
-            <>
-              <WinnerBanner winner={winner} className="w-full" />
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {(() => {
-                  const finishedAtDate =
-                    tournament.finishedAt?.toDate() ?? new Date();
-                  const datePart = formatDateForFilename(finishedAtDate);
-                  const filenameStem = sanitizeFilename(
-                    `winner-${tournament.name}-${datePart}`,
-                  );
-                  const url = buildWinnerCardUrl(tid, {
-                    winnerName: winner.displayName,
-                    tournamentName: tournament.name,
-                    participants: players.length,
-                    finishedAtLabel: formatDateForLabel(finishedAtDate),
-                    filename: filenameStem,
-                  });
-                  const shareText = formatWinnerShareText({
-                    tournamentName: tournament.name,
-                    winnerName: winner.displayName,
-                    participants: players.length,
-                  });
-                  return (
+            (() => {
+              // Share / Download 両ボタンで同じ url / filenameStem / bgImageUrl を共有するため
+              // `buildWinnerShareInputs` を 1 度呼んで両方に渡す（dashboard と同型）。
+              const finishedAtDate =
+                tournament.finishedAt?.toDate() ?? new Date();
+              const winnerCardBackground =
+                tournamentGroup?.winnerCardBackground ?? null;
+              const shareInputs = buildWinnerShareInputs(tid, {
+                winnerName: winner.displayName,
+                tournamentName: tournament.name,
+                participants: players.length,
+                finishedAt: finishedAtDate,
+                cardBackground: winnerCardBackground,
+              });
+              const shareText = formatWinnerShareText({
+                tournamentName: tournament.name,
+                winnerName: winner.displayName,
+                participants: players.length,
+              });
+              return (
+                <>
+                  <WinnerBanner winner={winner} className="w-full" />
+                  <div className="flex flex-wrap items-center justify-center gap-2">
                     <ShareCardButton
-                      url={url}
-                      filenameStem={filenameStem}
+                      url={shareInputs.url}
+                      filenameStem={shareInputs.filenameStem}
                       shareText={shareText}
                       kind="winner"
                       label="シェア"
                       dataTestId="winner-card-share"
                     />
-                  );
-                })()}
-                <WinnerCardDownloadButton
-                  tid={tid}
-                  winnerName={winner.displayName}
-                  tournamentName={tournament.name}
-                  participants={players.length}
-                  finishedAt={tournament.finishedAt?.toDate() ?? new Date()}
-                />
-              </div>
-            </>
+                    <WinnerCardDownloadButton
+                      tid={tid}
+                      winnerName={winner.displayName}
+                      tournamentName={tournament.name}
+                      participants={players.length}
+                      finishedAt={finishedAtDate}
+                      cardBackground={winnerCardBackground}
+                    />
+                  </div>
+                </>
+              );
+            })()
           ) : null}
 
           {user ? (

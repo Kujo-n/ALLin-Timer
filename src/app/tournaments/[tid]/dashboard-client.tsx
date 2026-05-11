@@ -389,11 +389,13 @@ export function DashboardClient({ tid }: { tid: string }) {
           // ShareCardButton と WinnerCardDownloadButton で同じ url / filenameStem を使うため
           // helper を 1 度呼んで両方に渡す（Phase D follow-up: og-payload に集約済）。
           const finishedAtDate = data.finishedAt?.toDate() ?? new Date();
+          const winnerCardBackground = tournamentGroup?.winnerCardBackground ?? null;
           const shareInputs = buildWinnerShareInputs(tid, {
             winnerName: winner.displayName,
             tournamentName: data.name,
             participants: players.length,
             finishedAt: finishedAtDate,
+            cardBackground: winnerCardBackground,
           });
           const shareText = formatWinnerShareText({
             tournamentName: data.name,
@@ -418,6 +420,7 @@ export function DashboardClient({ tid }: { tid: string }) {
                   tournamentName={data.name}
                   participants={players.length}
                   finishedAt={finishedAtDate}
+                  cardBackground={winnerCardBackground}
                 />
               </div>
             </>

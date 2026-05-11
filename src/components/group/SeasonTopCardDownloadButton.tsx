@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 
 import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
-import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import type { CardBackground, GroupDoc } from "@/lib/firebase/schemas/group";
 import type { SeasonStatsDoc } from "@/lib/firebase/schemas/seasonStats";
 import { logger } from "@/lib/logger";
 
@@ -13,6 +13,8 @@ interface Props {
   group: Pick<GroupDoc, "name" | "seasonStartDate">;
   /** `subscribeSeasonStats` の戻り値（totalPoints desc 済）。先頭 3 件まで使う。 */
   stats: readonly SeasonStatsDoc[];
+  /** Phase A.2: サークル設定済みのシーズン首位カード背景画像（null / undefined で未設定）。 */
+  cardBackground?: CardBackground | null;
   className?: string;
 }
 
@@ -28,9 +30,10 @@ export function SeasonTopCardDownloadButton({
   gid,
   group,
   stats,
+  cardBackground,
   className,
 }: Props) {
-  const inputs = buildSeasonShareInputs(gid, group, stats);
+  const inputs = buildSeasonShareInputs(gid, group, stats, { cardBackground });
   if (!inputs) return null;
   const { url, filenameStem } = inputs;
   const filename = `${filenameStem}.png`;

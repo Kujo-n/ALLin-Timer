@@ -112,7 +112,9 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
               // ShareCardButton と SeasonTopCardDownloadButton で同じ url / filenameStem を
               // 使うため helper を 1 度呼んで両方に渡す（Phase D follow-up: og-payload に集約済）。
               // stats が空でないことは外側 .length === 0 分岐で確定、helper は null を返さない。
-              const shareInputs = buildSeasonShareInputs(gid, group, stats);
+              const shareInputs = buildSeasonShareInputs(gid, group, stats, {
+                cardBackground: group.seasonCardBackground,
+              });
               if (!shareInputs) return null;
               const top1 = stats[0];
               const shareText = formatSeasonShareText({
@@ -131,7 +133,12 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
                 />
               );
             })()}
-            <SeasonTopCardDownloadButton gid={gid} group={group} stats={stats} />
+            <SeasonTopCardDownloadButton
+              gid={gid}
+              group={group}
+              stats={stats}
+              cardBackground={group.seasonCardBackground}
+            />
           </div>
           <table className="w-full text-sm">
             <thead>

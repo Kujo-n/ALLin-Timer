@@ -4,6 +4,7 @@ import { Download } from "lucide-react";
 
 import { buildWinnerShareInputs } from "@/app/api/og/_lib/og-payload";
 import { Button } from "@/components/ui/button";
+import type { CardBackground } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   participants: number;
   /** トーナメント終了時刻。Date オブジェクトで受け取り端末 TZ で format する。 */
   finishedAt: Date;
+  /** Phase A.2: サークル設定済みの優勝カード背景画像（null / undefined で未設定）。 */
+  cardBackground?: CardBackground | null;
   className?: string;
 }
 
@@ -30,6 +33,7 @@ export function WinnerCardDownloadButton({
   tournamentName,
   participants,
   finishedAt,
+  cardBackground,
   className,
 }: Props) {
   const { url, filenameStem } = buildWinnerShareInputs(tid, {
@@ -37,6 +41,7 @@ export function WinnerCardDownloadButton({
     tournamentName,
     participants,
     finishedAt,
+    cardBackground,
   });
   const filename = `${filenameStem}.png`;
 
