@@ -5,6 +5,7 @@ import {
   buildSeasonShareInputs,
   buildWinnerCardUrl,
   buildWinnerShareInputs,
+  cardBackgroundQueryFields,
   formatDateForFilename,
   formatDateForLabel,
   readSeasonCardQuery,
@@ -314,6 +315,188 @@ describe("formatDateForFilename / formatDateForLabel", () => {
     const d = new Date("2026-05-06T12:00:00.000Z");
     const out = formatDateForLabel(d);
     expect(out).toMatch(/^\d{4}\/\d{1,2}\/\d{1,2}$/);
+  });
+});
+
+describe("Phase A.2: bg query fields", () => {
+  it("WINNER schema は bgImageUrl/bgTextTheme を optional で受け取る", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      bgImageUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/y.jpg",
+      bgTextTheme: "dark",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.bgTextTheme).toBe("dark");
+    }
+  });
+
+  it("WINNER schema: bgImageUrl が URL でない場合 reject", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      bgImageUrl: "not-a-url",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("WINNER schema: bgImageUrl が非 allowlist ホストの場合 reject（SSRF 防御）", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      bgImageUrl: "https://attacker.example.com/a.jpg",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("WINNER schema: bgImageUrl が HTTP（非 HTTPS）の場合 reject", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      bgImageUrl: "http://firebasestorage.googleapis.com/v0/b/x/o/y.jpg",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("SEASON schema: bgImageUrl の host allowlist も同様に強制", () => {
+    const r = SEASON_CARD_QUERY_SCHEMA.safeParse({
+      groupName: "G",
+      seasonStartDateLabel: null,
+      top1Name: "Alice",
+      top1Points: "10",
+      bgImageUrl: "https://169.254.169.254/meta",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("WINNER schema: bgImageUrl 未指定でも pass する（既存挙動）", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("SEASON schema も同様に bgImageUrl / bgTextTheme を受け取る", () => {
+    const r = SEASON_CARD_QUERY_SCHEMA.safeParse({
+      groupName: "G",
+      seasonStartDateLabel: null,
+      top1Name: "Alice",
+      top1Points: "10",
+      bgImageUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/y.png",
+      bgTextTheme: "light",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("buildWinnerCardUrl: bgImageUrl 指定で URL に展開される", () => {
+    const url = buildWinnerCardUrl("t-1", {
+      winnerName: "Alice",
+      tournamentName: "T",
+      participants: 8,
+      finishedAtLabel: VALID_LABEL,
+      bgImageUrl: "https://x.example.com/a.jpg",
+      bgTextTheme: "dark",
+    });
+    const sp = new URLSearchParams(url.split("?")[1]);
+    expect(sp.get("bgImageUrl")).toBe("https://x.example.com/a.jpg");
+    expect(sp.get("bgTextTheme")).toBe("dark");
+  });
+
+  it("cardBackgroundQueryFields: imageUrl null のとき空オブジェクト", () => {
+    const out = cardBackgroundQueryFields({
+      imageUrl: null,
+      storageAssetId: null,
+      textTheme: "light",
+    });
+    expect(out).toEqual({});
+  });
+
+  it("cardBackgroundQueryFields: imageUrl 非 null のとき 2 key を返す", () => {
+    const out = cardBackgroundQueryFields({
+      imageUrl: "https://x/y",
+      storageAssetId: "a",
+      textTheme: "dark",
+    });
+    expect(out).toEqual({ bgImageUrl: "https://x/y", bgTextTheme: "dark" });
+  });
+
+  it("cardBackgroundQueryFields: null / undefined はすべて空", () => {
+    expect(cardBackgroundQueryFields(null)).toEqual({});
+    expect(cardBackgroundQueryFields(undefined)).toEqual({});
+  });
+
+  it("buildWinnerShareInputs: cardBackground 渡しで URL に bgImageUrl が含まれる", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "A",
+      tournamentName: "T",
+      participants: 8,
+      finishedAt: new Date("2026-05-06T12:00:00Z"),
+      cardBackground: {
+        imageUrl: "https://x/bg.jpg",
+        storageAssetId: "asset1",
+        textTheme: "dark",
+      },
+    });
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.get("bgImageUrl")).toBe("https://x/bg.jpg");
+    expect(sp.get("bgTextTheme")).toBe("dark");
+  });
+
+  it("buildWinnerShareInputs: cardBackground 未指定で bgImageUrl key が含まれない（既存挙動と一致）", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "A",
+      tournamentName: "T",
+      participants: 8,
+      finishedAt: new Date("2026-05-06T12:00:00Z"),
+    });
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.has("bgImageUrl")).toBe(false);
+    expect(sp.has("bgTextTheme")).toBe(false);
+  });
+
+  it("buildWinnerShareInputs: cardBackground.imageUrl=null のとき bgImageUrl は含まれない", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "A",
+      tournamentName: "T",
+      participants: 8,
+      finishedAt: new Date("2026-05-06T12:00:00Z"),
+      cardBackground: { imageUrl: null, storageAssetId: null, textTheme: "light" },
+    });
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.has("bgImageUrl")).toBe(false);
+  });
+
+  it("buildSeasonShareInputs: options.cardBackground を URL に展開", () => {
+    const startedDate = new Date("2026-04-01T15:00:00.000Z");
+    const r = buildSeasonShareInputs(
+      "g-1",
+      { name: "G", seasonStartDate: { toDate: () => startedDate } },
+      [{ displayName: "Alice", totalPoints: 10 }],
+      {
+        cardBackground: {
+          imageUrl: "https://x/season.png",
+          storageAssetId: "s1",
+          textTheme: "dark",
+        },
+      },
+    );
+    expect(r).not.toBeNull();
+    if (!r) return;
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.get("bgImageUrl")).toBe("https://x/season.png");
+    expect(sp.get("bgTextTheme")).toBe("dark");
   });
 });
 

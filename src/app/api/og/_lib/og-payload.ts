@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
+import { isAllowedBgImageUrl } from "@/app/api/og/_lib/og-image-fetch";
+import {
+  CARD_TEXT_THEMES,
+  type CardBackground,
+  DISPLAY_NAME_MAX_LENGTH,
+} from "@/lib/firebase/schemas/group";
 
 /**
  * Phase B: OG image route の query 文字列 schema + URL 組立純関数。
@@ -25,6 +30,29 @@ const MAX_TOTAL_POINTS = 99999;
 const LABEL_MAX = 30;
 /** filename stem（拡張子なし）の最大長。Content-Disposition 用に sanitize 後の値。 */
 const FILENAME_STEM_MAX = 60;
+/**
+ * Phase A.2: 背景画像 URL の cap。Firebase Storage download URL は実測 ~400 字。
+ * Vercel URL 全体は 8KB 程度まで許容されるが、安全側で 600 字に制限する。
+ */
+const BG_IMAGE_URL_MAX = 600;
+
+/**
+ * Phase A.2: 背景画像 URL の schema。
+ *
+ *   - `.url()` で形式検証
+ *   - `.refine(isAllowedBgImageUrl)` で **https + Firebase Storage host allowlist** を強制（SSRF 防御）
+ *
+ * 単体定義として export しないのは、buildXxxCardUrl 側では信頼境界内（既に検証済の URL を再 set する経路）
+ * のため re-refine が冗長なため。clients から発行された query は本 schema を通って validate される。
+ */
+const bgImageUrlSchema = z
+  .string()
+  .url()
+  .min(1)
+  .max(BG_IMAGE_URL_MAX)
+  .refine((u) => isAllowedBgImageUrl(u), {
+    message: "bgImageUrl must be an HTTPS Firebase Storage URL",
+  });
 
 export const WINNER_CARD_QUERY_SCHEMA = z.object({
   winnerName: z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH),
@@ -34,6 +62,10 @@ export const WINNER_CARD_QUERY_SCHEMA = z.object({
   finishedAtLabel: z.string().min(1).max(LABEL_MAX),
   /** Content-Disposition 用 filename stem。任意、未指定なら "card"。 */
   filename: z.string().min(1).max(FILENAME_STEM_MAX).optional(),
+  /** Phase A.2: サークル設定済みの背景画像 URL（公開 / host allowlist 強制）。 */
+  bgImageUrl: bgImageUrlSchema.optional(),
+  /** Phase A.2: 背景画像時の foreground 色テーマ。 */
+  bgTextTheme: z.enum(CARD_TEXT_THEMES).optional(),
 });
 export type WinnerCardQuery = z.infer<typeof WINNER_CARD_QUERY_SCHEMA>;
 
@@ -48,6 +80,9 @@ export const SEASON_CARD_QUERY_SCHEMA = z.object({
   top3Name: z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH).optional(),
   top3Points: z.coerce.number().nonnegative().max(MAX_TOTAL_POINTS).optional(),
   filename: z.string().min(1).max(FILENAME_STEM_MAX).optional(),
+  /** Phase A.2: 背景画像 URL / theme。winner と同型（host allowlist 強制）。 */
+  bgImageUrl: bgImageUrlSchema.optional(),
+  bgTextTheme: z.enum(CARD_TEXT_THEMES).optional(),
 });
 export type SeasonCardQuery = z.infer<typeof SEASON_CARD_QUERY_SCHEMA>;
 
@@ -78,6 +113,8 @@ export function buildWinnerCardUrl(tid: string, q: WinnerCardQuery): string {
     finishedAtLabel: q.finishedAtLabel,
   });
   if (q.filename !== undefined) sp.set("filename", q.filename);
+  if (q.bgImageUrl !== undefined) sp.set("bgImageUrl", q.bgImageUrl);
+  if (q.bgTextTheme !== undefined) sp.set("bgTextTheme", q.bgTextTheme);
   return `/api/og/winner/${encodeURIComponent(tid)}?${sp.toString()}`;
 }
 
@@ -99,7 +136,26 @@ export function buildSeasonCardUrl(gid: string, q: SeasonCardQuery): string {
     sp.set("top3Points", String(q.top3Points));
   }
   if (q.filename !== undefined) sp.set("filename", q.filename);
+  if (q.bgImageUrl !== undefined) sp.set("bgImageUrl", q.bgImageUrl);
+  if (q.bgTextTheme !== undefined) sp.set("bgTextTheme", q.bgTextTheme);
   return `/api/og/season/${encodeURIComponent(gid)}?${sp.toString()}`;
+}
+
+/**
+ * Phase A.2: `CardBackground` ドキュメントを query パラメータに展開する純関数。
+ *
+ *   - `cardBackground` が null / undefined のとき、または `imageUrl` が null のときは
+ *     `{}` を返す（URL に bgImageUrl / bgTextTheme key を出さない＝既存挙動と完全一致）。
+ *   - `imageUrl` 非 null のときは 2 key を返す。`textTheme` は schema 上必須。
+ */
+export function cardBackgroundQueryFields(
+  cardBackground: CardBackground | null | undefined,
+): { bgImageUrl?: string; bgTextTheme?: "light" | "dark" } {
+  if (!cardBackground || cardBackground.imageUrl == null) return {};
+  return {
+    bgImageUrl: cardBackground.imageUrl,
+    bgTextTheme: cardBackground.textTheme,
+  };
 }
 
 /**
@@ -155,6 +211,8 @@ export interface WinnerShareInputsParams {
   tournamentName: string;
   participants: number;
   finishedAt: Date;
+  /** Phase A.2: サークル設定済みの優勝カード背景画像メタデータ（null / undefined のときは未設定）。 */
+  cardBackground?: CardBackground | null;
 }
 
 export function buildWinnerShareInputs(
@@ -165,12 +223,14 @@ export function buildWinnerShareInputs(
   const filenameStem = sanitizeFilename(
     `winner-${params.tournamentName}-${datePart}`,
   );
+  const bg = cardBackgroundQueryFields(params.cardBackground);
   const url = buildWinnerCardUrl(tid, {
     winnerName: params.winnerName,
     tournamentName: params.tournamentName,
     participants: params.participants,
     finishedAtLabel: formatDateForLabel(params.finishedAt),
     filename: filenameStem,
+    ...bg,
   });
   return { url, filenameStem };
 }
@@ -194,6 +254,15 @@ export interface SeasonShareInputsStats {
 }
 
 /**
+ * Phase A.2: `buildSeasonShareInputs` の optional 引数。互換性のため未渡しなら
+ * 従来挙動を維持する。
+ */
+export interface SeasonShareInputsOptions {
+  /** サークル設定済みのシーズン首位カード背景画像メタデータ。null / undefined で未設定。 */
+  cardBackground?: CardBackground | null;
+}
+
+/**
  * stats が空配列の場合は null を返す（呼出側で render gating）。
  * top1〜top3 抽出は内部で行う（呼出側はソート済み配列を渡す）。
  */
@@ -201,6 +270,7 @@ export function buildSeasonShareInputs(
   gid: string,
   group: SeasonShareInputsGroup,
   stats: readonly SeasonShareInputsStats[],
+  options?: SeasonShareInputsOptions,
 ): ShareCardInputs | null {
   if (stats.length === 0) return null;
   const top1 = stats[0];
@@ -209,6 +279,7 @@ export function buildSeasonShareInputs(
   const startDate = group.seasonStartDate ? group.seasonStartDate.toDate() : null;
   const datePart = startDate ? formatDateForFilename(startDate) : "open";
   const filenameStem = sanitizeFilename(`season-${group.name}-${datePart}`);
+  const bg = cardBackgroundQueryFields(options?.cardBackground);
   const url = buildSeasonCardUrl(gid, {
     groupName: group.name,
     seasonStartDateLabel: startDate ? formatDateForLabel(startDate) : null,
@@ -219,6 +290,7 @@ export function buildSeasonShareInputs(
     top3Name: top3?.displayName,
     top3Points: top3?.totalPoints,
     filename: filenameStem,
+    ...bg,
   });
   return { url, filenameStem };
 }
