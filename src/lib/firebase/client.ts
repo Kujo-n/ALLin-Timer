@@ -7,18 +7,22 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from "firebase/firestore";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
 // E2E テスト用: `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true` 設定時に Firebase Auth /
-// Firestore をローカル emulator（127.0.0.1:9099 / :8080）へ向ける。本番・開発では無効。
+// Firestore / Storage をローカル emulator（127.0.0.1:9099 / :8080 / :9199）へ向ける。
+// 本番・開発では無効。
 const useEmulator =
   typeof window !== "undefined" &&
   process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === "true";
 const AUTH_EMULATOR_URL = "http://127.0.0.1:9099";
 const FIRESTORE_EMULATOR_HOST = "127.0.0.1";
 const FIRESTORE_EMULATOR_PORT = 8080;
+const STORAGE_EMULATOR_HOST = "127.0.0.1";
+const STORAGE_EMULATOR_PORT = 9199;
 
 // During build / SSR, Firebase SDK is evaluated at module-load time even for
 // client components; falling back to a placeholder keeps the build green
@@ -96,6 +100,12 @@ function createFirestore() {
 
 export const firestore = createFirestore();
 
+// Phase A.1 (05-post-launch-polish Track A): Cloud Storage for Firebase singleton。
+// 結果カード背景画像の配置先として導入。`firebaseConfig.storageBucket` 経由でバケットを解決し、
+// SSR / build 時の評価でも PLACEHOLDER バケットへの遅延参照のみが残るため副作用はない。
+// 実 upload / download は Blaze プラン + Storage 初期化済みプロジェクトでのみ機能する。
+export const firebaseStorage = getStorage(firebaseApp);
+
 // E2E: emulator へ接続。重複接続は Firebase SDK 側で throw するため globalThis 上の
 // flag でガード（HMR 再実行・複数ページ開きでの re-invocation 対策）。
 if (useEmulator) {
@@ -104,10 +114,12 @@ if (useEmulator) {
   if (!g.__FIREBASE_EMULATORS_CONNECTED__) {
     connectAuthEmulator(firebaseAuth, AUTH_EMULATOR_URL, { disableWarnings: true });
     connectFirestoreEmulator(firestore, FIRESTORE_EMULATOR_HOST, FIRESTORE_EMULATOR_PORT);
+    connectStorageEmulator(firebaseStorage, STORAGE_EMULATOR_HOST, STORAGE_EMULATOR_PORT);
     g.__FIREBASE_EMULATORS_CONNECTED__ = true;
     logger.info("firebase emulators connected", {
       auth: AUTH_EMULATOR_URL,
       firestore: `${FIRESTORE_EMULATOR_HOST}:${FIRESTORE_EMULATOR_PORT}`,
+      storage: `${STORAGE_EMULATOR_HOST}:${STORAGE_EMULATOR_PORT}`,
     });
   }
 }
