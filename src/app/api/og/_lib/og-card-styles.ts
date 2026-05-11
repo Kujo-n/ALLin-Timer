@@ -24,8 +24,20 @@ export const OG_COLORS = {
   seasonFgDark: "#451a03",
   seasonAccent: "#fde68a",
   seasonMuted: "#cbd5e1",
-  /** Phase A.2: 背景画像オーバーレイ用の半透明 black scrim（最低限の読みやすさ確保）。 */
-  bgScrim: "rgba(0,0,0,0.3)",
+  /** Phase A.3: 上端 0〜25% を覆う黒グラデ scrim。タイトル行の可読性を確保。 */
+  bgScrimTopGradient:
+    "linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 25%)",
+  /** Phase A.3: 下端 80〜100% を覆う黒グラデ scrim。footer 行の可読性を確保。 */
+  bgScrimBottomGradient:
+    "linear-gradient(0deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 20%)",
+  /** Phase A.3: light テーマ時のテキストブロック背景 rgba（暗 foreground と組）。 */
+  bgBoxLight: "rgba(255,255,255,0.78)",
+  /** Phase A.3: dark テーマ時のテキストブロック背景 rgba（明 foreground と組）。 */
+  bgBoxDark: "rgba(15,23,42,0.72)",
+  /** Phase A.3: テキストブロック共通の borderRadius / padding（px）。 */
+  bgBoxRadius: 12,
+  bgBoxPaddingX: 28,
+  bgBoxPaddingY: 16,
 } as const;
 
 export const OG_FONT_FAMILY = "Noto Sans JP";
