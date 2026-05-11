@@ -48,8 +48,10 @@ import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
 import { MemberRoleList, type MemberLine } from "./_components/MemberRoleList";
 import { SeasonCard } from "./_components/SeasonCard";
+import { SeasonCardBackgroundCard } from "./_components/SeasonCardBackgroundCard";
 import { SeasonPointsRuleCard } from "./_components/SeasonPointsRuleCard";
 import { StartSeasonDialog } from "./_components/StartSeasonDialog";
+import { WinnerCardBackgroundCard } from "./_components/WinnerCardBackgroundCard";
 
 function shortUid(uid: string): string {
   return uid.slice(0, 4);
@@ -474,6 +476,28 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                   }}
                   onError={setError}
                 />
+              ) : null}
+              {isOwner ? (
+                <>
+                  <WinnerCardBackgroundCard
+                    group={group}
+                    canEdit={isOwner}
+                    onSaved={async () => {
+                      await reload();
+                      await refreshGroups();
+                    }}
+                    onError={setError}
+                  />
+                  <SeasonCardBackgroundCard
+                    group={group}
+                    canEdit={isOwner}
+                    onSaved={async () => {
+                      await reload();
+                      await refreshGroups();
+                    }}
+                    onError={setError}
+                  />
+                </>
               ) : null}
             </>
           ),
