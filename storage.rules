@@ -1,0 +1,34 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // deny-by-default — 明示的に許可した path 以外は read / write 不可
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Phase A.1 (05-post-launch-polish Track A):
+    //   groups/{gid}/bgImages/{assetId} は結果カード背景画像（winner / season カード共用）。
+    //   - read: public（OG SSR route の Vercel Node が fetch するため anon でも read 可）
+    //   - write: owner のみ + 1MB 以下 + image/(jpeg|png|webp) のみ
+    //     - firestore.get で /groups/{gid}.ownerUids を参照（cross-service 機能、GA）
+    //     - 1 read を消費するが upload 頻度は低く許容
+    //   - delete: owner のみ（差し替え時の旧 asset 削除 / 明示解除）
+    //   - 既知のリスク: 非 owner authenticated user が rule を突破することは出来ないが、
+    //     orphan upload は firestore-side で発見不能（Phase A.2 の Storage asset best-effort
+    //     delete でカバー）
+    //   - content-type は jpeg/png/webp の 3 種に限定。Phase A.2 で client-side resize により
+    //     jpeg 0.8 quality に統一する想定だが、PNG/WebP の直接 upload も受容する
+    match /groups/{gid}/bgImages/{assetId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+                            && firestore.exists(/databases/(default)/documents/groups/$(gid))
+                            && request.auth.uid in firestore.get(/databases/(default)/documents/groups/$(gid)).data.ownerUids
+                            && request.resource.size < 1 * 1024 * 1024
+                            && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if request.auth != null
+                    && firestore.exists(/databases/(default)/documents/groups/$(gid))
+                    && request.auth.uid in firestore.get(/databases/(default)/documents/groups/$(gid)).data.ownerUids;
+    }
+  }
+}

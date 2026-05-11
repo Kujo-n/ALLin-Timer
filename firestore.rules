@@ -272,6 +272,68 @@ service cloud.firestore {
             && request.resource.data.seasonPointsRule.baseline <= 10
           )
         )
+      ) || (
+        // Phase A.1 (05-post-launch-polish Track A): owner による
+        //   winnerCardBackground の単独書換。サークル詳細画面 inline edit から
+        //   `setWinnerCardBackground({ gid, uid, value })` 経由で発火。
+        //   affectedKeys は 'winnerCardBackground' のみに限定。他フィールドは触らせない。
+        //   null セット（背景解除）も同 branch で許可。
+        //   非 null 時は map + textTheme が 'light' | 'dark' のリテラル enum、
+        //   imageUrl / storageAssetId は nullable string。
+        //   imageUrl と storageAssetId の「同時 null / 同時 string」invariant は
+        //   Cloud Firestore Rules 言語仕様でクロスフィールド invariant 表現困難なため
+        //   service / application 層 (`validateCardBackground`) に委譲する。
+        //   organizer / member は不可（権限マトリクス）— isOwner で限定。
+        //   既存の owner-update branch も同フィールド書換を許可するため redundant に見えるが、
+        //   `firebase-patterns.md` の「単独フィールド書換の rule 経路を限定」設計原則に揃え、
+        //   将来 broad owner-update を狭める足場として残す。
+        isOwner(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['winnerCardBackground'])
+        && (
+          request.resource.data.winnerCardBackground == null
+          || (
+            request.resource.data.winnerCardBackground is map
+            && (
+              request.resource.data.winnerCardBackground.imageUrl == null
+              || request.resource.data.winnerCardBackground.imageUrl is string
+            )
+            && (
+              request.resource.data.winnerCardBackground.storageAssetId == null
+              || request.resource.data.winnerCardBackground.storageAssetId is string
+            )
+            && request.resource.data.winnerCardBackground.textTheme is string
+            && (
+              request.resource.data.winnerCardBackground.textTheme == 'light'
+              || request.resource.data.winnerCardBackground.textTheme == 'dark'
+            )
+          )
+        )
+      ) || (
+        // Phase A.1: owner による seasonCardBackground の単独書換。
+        //   winnerCardBackground と同型・同制約・同設計意図（owner-only）。
+        isOwner(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['seasonCardBackground'])
+        && (
+          request.resource.data.seasonCardBackground == null
+          || (
+            request.resource.data.seasonCardBackground is map
+            && (
+              request.resource.data.seasonCardBackground.imageUrl == null
+              || request.resource.data.seasonCardBackground.imageUrl is string
+            )
+            && (
+              request.resource.data.seasonCardBackground.storageAssetId == null
+              || request.resource.data.seasonCardBackground.storageAssetId is string
+            )
+            && request.resource.data.seasonCardBackground.textTheme is string
+            && (
+              request.resource.data.seasonCardBackground.textTheme == 'light'
+              || request.resource.data.seasonCardBackground.textTheme == 'dark'
+            )
+          )
+        )
       );
 
       allow delete: if isSignedIn()
