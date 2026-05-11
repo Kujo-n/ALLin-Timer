@@ -39,6 +39,25 @@ npm install
    - プレビュー URL は PR ごとに変わるので、運用が辛い場合は `*.vercel.app` を追加
 4. **Firestore Database** を「本番モード」で作成（ルールは後段で別途デプロイ）
 5. **プロジェクト設定** → 「全般」→ 「マイアプリ」で Web アプリを追加し、`firebaseConfig` の値を控える
+6. **Cloud Storage for Firebase** を初期化（**Blaze プラン必須**）
+
+   結果カード背景画像（[Phase A.1 以降](.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md)）を利用する場合のみ必要:
+
+   1. Firebase Console → **使用量と請求** → 「プランを変更」で **Blaze（従量制）** に切替
+   2. **Storage** → 「使ってみる」→ ロケーションを **`us-west1` (Oregon)** で選択
+      - ⚠ **無料枠（5GB ストレージ / 1GB egress/day）は `us-central1` / `us-west1` / `us-east1` の 3 リージョン限定**（[公式](https://firebase.google.com/pricing?hl=ja) 注記参照）。これ以外のリージョン（`asia-northeast1` など）を選ぶと 1 バイト目から課金される
+      - 3 つの US リージョンのうち日本から最短 latency は `us-west1` (Oregon)。Vercel Tokyo edge から ~80ms。OG カード SNS 共有の初回プレビュー生成のみで発生する片道 fetch のため、実用上問題なし
+      - ロケーションは **作成後変更不可** なので、初回選択を慎重に
+   3. ルールは後段の `firebase deploy --only storage` で `storage.rules` を反映
+   4. 既定バケット名は `<project-id>.appspot.com` 形式で、`.env.local` の `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` に設定済みのはず（step 5 の `firebaseConfig` から取得）
+
+   > Blaze プランへ移行しなくてもアプリは動きます（背景画像機能のみ無効化されます）。本機能を使わない fork ユーザーは本 step を skip して問題ありません。
+
+7. **Storage ルールのデプロイ**
+
+   ```bash
+   firebase deploy --only storage
+   ```
 
 ### 3. 環境変数の設定
 
@@ -122,6 +141,12 @@ firebase login
 # .firebaserc の projectId を自分の Firebase プロジェクト ID に書き換えてから:
 firebase deploy --only firestore:rules,firestore:indexes
 ```
+
+> **Phase A.1 以降** Storage を併用する場合は 1 コマンドで一括デプロイできます:
+>
+> ```bash
+> firebase deploy --only firestore:rules,firestore:indexes,storage
+> ```
 
 > **Phase 2.5 で `firestore.rules` を全面刷新**。`groups/{gid}` / `groupJoinCodes/{code}` を新規追加し、`structures` / `tournaments` の所有モデルが `ownerUid` 個人所有から **`groupId` ＋ group メンバーシップ共有所有** に変更されている。ルール再デプロイ後は **旧 `ownerUid` ベースのドキュメントは読めなくなる**ので、Firebase Console から旧 collection をクリーンアップすること（後述）。
 
@@ -260,16 +285,18 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm test`                               | Vitest 実行（単発、`vitest run`）                                                   |
 | `npm run test:watch`                     | Vitest ウォッチモード (`vitest`)                                                    |
 | `npm run test:rules-limits`              | `src/lib/limits.ts` と `firestore.rules` のリテラル一致を機械検査                   |
+| `npm run test:rules-card-background`     | `groups/{gid}.winnerCardBackground` / `seasonCardBackground` ルールを emulator 上で検証（Phase A.1） |
 | `npm run test:rules-clone-players`       | `players` create ルールを emulator 上で検証（Phase 5.4 organizer-clone ブランチ） |
 | `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
 | `npm run test:rules-season-points-rule`  | `groups/{gid}.seasonPointsRule` ルールを emulator 上で検証（Phase E）             |
 | `npm run test:rules-spectate`            | `tournaments.spectateEnabled` 観戦経路ルールを emulator 上で検証（04-spectate-mode Phase 1） |
 | `npm run test:rules-table-labels`        | `defaultTableLabels` / `tables/{n}.label` / `.color` ルールを emulator 上で検証（Phase C） |
+| `npm run test:storage-rules`             | `storage.rules`（`groups/{gid}/bgImages/{assetId}`）を Storage Emulator 上で検証（Phase A.1） |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
 | `npm run test:e2e:ui`                    | Playwright UI モード（`playwright test --ui`）                                      |
 | `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
 | `npm run test:e2e:debug`                 | Playwright inspector で E2E デバッグ（`playwright test --debug`）                   |
-| `npm run emulator`                       | Firebase Emulator (auth + firestore + ui) のみ起動（`allin-pokertimer-e2e` 隔離）   |
+| `npm run emulator`                       | Firebase Emulator (auth + firestore + storage + ui) のみ起動（`allin-pokertimer-e2e` 隔離） |
 | `npm run format`                         | Prettier で書式修正 (`prettier --write .`)                                          |
 | `npm run format:check`                   | Prettier で書式チェックのみ (`prettier --check .`)                                  |
 | `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI）          |

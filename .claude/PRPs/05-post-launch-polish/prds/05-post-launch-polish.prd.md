@@ -142,7 +142,7 @@ Track A:
 | Must | サークル詳細の編集カードで **保存前にプレビュー表示** | UX 必須 |
 | Must | 既存 group（背景未設定）の **カード生成挙動が完全に同一** | regression ゼロ |
 | Should | アップロード時の **クライアント側自動リサイズ + 圧縮**（1200×630 jpg quality 0.8 → ≤ 1MB） | egress / latency 対応 |
-| Should | Storage 差し替え時に **旧 asset を best-effort で削除** | コスト抑制 |
+| Must | Storage 差し替え時に **旧 asset を確実削除**（最大 3 回 retry / 指数 backoff） | orphan 残留防止・Storage コスト抑制・サークルあたり保持画像数を winner / season カード分の最大 2 枚に収束 |
 | Could | テキストテーマに **auto モード**（画像平均輝度ベース） | UX 向上だが MVP 不要 |
 
 Track B:
@@ -198,7 +198,15 @@ Phase B の OG route の組み合わせで成立。新規導入要素は (1) Fir
   `{ imageUrl: string | null, storageAssetId: string | null, textTheme: "light" | "dark" }` で
   additive 追加。`null` 互換のため schema は `.default(null)` で legacy doc を hydrate
 - **Storage path**: `groups/{gid}/bgImages/{assetId}`。`assetId` は `crypto.randomUUID()`。差し替え時は
-  新 asset upload → groups doc update → 旧 asset を best-effort delete
+  以下の順序で **atomic な orchestration** を行う（[Phase A.2 plan](../plans/) で実装、A.1 では foundation のみ）:
+  1. 新 asset upload（成功するまで Firestore pointer は触らない）
+  2. `groups/{gid}.{winnerCardBackground,seasonCardBackground}.storageAssetId` を Firestore で
+     新 assetId に更新（ここで失敗したら新 asset を delete してロールバック）
+  3. 旧 asset を **`deleteObject` + 最大 3 回 retry**（指数 backoff: 200ms / 600ms / 1.8s）で削除。
+     3 回とも失敗したら `logger.warn("orphan card background asset", { gid, assetId })` で記録し、
+     アップロード自体は成功扱いとする（orphan 残留は次回上書きでは自動 retry されない既知制約）
+  4. サークルあたり保持画像数は **winner / season カードで最大 2 枚** に収束する設計
+     （rule では 1 ファイル ≤ 1MB / image content-type のみ enforce、枚数 cap は持たない）
 - **Storage rules**: deny-by-default。`groups/{gid}/bgImages/{assetId}` のみ public read（OG SSR route
   の Vercel Node から fetch するため）。write は authenticated user + クライアント / Firestore rules 側で
   「owner のみが groups doc を更新できる」二重防御
@@ -287,7 +295,7 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 
 | #     | Phase                                       | Description                                                                                                                                          | Status      | Parallel | Depends | PRP Plan                                                                                       |
 | ----- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ---------------------------------------------------------------------------------------------- |
-| A.1   | Track A: Storage Foundation                 | Firebase Storage 初期化、Blaze プラン移行手順、firebase.json / storage.rules / SDK singleton 追加、emulator 統合、`groups/{gid}` schema 拡張、repository / service / rules ブランチ、emulator validator | pending     | with B.1 | -       | -                                                                                              |
+| A.1   | Track A: Storage Foundation                 | Firebase Storage 初期化、Blaze プラン移行手順、firebase.json / storage.rules / SDK singleton 追加、emulator 統合、`groups/{gid}` schema 拡張、repository / service / rules ブランチ、emulator validator | complete    | with B.1 | -       | [phase-a.1-storage-foundation.plan.md](../plans/completed/phase-a.1-storage-foundation.plan.md) — Report: [phase-a.1-storage-foundation-report.md](../reports/phase-a.1-storage-foundation-report.md) |
 | A.2   | Track A: Background Image UI & SSR          | サークル詳細画面に WinnerCardBackgroundCard / SeasonCardBackgroundCard を追加（ファイル選択 / クライアント圧縮 / プレビュー / 保存 / 解除）、Storage upload + 旧 asset 削除、OG route 拡張（bgImageUrl 受取 + fetch + Satori 画像表示） | pending     | -        | A.1     | -                                                                                              |
 | A.3   | Track A: Layout Polish & Readability        | 上下黒グラデーションスクリム + テキストグループ rgba 背景 box overlay、ライト / ダーク テキストテーマトグル、テキスト位置の最終調整、E2E + visual regression、ドキュメント整備 | pending     | -        | A.2     | -                                                                                              |
 | B.1   | Track B: Top Page Promotion (note 記事リンク)   | トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを常時表示。`Button asChild` + `<a>` パターンで描画、a11y / e2e PageObject 対応 | complete    | with A.1 | -       | [note-articles-link-on-top-page.plan.md](../plans/completed/note-articles-link-on-top-page.plan.md) — Report: [note-articles-link-on-top-page-report.md](../reports/note-articles-link-on-top-page-report.md) |
@@ -416,7 +424,7 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | Track A Phase 分割 | 3 phases（Storage 基盤 → UI / OG → Layout polish） | 2 phases / 4 phases | 各 phase が独立 deploy / dogfood 可能、PR サイズが適度 |
 | Track A 可読性デフォルト | 上下黒グラデーションスクリム + テキストグループ rgba 半透明 box | 全画面 50% 黒 overlay / カード型 rounded box overlay | 全画面 overlay は背景画像を冷重金化、カード型は装飾的すぎる。スクリム + テキスト box が背景を活かしつつ局所可読性確保 |
 | Track A readability 実装 | rgba 半透明 div + linear-gradient overlay | textShadow / drop-shadow filter | Satori は `textShadow` / `filter: drop-shadow()` 未対応 |
-| Track A 旧 asset の扱い | best-effort 削除 | 物理削除を tx 化 / 永続保持 | Storage delete は別 SDK 呼び出しで Firestore tx に組み込めない。失敗時は孤児になるが Storage コスト的に無視可能 |
+| Track A 旧 asset の扱い | **3 回 retry 付き確実削除**（最終失敗時のみ warn ログ + orphan 残留） | best-effort（1 回のみ）/ 物理削除を tx 化 / 永続保持 | Storage delete は別 SDK 呼び出しで Firestore tx に組み込めず厳密な atomic は不可。retry でほぼ orphan ゼロを実現しつつ、3 回失敗時は UX を阻害しない設計。サークルあたり保持画像数を winner / season カード分の最大 2 枚に収束させたいという要件（2026-05-10 ユーザー確認）を満たす |
 | Track A クライアント画像処理 | canvas API で 1200×630 jpg quality 0.8 | Web Worker 化 / 外部ライブラリ | 月 1〜2 回利用で worker は overkill。canvas API は標準で依存追加なし |
 | Track A Storage 上限 | 1 ファイル 1MB | 500KB / 5MB | 1200×630 jpg quality 0.8 が typical 150-250KB なので 1MB は十分余裕 |
 | Track B URL の管理方式 | 環境変数（`NEXT_PUBLIC_NOTE_*`）+ `.env.local` / Vercel + `.env.local.example` リポジトリ同梱 | `page.tsx` 冒頭の const ハードコード / `src/lib/external-links.ts` 新設 | MIT 公開リポジトリで運営者個人の note アカウント URL が GitHub commit history から特定されるのを防ぐ。security-env.md の `NEXT_PUBLIC_*` プレフィックス規約に従う（公開可能な URL のみ） |
@@ -461,4 +469,4 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 
 _Originally generated as `05-result-card-image-bg.prd.md`: 2026-05-10_
 _Renamed and re-scoped to `05-post-launch-polish.prd.md`: 2026-05-10_
-_Status: DRAFT - Track A pending / Track B in-progress_
+_Status: DRAFT - Track A in-progress (A.1) / Track B Phase B.1 complete_
