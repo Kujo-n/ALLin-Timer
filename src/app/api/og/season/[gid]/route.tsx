@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loadNotoSansJPCached } from "@/app/api/og/_lib/load-font";
+import { fetchAsDataUri } from "@/app/api/og/_lib/og-image-fetch";
 import {
   OG_COLORS,
   OG_FONT_FAMILY,
@@ -110,6 +111,21 @@ export async function GET(
     const startDateLabel = q.seasonStartDateLabel ?? "未設定";
     const safeFilename = `${q.filename ? sanitizeFilename(q.filename) : "card"}.png`;
 
+    // Phase A.2: 背景画像が指定されたら fetch + base64 化。失敗時はグラデ fallback。
+    const bgDataUri = q.bgImageUrl
+      ? await fetchAsDataUri(q.bgImageUrl).catch((e) => {
+          logger.warn("og season bg fetch failed", {
+            gid,
+            code: getErrorCode(e),
+          });
+          return null;
+        })
+      : null;
+    const fg =
+      bgDataUri && q.bgTextTheme === "dark"
+        ? OG_COLORS.seasonFgDark
+        : OG_COLORS.seasonFg;
+
     const response = new ImageResponse(
       (
         <div
@@ -117,70 +133,107 @@ export async function GET(
             width: "100%",
             height: "100%",
             display: "flex",
-            flexDirection: "column",
-            background: OG_COLORS.seasonBg,
-            color: OG_COLORS.seasonFg,
-            fontFamily: OG_FONT_FAMILY,
-            padding: OG_PADDING,
-            boxSizing: "border-box",
+            position: "relative",
           }}
         >
+          {bgDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={bgDataUri}
+              alt=""
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : null}
+          {bgDataUri ? (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: OG_COLORS.bgScrim,
+              }}
+            />
+          ) : null}
           <div
             style={{
+              width: "100%",
+              height: "100%",
               display: "flex",
               flexDirection: "column",
+              background: bgDataUri ? "transparent" : OG_COLORS.seasonBg,
+              color: fg,
+              fontFamily: OG_FONT_FAMILY,
+              padding: OG_PADDING,
+              boxSizing: "border-box",
+              position: "relative",
             }}
           >
             <div
               style={{
                 display: "flex",
-                fontSize: 36,
-                fontWeight: 700,
-                color: OG_COLORS.seasonAccent,
-                letterSpacing: 4,
+                flexDirection: "column",
               }}
             >
-              SEASON LEADERBOARD
-            </div>
-            <div style={{ display: "flex", marginTop: 16, fontSize: 48, fontWeight: 700 }}>
-              {q.groupName}
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 36,
+                  fontWeight: 700,
+                  color: OG_COLORS.seasonAccent,
+                  letterSpacing: 4,
+                }}
+              >
+                SEASON LEADERBOARD
+              </div>
+              <div style={{ display: "flex", marginTop: 16, fontSize: 48, fontWeight: 700 }}>
+                {q.groupName}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 8,
+                  fontSize: 22,
+                  color: OG_COLORS.seasonMuted,
+                }}
+              >
+                シーズン開始: {startDateLabel}
+              </div>
             </div>
             <div
               style={{
                 display: "flex",
-                marginTop: 8,
+                flexDirection: "column",
+                flex: 1,
+                justifyContent: "center",
+              }}
+            >
+              <PodiumRow rank={0} name={q.top1Name} points={q.top1Points} />
+              {q.top2Name !== undefined && q.top2Points !== undefined ? (
+                <PodiumRow rank={1} name={q.top2Name} points={q.top2Points} />
+              ) : null}
+              {q.top3Name !== undefined && q.top3Points !== undefined ? (
+                <PodiumRow rank={2} name={q.top3Name} points={q.top3Points} />
+              ) : null}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
                 fontSize: 22,
                 color: OG_COLORS.seasonMuted,
               }}
             >
-              シーズン開始: {startDateLabel}
+              ALLin-PokerTimer
             </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              flex: 1,
-              justifyContent: "center",
-            }}
-          >
-            <PodiumRow rank={0} name={q.top1Name} points={q.top1Points} />
-            {q.top2Name !== undefined && q.top2Points !== undefined ? (
-              <PodiumRow rank={1} name={q.top2Name} points={q.top2Points} />
-            ) : null}
-            {q.top3Name !== undefined && q.top3Points !== undefined ? (
-              <PodiumRow rank={2} name={q.top3Name} points={q.top3Points} />
-            ) : null}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              fontSize: 22,
-              color: OG_COLORS.seasonMuted,
-            }}
-          >
-            ALLin-PokerTimer
           </div>
         </div>
       ),

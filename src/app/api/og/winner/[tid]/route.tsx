@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loadNotoSansJPCached } from "@/app/api/og/_lib/load-font";
+import { fetchAsDataUri } from "@/app/api/og/_lib/og-image-fetch";
 import {
   OG_COLORS,
   OG_FONT_FAMILY,
@@ -59,6 +60,22 @@ export async function GET(
     const q = parsed.data;
     const safeFilename = `${q.filename ? sanitizeFilename(q.filename) : "card"}.png`;
 
+    // Phase A.2: 背景画像が指定されたら fetch + base64 化（Satori は外部 URL を fetch しない）。
+    // 失敗時は warn ログを残しグラデ fallback に倒す（200 を返す契約は崩さない）。
+    const bgDataUri = q.bgImageUrl
+      ? await fetchAsDataUri(q.bgImageUrl).catch((e) => {
+          logger.warn("og winner bg fetch failed", {
+            tid,
+            code: getErrorCode(e),
+          });
+          return null;
+        })
+      : null;
+    const fg =
+      bgDataUri && q.bgTextTheme === "dark"
+        ? OG_COLORS.winnerFgDark
+        : OG_COLORS.winnerFg;
+
     const response = new ImageResponse(
       (
         <div
@@ -66,72 +83,111 @@ export async function GET(
             width: "100%",
             height: "100%",
             display: "flex",
-            flexDirection: "column",
-            background: OG_COLORS.winnerBg,
-            color: OG_COLORS.winnerFg,
-            fontFamily: OG_FONT_FAMILY,
-            padding: OG_PADDING,
-            border: `8px solid ${OG_COLORS.winnerBorder}`,
-            boxSizing: "border-box",
+            position: "relative",
           }}
         >
+          {bgDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={bgDataUri}
+              alt=""
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : null}
+          {bgDataUri ? (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: OG_COLORS.bgScrim,
+              }}
+            />
+          ) : null}
           <div
             style={{
-              display: "flex",
-              fontSize: 56,
-              fontWeight: 700,
-              letterSpacing: 2,
-            }}
-          >
-            TOURNAMENT CHAMPION
-          </div>
-          <div style={{ display: "flex", marginTop: 24, fontSize: 36, fontWeight: 700 }}>
-            {q.tournamentName}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              marginTop: 8,
-              fontSize: 24,
-              opacity: 0.75,
-            }}
-          >
-            {q.finishedAtLabel}
-          </div>
-          <div
-            style={{
+              width: "100%",
+              height: "100%",
               display: "flex",
               flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              flex: 1,
+              background: bgDataUri ? "transparent" : OG_COLORS.winnerBg,
+              color: fg,
+              fontFamily: OG_FONT_FAMILY,
+              padding: OG_PADDING,
+              border: bgDataUri
+                ? "none"
+                : `8px solid ${OG_COLORS.winnerBorder}`,
+              boxSizing: "border-box",
+              position: "relative",
             }}
           >
-            <div style={{ display: "flex", fontSize: 28, opacity: 0.6 }}>WINNER</div>
             <div
               style={{
                 display: "flex",
-                marginTop: 12,
-                fontSize: 120,
+                fontSize: 56,
                 fontWeight: 700,
-                lineHeight: 1.1,
+                letterSpacing: 2,
               }}
             >
-              {q.winnerName}
+              TOURNAMENT CHAMPION
             </div>
-            <div style={{ display: "flex", marginTop: 16, fontSize: 28 }}>
-              {q.participants} 人参加
+            <div style={{ display: "flex", marginTop: 24, fontSize: 36, fontWeight: 700 }}>
+              {q.tournamentName}
             </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              fontSize: 22,
-              opacity: 0.65,
-            }}
-          >
-            ALLin-PokerTimer
+            <div
+              style={{
+                display: "flex",
+                marginTop: 8,
+                fontSize: 24,
+                opacity: 0.75,
+              }}
+            >
+              {q.finishedAtLabel}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: 1,
+              }}
+            >
+              <div style={{ display: "flex", fontSize: 28, opacity: 0.6 }}>WINNER</div>
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 12,
+                  fontSize: 120,
+                  fontWeight: 700,
+                  lineHeight: 1.1,
+                }}
+              >
+                {q.winnerName}
+              </div>
+              <div style={{ display: "flex", marginTop: 16, fontSize: 28 }}>
+                {q.participants} 人参加
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                fontSize: 22,
+                opacity: 0.65,
+              }}
+            >
+              ALLin-PokerTimer
+            </div>
           </div>
         </div>
       ),
