@@ -11,6 +11,11 @@ import {
   OG_WIDTH,
 } from "@/app/api/og/_lib/og-card-styles";
 import {
+  resolveCardTheme,
+  ScrimLayer,
+  TextBox,
+} from "@/app/api/og/_lib/og-readability";
+import {
   sanitizeFilename,
   WINNER_CARD_QUERY_SCHEMA,
 } from "@/app/api/og/_lib/og-payload";
@@ -71,10 +76,11 @@ export async function GET(
           return null;
         })
       : null;
-    const fg =
-      bgDataUri && q.bgTextTheme === "dark"
-        ? OG_COLORS.winnerFgDark
-        : OG_COLORS.winnerFg;
+    const { fg, boxBg } = resolveCardTheme(
+      !!bgDataUri,
+      q.bgTextTheme,
+      "winner",
+    );
 
     const response = new ImageResponse(
       (
@@ -101,18 +107,7 @@ export async function GET(
               }}
             />
           ) : null}
-          {bgDataUri ? (
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                background: OG_COLORS.bgScrim,
-              }}
-            />
-          ) : null}
+          <ScrimLayer active={!!bgDataUri} />
           <div
             style={{
               width: "100%",
@@ -130,29 +125,31 @@ export async function GET(
               position: "relative",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                fontSize: 56,
-                fontWeight: 700,
-                letterSpacing: 2,
-              }}
-            >
-              TOURNAMENT CHAMPION
-            </div>
-            <div style={{ display: "flex", marginTop: 24, fontSize: 36, fontWeight: 700 }}>
-              {q.tournamentName}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                marginTop: 8,
-                fontSize: 24,
-                opacity: 0.75,
-              }}
-            >
-              {q.finishedAtLabel}
-            </div>
+            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-start" }}>
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 56,
+                  fontWeight: 700,
+                  letterSpacing: 2,
+                }}
+              >
+                TOURNAMENT CHAMPION
+              </div>
+              <div style={{ display: "flex", marginTop: 24, fontSize: 36, fontWeight: 700 }}>
+                {q.tournamentName}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 8,
+                  fontSize: 24,
+                  opacity: 0.75,
+                }}
+              >
+                {q.finishedAtLabel}
+              </div>
+            </TextBox>
             <div
               style={{
                 display: "flex",
@@ -162,32 +159,35 @@ export async function GET(
                 flex: 1,
               }}
             >
-              <div style={{ display: "flex", fontSize: 28, opacity: 0.6 }}>WINNER</div>
+              <TextBox boxBg={boxBg} extraStyle={{ alignItems: "center" }}>
+                <div style={{ display: "flex", fontSize: 28, opacity: 0.6 }}>WINNER</div>
+                <div
+                  style={{
+                    display: "flex",
+                    marginTop: 12,
+                    fontSize: 120,
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {q.winnerName}
+                </div>
+                <div style={{ display: "flex", marginTop: 16, fontSize: 28 }}>
+                  {q.participants} 人参加
+                </div>
+              </TextBox>
+            </div>
+            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-end" }}>
               <div
                 style={{
                   display: "flex",
-                  marginTop: 12,
-                  fontSize: 120,
-                  fontWeight: 700,
-                  lineHeight: 1.1,
+                  fontSize: 22,
+                  opacity: 0.65,
                 }}
               >
-                {q.winnerName}
+                ALLin-PokerTimer
               </div>
-              <div style={{ display: "flex", marginTop: 16, fontSize: 28 }}>
-                {q.participants} 人参加
-              </div>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                fontSize: 22,
-                opacity: 0.65,
-              }}
-            >
-              ALLin-PokerTimer
-            </div>
+            </TextBox>
           </div>
         </div>
       ),
