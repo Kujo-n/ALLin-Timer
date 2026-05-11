@@ -23,10 +23,12 @@ import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
   audioSettingsSchema,
+  cardBackgroundSchema,
   DEFAULT_AUDIO_SETTINGS,
   DISPLAY_NAME_MAX_LENGTH,
   groupBodySchema,
   type AudioSettings,
+  type CardBackground,
   type CreateGroupInput,
   type GroupDoc,
 } from "@/lib/firebase/schemas/group";
@@ -74,6 +76,10 @@ export async function createGroup(
         // Phase E: シーズンポイント計算ルールは未設定（null）で開始 → DEFAULT_SEASON_POINTS_RULE が適用される。
         // `setSeasonPointsRule` で運営者が任意にカスタマイズする。
         seasonPointsRule: null,
+        // Phase A.1: 結果カード背景画像は未設定（null）で開始。
+        // `setWinnerCardBackground` / `setSeasonCardBackground` で owner が任意にカスタマイズする。
+        winnerCardBackground: null,
+        seasonCardBackground: null,
         createdAt: serverTimestamp(),
         joinCodeId: null,
       });
@@ -444,6 +450,97 @@ export async function updateSeasonPointsRule(
     reset: value === null,
     baseLen: value?.base.length,
     baseline: value?.baseline,
+  });
+}
+
+/**
+ * Phase A.1 (05-post-launch-polish Track A): card background 値の application-side invariant 検証。
+ *
+ * Cloud Firestore Rules で表現できない「imageUrl と storageAssetId は同時に null か
+ * 同時に string」をここで enforce する（Storage asset と Firestore pointer の同期保護）。
+ *
+ * `schema` 由来の型・値域チェック（textTheme enum / string length 1 以上）は `safeParse` に委譲し、
+ * 失敗時は同じ `validation/card-background-invalid` で throw する。
+ *
+ * `null` セット（解除）は invariant 違反にならないため早期 return する。
+ */
+export function validateCardBackground(value: CardBackground): void {
+  if (value === null) return;
+  const parsed = cardBackgroundSchema.safeParse(value);
+  if (!parsed.success || parsed.data === null) {
+    // schema は nullable + default(null) のため `.data` の型は `... | null` だが、
+    // 直前の早期 return で value !== null を確定済み。schema が success のとき .data は
+    // object のはず — 念のため null も invariant 違反として扱い、後段の dot アクセスを
+    // 型レベルで narrow する。
+    throw new AppError(
+      "結果カード背景画像の値が不正です",
+      "validation/card-background-invalid",
+    );
+  }
+  const bothNull =
+    parsed.data.imageUrl === null && parsed.data.storageAssetId === null;
+  const bothSet =
+    parsed.data.imageUrl !== null && parsed.data.storageAssetId !== null;
+  if (!bothNull && !bothSet) {
+    throw new AppError(
+      "結果カード背景画像の値が不正です",
+      "validation/card-background-invalid",
+    );
+  }
+}
+
+/**
+ * Phase A.1: groups/{gid}.winnerCardBackground を更新する。
+ *   - owner-only（service 層で assertOwner、rule 側も isOwner enforce）
+ *   - null 渡しで「背景解除」、object 渡しで設定。
+ *   - imageUrl / storageAssetId は同時に null か同時に string であることを invariant とする
+ *     （Storage asset と Firestore pointer の同期保護）。
+ *   - rule は `affectedKeys.hasOnly(['winnerCardBackground'])` + 型のみを enforce。
+ *     値域は本関数の zod safeParse + invariant check が最終ライン。
+ */
+export async function updateWinnerCardBackground(
+  gid: string,
+  value: CardBackground,
+): Promise<void> {
+  validateCardBackground(value);
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "結果カード背景画像の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { winnerCardBackground: value });
+    },
+    { gid },
+  );
+  logger.info("group winnerCardBackground updated", {
+    gid,
+    cleared: value === null,
+    hasImage: value?.imageUrl != null,
+    textTheme: value?.textTheme,
+  });
+}
+
+/**
+ * Phase A.1: groups/{gid}.seasonCardBackground を更新する。
+ *   - 構造・invariant は `updateWinnerCardBackground` と同じ。
+ */
+export async function updateSeasonCardBackground(
+  gid: string,
+  value: CardBackground,
+): Promise<void> {
+  validateCardBackground(value);
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "シーズン戦績カード背景画像の更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { seasonCardBackground: value });
+    },
+    { gid },
+  );
+  logger.info("group seasonCardBackground updated", {
+    gid,
+    cleared: value === null,
+    hasImage: value?.imageUrl != null,
+    textTheme: value?.textTheme,
   });
 }
 

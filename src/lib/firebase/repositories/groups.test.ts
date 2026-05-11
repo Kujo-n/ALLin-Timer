@@ -41,7 +41,10 @@ import {
   updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupRoles,
+  updateSeasonCardBackground,
   updateSeasonPointsRule,
+  updateWinnerCardBackground,
+  validateCardBackground,
 } from "./groups";
 
 beforeEach(() => {
@@ -65,6 +68,8 @@ describe("createGroup", () => {
       organizerUids: ["u1"],
       memberUids: ["u1"],
       joinCodeId: null,
+      winnerCardBackground: null,
+      seasonCardBackground: null,
     });
   });
 });
@@ -270,6 +275,142 @@ describe("updateSeasonPointsRule (Phase E)", () => {
     await expect(
       updateSeasonPointsRule("g1", { base: [10], baseline: 8 }),
     ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
+describe("validateCardBackground (Phase A.1)", () => {
+  it("accepts null", () => {
+    expect(() => validateCardBackground(null)).not.toThrow();
+  });
+
+  it("accepts a fully-set object with light theme", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: "asset-1",
+        textTheme: "light",
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts a fully-set object with dark theme", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: "asset-1",
+        textTheme: "dark",
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts both imageUrl and storageAssetId null (text-theme-only state)", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: null,
+        storageAssetId: null,
+        textTheme: "light",
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects imageUrl set but storageAssetId null (asymmetric)", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: null,
+        textTheme: "light",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "validation/card-background-invalid" }),
+    );
+  });
+
+  it("rejects imageUrl null but storageAssetId set (asymmetric)", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: null,
+        storageAssetId: "asset-1",
+        textTheme: "light",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "validation/card-background-invalid" }),
+    );
+  });
+
+  it("rejects unknown textTheme value", () => {
+    expect(() =>
+      validateCardBackground({
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: "asset-1",
+        // @ts-expect-error — verifying runtime rejection of an out-of-enum value
+        textTheme: "auto",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "validation/card-background-invalid" }),
+    );
+  });
+});
+
+describe("updateWinnerCardBackground (Phase A.1)", () => {
+  it("calls updateDoc with { winnerCardBackground: null } for reset", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateWinnerCardBackground("g1", null);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ winnerCardBackground: null });
+  });
+
+  it("calls updateDoc with { winnerCardBackground: {...} } for a valid object", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateWinnerCardBackground("g1", {
+      imageUrl: "https://example.com/x.jpg",
+      storageAssetId: "asset-1",
+      textTheme: "light",
+    });
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      winnerCardBackground: {
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: "asset-1",
+        textTheme: "light",
+      },
+    });
+  });
+
+  it("rejects asymmetric values with validation/card-background-invalid before any write", async () => {
+    await expect(
+      updateWinnerCardBackground("g1", {
+        imageUrl: "https://example.com/x.jpg",
+        storageAssetId: null,
+        textTheme: "light",
+      }),
+    ).rejects.toMatchObject({ code: "validation/card-background-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("wraps Firestore reject as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(updateWinnerCardBackground("g1", null)).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
+
+describe("updateSeasonCardBackground (Phase A.1)", () => {
+  it("calls updateDoc with the field name 'seasonCardBackground'", async () => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateSeasonCardBackground("g1", {
+      imageUrl: "https://example.com/season.jpg",
+      storageAssetId: "asset-s-1",
+      textTheme: "dark",
+    });
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      seasonCardBackground: {
+        imageUrl: "https://example.com/season.jpg",
+        storageAssetId: "asset-s-1",
+        textTheme: "dark",
+      },
+    });
   });
 });
 
