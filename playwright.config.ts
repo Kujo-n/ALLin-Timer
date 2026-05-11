@@ -61,9 +61,10 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Firebase Emulator: auth / firestore / ui を同時起動。
+      // Firebase Emulator: auth / firestore / storage / ui を同時起動。
       // `--project` で隔離された名前空間を使う。
-      command: `firebase emulators:start --only auth,firestore,ui --project ${E2E_PROJECT_ID}`,
+      // Phase A.3: storage を追加（結果カード背景画像 E2E の upload 経路で必要）。
+      command: `firebase emulators:start --only auth,firestore,storage,ui --project ${E2E_PROJECT_ID}`,
       // Emulator UI (port 4000) の起動を readiness の目印にする。
       url: "http://127.0.0.1:4000",
       reuseExistingServer: !process.env.CI,
