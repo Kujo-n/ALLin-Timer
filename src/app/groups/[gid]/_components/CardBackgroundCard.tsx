@@ -3,6 +3,7 @@
 import { Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { CardReadabilityPreview } from "@/components/og/CardReadabilityPreview";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,6 +12,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import {
@@ -53,6 +62,22 @@ const PLACEHOLDER_BG: Record<"winner" | "season", string> = {
   season: "linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)",
 };
 
+const DEMO_TEXT: Record<
+  "winner" | "season",
+  { title: string; main: string; sub: string }
+> = {
+  winner: {
+    title: "TOURNAMENT CHAMPION",
+    main: "WINNER",
+    sub: "ALLin-PokerTimer",
+  },
+  season: {
+    title: "SEASON LEADERBOARD",
+    main: "1ST",
+    sub: "ALLin-PokerTimer",
+  },
+};
+
 interface Props {
   gid: string;
   kind: "winner" | "season";
@@ -89,6 +114,7 @@ export function CardBackgroundCard({
   );
   const [working, setWorking] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   // 親から current が更新されたら、編集中でなければ追従する。
   useEffect(() => {
@@ -226,15 +252,15 @@ export function CardBackgroundCard({
     resetSelection,
   ]);
 
-  const onClear = useCallback(async () => {
+  const requestClear = useCallback(() => {
+    if (!current?.imageUrl) return;
+    setClearConfirmOpen(true);
+  }, [current]);
+
+  const confirmClear = useCallback(async () => {
+    setClearConfirmOpen(false);
     if (!user) {
       onError("ログインが必要です");
-      return;
-    }
-    // Phase A.2 では `window.confirm` のままに留め、Phase A.3 polish で他破壊操作
-    // （`LeaveDeleteDialogs` 等）と同じ shadcn `<AlertDialog>` に揃える予定。
-    if (typeof window !== "undefined" &&
-      !window.confirm("背景画像を解除します。よろしいですか？")) {
       return;
     }
     setWorking(true);
@@ -270,7 +296,8 @@ export function CardBackgroundCard({
   const themeChanged = current?.textTheme !== textTheme;
   const canSaveTheme = !!current && current.imageUrl != null && themeChanged;
   const canSaveUpload = !!previewBlob;
-  const saveDisabled = working || (!canSaveTheme && !canSaveUpload);
+  const busy = working || clearConfirmOpen;
+  const saveDisabled = busy || (!canSaveTheme && !canSaveUpload);
 
   return (
     <Card aria-label={`${kind}-card-background-card`}>
@@ -284,28 +311,15 @@ export function CardBackgroundCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div
-          className="relative w-full overflow-hidden rounded border"
-          style={{
-            aspectRatio: "1200 / 630",
-            background: displayImageUrl ? "transparent" : PLACEHOLDER_BG[kind],
-          }}
-          aria-label={`${kind}-card-background-preview`}
-          data-testid={dataTestIdPrefix ? `${dataTestIdPrefix}-preview` : undefined}
-        >
-          {displayImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayImageUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-              背景未設定
-            </div>
-          )}
-        </div>
+        <CardReadabilityPreview
+          imageUrl={displayImageUrl}
+          textTheme={textTheme}
+          variant={kind}
+          placeholderBg={PLACEHOLDER_BG[kind]}
+          demo={DEMO_TEXT[kind]}
+          ariaLabel={`${kind}-card-background-preview`}
+          testId={dataTestIdPrefix ? `${dataTestIdPrefix}-preview` : undefined}
+        />
 
         {canEdit ? (
           <>
@@ -320,7 +334,7 @@ export function CardBackgroundCard({
                       value={t}
                       checked={textTheme === t}
                       onChange={() => setTextTheme(t)}
-                      disabled={working}
+                      disabled={busy}
                     />
                     <span>{t === "light" ? "ライト" : "ダーク"}</span>
                   </label>
@@ -348,7 +362,7 @@ export function CardBackgroundCard({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={working}
+                  disabled={busy}
                   onClick={() => fileInputRef.current?.click()}
                   data-testid={
                     dataTestIdPrefix ? `${dataTestIdPrefix}-pick` : undefined
@@ -362,8 +376,8 @@ export function CardBackgroundCard({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={working}
-                    onClick={() => void onClear()}
+                    disabled={busy}
+                    onClick={requestClear}
                     data-testid={
                       dataTestIdPrefix ? `${dataTestIdPrefix}-clear` : undefined
                     }
@@ -401,6 +415,33 @@ export function CardBackgroundCard({
           </p>
         )}
       </CardContent>
+
+      <Dialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>背景画像を解除</DialogTitle>
+            <DialogDescription>
+              現在設定されている背景画像を解除します。解除後は固定グラデーション背景に戻ります。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setClearConfirmOpen(false)}
+              disabled={working}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmClear()}
+              disabled={working}
+            >
+              背景を解除する
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

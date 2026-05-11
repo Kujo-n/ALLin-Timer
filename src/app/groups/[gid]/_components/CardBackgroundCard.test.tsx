@@ -253,11 +253,51 @@ describe("CardBackgroundCard - winner", () => {
     expect(screen.getByRole("button", { name: /^保存$/ })).not.toBeDisabled();
   });
 
-  it("「背景を解除」→ window.confirm 通過 → clear service + onSaved", async () => {
+  it("「背景を解除」→ Dialog 出現 → 「背景を解除する」確認 → clear service + onSaved", async () => {
     const onSaved = vi.fn().mockResolvedValue(undefined);
     const onError = vi.fn();
     vi.mocked(clearWinnerCardBackground).mockResolvedValue();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <CardBackgroundCard
+        gid="g1"
+        kind="winner"
+        current={setCurrent}
+        canEdit={true}
+        onSaved={onSaved}
+        onError={onError}
+      />,
+    );
+
+    // Dialog 未表示
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // 「背景を解除」ボタン押下 → Dialog 出現、clear service 未呼出
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /背景を解除$/ }));
+    });
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(clearWinnerCardBackground).not.toHaveBeenCalled();
+
+    // Dialog 内 「背景を解除する」確認 → clear service 呼出
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /背景を解除する/ }),
+      );
+    });
+    expect(clearWinnerCardBackground).toHaveBeenCalledWith({
+      gid: "g1",
+      uid: "u-owner",
+      previousAssetId: "asset-old",
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("「背景を解除」→ Dialog 出現 → 「キャンセル」 → clear service 未呼出", async () => {
+    const onSaved = vi.fn().mockResolvedValue(undefined);
+    const onError = vi.fn();
+    vi.mocked(clearWinnerCardBackground).mockResolvedValue();
 
     render(
       <CardBackgroundCard
@@ -271,14 +311,15 @@ describe("CardBackgroundCard - winner", () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /背景を解除/ }));
+      fireEvent.click(screen.getByRole("button", { name: /背景を解除$/ }));
     });
-    expect(clearWinnerCardBackground).toHaveBeenCalledWith({
-      gid: "g1",
-      uid: "u-owner",
-      previousAssetId: "asset-old",
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^キャンセル$/ }));
     });
-    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(clearWinnerCardBackground).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
 
