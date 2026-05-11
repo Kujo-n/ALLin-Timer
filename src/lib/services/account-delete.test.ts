@@ -68,6 +68,8 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     defaultTableLabels: [],
     defaultTableColors: [],
     seasonPointsRule: null,
+    winnerCardBackground: null,
+    seasonCardBackground: null,
     createdAt: now,
     ...overrides,
   };

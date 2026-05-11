@@ -46,6 +46,8 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     defaultTableLabels: [],
     defaultTableColors: [],
     seasonPointsRule: null,
+    winnerCardBackground: null,
+    seasonCardBackground: null,
     joinCodeId: null,
     createdAt: Timestamp.fromDate(new Date("2026-04-01T00:00:00Z")),
     ...overrides,

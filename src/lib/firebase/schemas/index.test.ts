@@ -910,6 +910,8 @@ describe("deriveRole", () => {
     defaultTableLabels: [],
     defaultTableColors: [],
     seasonPointsRule: null,
+    winnerCardBackground: null,
+    seasonCardBackground: null,
     createdAt: now,
   };
 
@@ -949,6 +951,8 @@ describe("isSoleOwner", () => {
     defaultTableLabels: [],
     defaultTableColors: [],
     seasonPointsRule: null,
+    winnerCardBackground: null,
+    seasonCardBackground: null,
     createdAt: now,
   };
 

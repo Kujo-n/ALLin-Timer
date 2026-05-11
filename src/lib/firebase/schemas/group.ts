@@ -82,6 +82,40 @@ export const seasonPointsRuleSchema = z
 export type SeasonPointsRuleSchema = z.infer<typeof seasonPointsRuleSchema>;
 
 /**
+ * Phase A.1 (05-post-launch-polish Track A): 結果カード背景のテキストテーマ。
+ *   - "light": 明るい背景画像向け（暗色テキスト）
+ *   - "dark": 暗い背景画像向け（明色テキスト）
+ *
+ * `as const` で抜き出した文字列リテラル配列を export し、後段の UI で
+ * `<select>` option を回せるようにする。将来 "auto" 等への拡張余地を残しつつ、
+ * 現時点では 2 値に固定（rule 側でも 2 値リテラルを enforce）。
+ */
+export const CARD_TEXT_THEMES = ["light", "dark"] as const;
+export type CardTextTheme = (typeof CARD_TEXT_THEMES)[number];
+
+export const DEFAULT_CARD_BACKGROUND_TEXT_THEME: CardTextTheme = "light";
+
+/**
+ * Phase A.1: 優勝者カード / シーズン戦績カードの背景画像メタデータ schema。
+ *   - `imageUrl` / `storageAssetId` は同時に null か同時に string であることを invariant とする
+ *     （Storage asset と Firestore pointer の同期保護。Cloud Firestore Rules では
+ *      クロスフィールド invariant を表現できないため、application 層 (repository / service) が最終ライン）。
+ *   - `textTheme` は CARD_TEXT_THEMES に列挙された値のみ。
+ *   - 全体を nullable + default(null) にすることで、旧 doc（Phase 4 以前）が
+ *     `winnerCardBackground` / `seasonCardBackground` フィールド不在のまま hydrate されても
+ *     型を壊さない（先例: `seasonPointsRuleSchema`）。
+ */
+export const cardBackgroundSchema = z
+  .object({
+    imageUrl: z.string().min(1).nullable(),
+    storageAssetId: z.string().min(1).nullable(),
+    textTheme: z.enum(CARD_TEXT_THEMES),
+  })
+  .nullable()
+  .default(null);
+export type CardBackground = z.infer<typeof cardBackgroundSchema>;
+
+/**
  * `groups/{gid}` の本体スキーマ。サークル単位の所有権モデル。
  *
  * Phase 4.6 以降は 3 階層ロール:
@@ -166,6 +200,16 @@ export const groupBodySchema = z
     //   - rule 側は `affectedKeys.hasOnly(['seasonPointsRule'])` + `is map | null`
     //     + `base.size() 1..9` + `baseline 2..10` を強制（各要素の値域は schema に委譲）
     seasonPointsRule: seasonPointsRuleSchema,
+    // Phase A.1 (05-post-launch-polish Track A): 優勝者カード / シーズン戦績カード の
+    //   背景画像 + テキストテーマ。owner のみが書換可（rule で enforce）。
+    //   旧 doc（Phase E 以前）はフィールド不在のため default(null) で hydrate される。
+    //   非 null 時の構造: { imageUrl: string | null, storageAssetId: string | null,
+    //     textTheme: "light" | "dark" }
+    //   imageUrl / storageAssetId を nullable に保つのは「テキストテーマだけ先に決めて
+    //   後で画像を載せる」UX を阻害しないためだが、運用上 imageUrl != null と
+    //   storageAssetId != null は同時のみ許可する invariant を repository / service で enforce する。
+    winnerCardBackground: cardBackgroundSchema,
+    seasonCardBackground: cardBackgroundSchema,
   })
   .refine(
     (v) => v.ownerUids.every((uid) => v.organizerUids.includes(uid)),
