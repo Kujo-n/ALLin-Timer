@@ -5,66 +5,76 @@ import { resolveCardTheme } from "./og-readability";
 
 describe("resolveCardTheme", () => {
   describe("hasBackground=false (グラデ既存挙動)", () => {
-    it("winner / textTheme=undefined → winnerFg + box null", () => {
+    it("winner / textTheme=undefined → winnerFg + textShadow / footerBox null", () => {
       expect(resolveCardTheme(false, undefined, "winner")).toEqual({
         fg: OG_COLORS.winnerFg,
-        boxBg: null,
+        textShadow: null,
+        footerBox: null,
       });
     });
 
-    it("season / textTheme=undefined → seasonFg + box null", () => {
+    it("season / textTheme=undefined → seasonFg + textShadow / footerBox null", () => {
       expect(resolveCardTheme(false, undefined, "season")).toEqual({
         fg: OG_COLORS.seasonFg,
-        boxBg: null,
+        textShadow: null,
+        footerBox: null,
       });
     });
 
-    it("hasBackground=false なら textTheme=light/dark 指定でも box は null", () => {
-      expect(resolveCardTheme(false, "light", "winner").boxBg).toBeNull();
-      expect(resolveCardTheme(false, "dark", "season").boxBg).toBeNull();
+    it("hasBackground=false なら textTheme=light/dark 指定でも textShadow / footerBox は null", () => {
+      expect(resolveCardTheme(false, "light", "winner").textShadow).toBeNull();
+      expect(resolveCardTheme(false, "light", "winner").footerBox).toBeNull();
+      expect(resolveCardTheme(false, "dark", "season").textShadow).toBeNull();
+      expect(resolveCardTheme(false, "dark", "season").footerBox).toBeNull();
     });
   });
 
   describe("hasBackground=true (背景画像あり)", () => {
-    it("winner / light → winnerFg + bgBoxLight", () => {
+    it("winner / light → winnerFg + bgTextShadowLight + bgFooterBoxLight", () => {
       expect(resolveCardTheme(true, "light", "winner")).toEqual({
         fg: OG_COLORS.winnerFg,
-        boxBg: OG_COLORS.bgBoxLight,
+        textShadow: OG_COLORS.bgTextShadowLight,
+        footerBox: OG_COLORS.bgFooterBoxLight,
       });
     });
 
-    it("season / light → seasonFg + bgBoxLight", () => {
+    it("season / light → seasonFg + bgTextShadowLight + bgFooterBoxLight", () => {
       expect(resolveCardTheme(true, "light", "season")).toEqual({
         fg: OG_COLORS.seasonFg,
-        boxBg: OG_COLORS.bgBoxLight,
+        textShadow: OG_COLORS.bgTextShadowLight,
+        footerBox: OG_COLORS.bgFooterBoxLight,
       });
     });
 
-    it("winner / dark → winnerFgDark + bgBoxDark", () => {
+    it("winner / dark → winnerFgDark + bgTextShadowDark + bgFooterBoxDark", () => {
       expect(resolveCardTheme(true, "dark", "winner")).toEqual({
         fg: OG_COLORS.winnerFgDark,
-        boxBg: OG_COLORS.bgBoxDark,
+        textShadow: OG_COLORS.bgTextShadowDark,
+        footerBox: OG_COLORS.bgFooterBoxDark,
       });
     });
 
-    it("season / dark → seasonFgDark + bgBoxDark", () => {
+    it("season / dark → seasonFgDark + bgTextShadowDark + bgFooterBoxDark", () => {
       expect(resolveCardTheme(true, "dark", "season")).toEqual({
         fg: OG_COLORS.seasonFgDark,
-        boxBg: OG_COLORS.bgBoxDark,
+        textShadow: OG_COLORS.bgTextShadowDark,
+        footerBox: OG_COLORS.bgFooterBoxDark,
       });
     });
 
     it("textTheme=undefined は light として扱う（winner）", () => {
       expect(resolveCardTheme(true, undefined, "winner")).toEqual({
         fg: OG_COLORS.winnerFg,
-        boxBg: OG_COLORS.bgBoxLight,
+        textShadow: OG_COLORS.bgTextShadowLight,
+        footerBox: OG_COLORS.bgFooterBoxLight,
       });
     });
 
     it("textTheme=undefined は light として扱う（season）", () => {
       expect(resolveCardTheme(true, undefined, "season")).toEqual({
         fg: OG_COLORS.seasonFg,
-        boxBg: OG_COLORS.bgBoxLight,
+        textShadow: OG_COLORS.bgTextShadowLight,
+        footerBox: OG_COLORS.bgFooterBoxLight,
       });
     });
   });
