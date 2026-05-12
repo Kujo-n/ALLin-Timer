@@ -228,6 +228,7 @@ export function LiveClient({ tid }: { tid: string }) {
                 tournamentName: tournament.name,
                 participants: players.length,
                 finishedAt: finishedAtDate,
+                groupName: tournamentGroup?.name,
                 cardBackground: winnerCardBackground,
               });
               const shareText = formatWinnerShareText({
@@ -253,6 +254,7 @@ export function LiveClient({ tid }: { tid: string }) {
                       tournamentName={tournament.name}
                       participants={players.length}
                       finishedAt={finishedAtDate}
+                      groupName={tournamentGroup?.name}
                       cardBackground={winnerCardBackground}
                     />
                   </div>

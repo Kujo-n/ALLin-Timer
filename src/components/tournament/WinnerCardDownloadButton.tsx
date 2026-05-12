@@ -14,6 +14,8 @@ interface Props {
   participants: number;
   /** トーナメント終了時刻。Date オブジェクトで受け取り端末 TZ で format する。 */
   finishedAt: Date;
+  /** Phase A.4 footer-box: サークル名（footer ボックスに表示）。 */
+  groupName?: string;
   /** Phase A.2: サークル設定済みの優勝カード背景画像（null / undefined で未設定）。 */
   cardBackground?: CardBackground | null;
   className?: string;
@@ -33,6 +35,7 @@ export function WinnerCardDownloadButton({
   tournamentName,
   participants,
   finishedAt,
+  groupName,
   cardBackground,
   className,
 }: Props) {
@@ -41,6 +44,7 @@ export function WinnerCardDownloadButton({
     tournamentName,
     participants,
     finishedAt,
+    groupName,
     cardBackground,
   });
   const filename = `${filenameStem}.png`;
