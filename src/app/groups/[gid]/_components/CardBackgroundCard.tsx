@@ -67,8 +67,8 @@ const DEMO_TEXT: Record<
   { title: string; main: string; sub: string }
 > = {
   winner: {
-    title: "TOURNAMENT CHAMPION",
-    main: "WINNER",
+    title: "トーナメント名",
+    main: "優勝者名",
     sub: "ALLin-PokerTimer",
   },
   season: {
