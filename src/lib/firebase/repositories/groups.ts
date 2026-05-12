@@ -490,28 +490,42 @@ export function validateCardBackground(value: CardBackground): void {
 }
 
 /**
- * Phase A.1: groups/{gid}.winnerCardBackground を更新する。
+ * Phase A.1: card background pointer 更新の internal helper。
+ *
+ * field 名 (`winnerCardBackground` | `seasonCardBackground`) を駆動軸にして、winner / season で
+ * 完全に対称な write 経路（validate → wrapFirestoreWrite → updateDoc → logger.info）を 1 箇所に集約する。
+ * Phase A architect-refactor (T2) で `updateWinnerCardBackground` / `updateSeasonCardBackground`
+ * の 23 行 × 2 を thin wrapper 化。
+ *
  *   - owner-only（service 層で assertOwner、rule 側も isOwner enforce）
- *   - null 渡しで「背景解除」、object 渡しで設定。
- *   - imageUrl / storageAssetId は同時に null か同時に string であることを invariant とする
- *     （Storage asset と Firestore pointer の同期保護）。
- *   - rule は `affectedKeys.hasOnly(['winnerCardBackground'])` + 型のみを enforce。
- *     値域は本関数の zod safeParse + invariant check が最終ライン。
+ *   - null 渡しで「背景解除」、object 渡しで設定
+ *   - imageUrl / storageAssetId は同時に null か同時に string invariant（Storage asset と Firestore
+ *     pointer の同期保護）
+ *   - rule は `affectedKeys.hasOnly([field])` + 型のみを enforce。値域は本関数の
+ *     `validateCardBackground` が最終ライン
  */
-export async function updateWinnerCardBackground(
+type CardBackgroundField = "winnerCardBackground" | "seasonCardBackground";
+
+const CARD_BG_FAILURE_MESSAGE: Record<CardBackgroundField, string> = {
+  winnerCardBackground: "結果カード背景画像の更新に失敗しました",
+  seasonCardBackground: "シーズン戦績カード背景画像の更新に失敗しました",
+};
+
+async function updateCardBackgroundField(
+  field: CardBackgroundField,
   gid: string,
   value: CardBackground,
 ): Promise<void> {
   validateCardBackground(value);
   await wrapFirestoreWrite(
     "firestore/write_failed",
-    "結果カード背景画像の更新に失敗しました",
+    CARD_BG_FAILURE_MESSAGE[field],
     async () => {
-      await updateDoc(groupDocRef(gid), { winnerCardBackground: value });
+      await updateDoc(groupDocRef(gid), { [field]: value });
     },
     { gid },
   );
-  logger.info("group winnerCardBackground updated", {
+  logger.info(`group ${field} updated`, {
     gid,
     cleared: value === null,
     hasImage: value?.imageUrl != null,
@@ -519,29 +533,20 @@ export async function updateWinnerCardBackground(
   });
 }
 
-/**
- * Phase A.1: groups/{gid}.seasonCardBackground を更新する。
- *   - 構造・invariant は `updateWinnerCardBackground` と同じ。
- */
-export async function updateSeasonCardBackground(
+/** Phase A.1: groups/{gid}.winnerCardBackground を更新する。詳細は internal helper 参照。 */
+export function updateWinnerCardBackground(
   gid: string,
   value: CardBackground,
 ): Promise<void> {
-  validateCardBackground(value);
-  await wrapFirestoreWrite(
-    "firestore/write_failed",
-    "シーズン戦績カード背景画像の更新に失敗しました",
-    async () => {
-      await updateDoc(groupDocRef(gid), { seasonCardBackground: value });
-    },
-    { gid },
-  );
-  logger.info("group seasonCardBackground updated", {
-    gid,
-    cleared: value === null,
-    hasImage: value?.imageUrl != null,
-    textTheme: value?.textTheme,
-  });
+  return updateCardBackgroundField("winnerCardBackground", gid, value);
+}
+
+/** Phase A.1: groups/{gid}.seasonCardBackground を更新する。構造は winner と同型。 */
+export function updateSeasonCardBackground(
+  gid: string,
+  value: CardBackground,
+): Promise<void> {
+  return updateCardBackgroundField("seasonCardBackground", gid, value);
 }
 
 export async function deleteGroup(gid: string): Promise<void> {
