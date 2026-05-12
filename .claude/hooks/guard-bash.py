@@ -109,6 +109,31 @@ _ENV_PREFIX_USAGE = re.compile(
     _HEAD + r'env\s+[A-Za-z_][A-Za-z0-9_]*='
 )
 
+# Playwright bare invocation guard.
+#   Detect `playwright test` / `npx playwright test` to prevent Firestore /
+#   Auth writes to *production* when the emulator gate is bypassed.
+#   `npm run test:e2e*` is exempt because npm spawns playwright as a child
+#   process, so the literal "playwright" token does not appear in the shell
+#   command itself.
+#   `playwright install` (browser binaries) does not hit Firebase, so it is
+#   not matched here.
+_PLAYWRIGHT_BARE = re.compile(
+    _HEAD + r'(?:npx\s+)?playwright\s+test\b'
+)
+# Safe markers that prove the invocation is gated to the e2e emulator:
+#   - `--project=allin-pokertimer-e2e` / `--project allin-pokertimer-e2e`
+#   - `NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true`
+#   - `FIREBASE_AUTH_EMULATOR_HOST` / `FIRESTORE_EMULATOR_HOST`
+#   - `firebase emulators:exec` wraps the playwright run with the emulator hosts
+_PLAYWRIGHT_SAFE_MARKERS = (
+    '--project=allin-pokertimer-e2e',
+    '--project allin-pokertimer-e2e',
+    'NEXT_PUBLIC_USE_FIREBASE_EMULATOR',
+    'FIREBASE_AUTH_EMULATOR_HOST',
+    'FIRESTORE_EMULATOR_HOST',
+    'firebase emulators:exec',
+)
+
 
 def deny(reason: str) -> None:
     payload = {
@@ -139,6 +164,15 @@ def main() -> None:
 
     if _ENV_DUMP.search(cmd) and not _ENV_PREFIX_USAGE.search(cmd):
         deny("環境変数の一括出力 (printenv/env) を検出しました")
+
+    if _PLAYWRIGHT_BARE.search(cmd) and not any(m in cmd for m in _PLAYWRIGHT_SAFE_MARKERS):
+        deny(
+            "Playwright を裸実行しようとしました。E2E は本番 Firebase 流出予防のため "
+            "`npm run test:e2e` 経由で起動してください（emulator gate を経由します）。"
+            "別経路で起動する場合は `--project=allin-pokertimer-e2e` または "
+            "`NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true` を明示するか、"
+            "`firebase emulators:exec` で wrap してください。"
+        )
 
 
 if __name__ == "__main__":
