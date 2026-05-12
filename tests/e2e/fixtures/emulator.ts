@@ -8,7 +8,8 @@ import type { APIRequestContext } from "@playwright/test";
  * 全て Emulator の unauthenticated endpoint を使用する（本番では動作しない）。
  */
 
-const E2E_PROJECT_ID = "allin-pokertimer-e2e";
+// playwright.config.ts と global-setup.ts でも参照する単一真実源。
+export const E2E_PROJECT_ID = "allin-pokertimer-e2e";
 const AUTH_EMULATOR = "http://127.0.0.1:9099";
 const FIRESTORE_EMULATOR = "http://127.0.0.1:8080";
 

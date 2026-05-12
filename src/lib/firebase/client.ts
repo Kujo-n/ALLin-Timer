@@ -109,6 +109,18 @@ export const firebaseStorage = getStorage(firebaseApp);
 // E2E: emulator へ接続。重複接続は Firebase SDK 側で throw するため globalThis 上の
 // flag でガード（HMR 再実行・複数ページ開きでの re-invocation 対策）。
 if (useEmulator) {
+  // 本番 Firebase への流出予防 gate: emulator モードで非 e2e projectId が
+  // 紛れ込んだら起動時点で fail-fast。`.env.local` の本番値が webServer.env を
+  // 上書きする経路（外部 next dev 経由等）が成立しないようにする。
+  const E2E_PROJECT_ID = "allin-pokertimer-e2e";
+  if (projectId && projectId !== E2E_PROJECT_ID) {
+    throw new AppError(
+      `[firebase/client] emulator モード (NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true) で ` +
+        `非 e2e projectId が指定されています: "${projectId}". ` +
+        `期待値: "${E2E_PROJECT_ID}". .env.local の本番値が流入していないか確認してください。`,
+      "firebase/emulator-misconfigured",
+    );
+  }
   type EmulatorFlag = { __FIREBASE_EMULATORS_CONNECTED__?: boolean };
   const g = globalThis as typeof globalThis & EmulatorFlag;
   if (!g.__FIREBASE_EMULATORS_CONNECTED__) {

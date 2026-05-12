@@ -37,6 +37,9 @@ const emulatorEnv: Record<string, string> = {
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: /.*\.spec\.ts/,
+  // 本番 Firebase への流出予防 gate。emulator 未起動 or 非 e2e projectId 検出で
+  // 全 spec を実行前に abort する（[tests/e2e/fixtures/global-setup.ts]）。
+  globalSetup: "./tests/e2e/fixtures/global-setup.ts",
   fullyParallel: false, // Firestore state 共有のため並列 off（worker=1 と併用）
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
