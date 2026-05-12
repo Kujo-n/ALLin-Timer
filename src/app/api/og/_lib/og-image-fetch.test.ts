@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
 
-import { fetchAsDataUri, isAllowedBgImageUrl } from "./og-image-fetch";
+import {
+  fetchAsDataUri,
+  isAllowedBgImageUrl,
+  prepareBgDataUri,
+} from "./og-image-fetch";
 
 const ORIG_FETCH = globalThis.fetch;
 const ALLOWED_URL = "https://firebasestorage.googleapis.com/v0/b/x/o/img.jpg";
@@ -132,5 +136,69 @@ describe("fetchAsDataUri", () => {
     await expect(promise).rejects.toMatchObject({
       code: "og/bg-fetch-failed",
     });
+  });
+});
+
+describe("prepareBgDataUri", () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+  });
+  afterEach(() => {
+    globalThis.fetch = ORIG_FETCH;
+  });
+
+  it("url が null のとき onError を呼ばず即 null を返す（fetch も発行しない）", async () => {
+    const onError = vi.fn();
+    const result = await prepareBgDataUri({ url: null, onError });
+    expect(result).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("url が undefined のとき onError を呼ばず即 null を返す", async () => {
+    const onError = vi.fn();
+    const result = await prepareBgDataUri({ url: undefined, onError });
+    expect(result).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("有効 URL + 成功時 data URI を返し、onError は呼ばれない", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+    const onError = vi.fn();
+    const result = await prepareBgDataUri({ url: ALLOWED_URL, onError });
+    expect(result).toMatch(/^data:image\/png;base64,/);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("fetch 失敗時は onError を 1 度呼び、null を返す（throw しない）", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("network down"),
+    );
+    const onError = vi.fn();
+    const result = await prepareBgDataUri({ url: ALLOWED_URL, onError });
+    expect(result).toBeNull();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const passed = onError.mock.calls[0]?.[0];
+    expect(passed).toBeInstanceOf(AppError);
+    expect((passed as AppError).code).toBe("og/bg-fetch-failed");
+  });
+
+  it("非 allowlist host のときも onError を呼んで null（SSRF 防御の grad fallback）", async () => {
+    const onError = vi.fn();
+    const result = await prepareBgDataUri({
+      url: "https://attacker.example.com/a.jpg",
+      onError,
+    });
+    expect(result).toBeNull();
+    expect(onError).toHaveBeenCalledTimes(1);
+    // fetch は発行しない（SSRF 防御）
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

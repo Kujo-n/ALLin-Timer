@@ -124,3 +124,26 @@ export async function fetchAsDataUri(
   const base64 = Buffer.from(buf).toString("base64");
   return `data:${contentType};base64,${base64}`;
 }
+
+/**
+ * Phase A architect-refactor (T4): OG route 双方の bgImage 取得 boilerplate を集約する純関数。
+ *
+ * `url` が null/undefined のときは即 `null` を返し、非 null のときは `fetchAsDataUri` を呼んで
+ * 失敗時には `onError(e)` を呼んだ上で `null` を返す（200 を返す OG route の契約を維持するため
+ * grad fallback に倒す）。`onError` 内で logger.warn を呼ぶことを想定する。
+ *
+ * 観測可能な動作は `bgDataUri = url ? await fetchAsDataUri(url).catch((e) => { onError(e); return null; }) : null`
+ * と同値。
+ */
+export async function prepareBgDataUri(opts: {
+  url: string | null | undefined;
+  onError: (e: unknown) => void;
+}): Promise<string | null> {
+  if (opts.url == null) return null;
+  try {
+    return await fetchAsDataUri(opts.url);
+  } catch (e) {
+    opts.onError(e);
+    return null;
+  }
+}

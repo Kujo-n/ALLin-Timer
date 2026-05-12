@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { loadNotoSansJPCached } from "@/app/api/og/_lib/load-font";
-import { fetchAsDataUri } from "@/app/api/og/_lib/og-image-fetch";
+import { prepareBgDataUri } from "@/app/api/og/_lib/og-image-fetch";
 import {
   OG_COLORS,
   OG_FONT_FAMILY,
@@ -18,7 +18,11 @@ import {
   sanitizeFilename,
   WINNER_CARD_QUERY_SCHEMA,
 } from "@/app/api/og/_lib/og-payload";
-import { AppError, getErrorCode } from "@/lib/errors";
+import {
+  applyOgImageResponseHeaders,
+  respondWithOgRenderError,
+} from "@/app/api/og/_lib/og-response";
+import { getErrorCode } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
 /**
@@ -34,10 +38,6 @@ import { logger } from "@/lib/logger";
  * route 側ではそのまま描画する（サーバ runtime TZ に依存しないため）。
  */
 export const runtime = "nodejs";
-
-/** 同一 query への再リクエストは決定的に同じ PNG を返すため CDN edge cache を効かせる。 */
-const CACHE_CONTROL =
-  "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800";
 
 export async function GET(
   req: NextRequest,
@@ -62,19 +62,18 @@ export async function GET(
     }
     const { regular, bold } = await loadNotoSansJPCached();
     const q = parsed.data;
-    const safeFilename = `${q.filename ? sanitizeFilename(q.filename) : "card"}.png`;
+    const filenameStem = q.filename ? sanitizeFilename(q.filename) : "card";
 
     // Phase A.2: 背景画像が指定されたら fetch + base64 化（Satori は外部 URL を fetch しない）。
     // 失敗時は warn ログを残しグラデ fallback に倒す（200 を返す契約は崩さない）。
-    const bgDataUri = q.bgImageUrl
-      ? await fetchAsDataUri(q.bgImageUrl).catch((e) => {
-          logger.warn("og winner bg fetch failed", {
-            tid,
-            code: getErrorCode(e),
-          });
-          return null;
-        })
-      : null;
+    const bgDataUri = await prepareBgDataUri({
+      url: q.bgImageUrl,
+      onError: (e) =>
+        logger.warn("og winner bg fetch failed", {
+          tid,
+          code: getErrorCode(e),
+        }),
+    });
     const { fg, textShadow, footerBox } = resolveCardTheme(
       !!bgDataUri,
       q.bgTextTheme,
@@ -299,24 +298,14 @@ export async function GET(
       },
     );
 
-    response.headers.set("cache-control", CACHE_CONTROL);
-    response.headers.set(
-      "content-disposition",
-      `attachment; filename="${safeFilename}"`,
-    );
+    applyOgImageResponseHeaders(response, { filenameStem });
 
     logger.info("og winner generated", { tid, ms: Date.now() - t0 });
     return response;
   } catch (e) {
-    const wrapped = AppError.from(e, "og/render-failed", "結果カードの生成に失敗しました");
-    logger.warn("og winner render failed", {
-      tid,
-      code: wrapped.code,
-      origCode: getErrorCode(e),
+    return respondWithOgRenderError(e, {
+      logTag: "og winner render failed",
+      ctx: { tid },
     });
-    return NextResponse.json(
-      { code: wrapped.code, message: wrapped.message },
-      { status: 500 },
-    );
   }
 }
