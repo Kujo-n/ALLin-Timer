@@ -10,6 +10,7 @@ import { getTournament, updateTournament } from "@/lib/firebase/repositories/tou
 import { deriveRole } from "@/lib/firebase/schemas/group";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useCurrentGroup } from "@/lib/services/current-group";
+import { canEdit } from "@/lib/services/tournament-state";
 
 export function TournamentEditClient({ tid }: { tid: string }) {
   const { user } = useAuthUser();
@@ -49,7 +50,7 @@ export function TournamentEditClient({ tid }: { tid: string }) {
   if (!data) {
     return <main className="mx-auto max-w-2xl p-8 text-sm text-muted-foreground">読込中…</main>;
   }
-  if (data.state !== "setup") {
+  if (!canEdit(data)) {
     return (
       <main className="mx-auto max-w-2xl p-8">
         <p className="text-sm text-destructive" role="alert">

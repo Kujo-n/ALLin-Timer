@@ -33,7 +33,11 @@ import { attemptAnonymousSelfDelete } from "@/lib/services/auth-actions";
 import { formatTableLabel } from "@/lib/services/format-table-label";
 import { joinAsCurrentUser } from "@/lib/services/receipt";
 import { getLevelInfo, resolveWinner } from "@/lib/services/timer";
-import { isBeforeStart, isRunning } from "@/lib/services/tournament-state";
+import {
+  isBeforeStart,
+  isFinished,
+  isRunning,
+} from "@/lib/services/tournament-state";
 
 const MOVED_BANNER_MS = 30_000;
 
@@ -120,7 +124,7 @@ export function LiveClient({ tid }: { tid: string }) {
   useEffect(() => {
     if (!user || !user.isAnonymous) return;
     if (!tournament) return;
-    if (tournament.state !== "finished") return;
+    if (!isFinished(tournament)) return;
     if (!me) return;
     if (selfDeleteInflightRef.current) return;
     selfDeleteInflightRef.current = true;
