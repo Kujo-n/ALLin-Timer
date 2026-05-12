@@ -27,6 +27,7 @@
     "test:e2e:debug": "playwright test --debug",
     "emulator": "firebase emulators:start --only auth,firestore,storage,ui --project allin-pokertimer-e2e",
     "cleanup:test-auth-users": "tsx scripts/cleanup-test-auth-users.ts",
+    "cleanup:orphan-firestore": "tsx scripts/cleanup-orphan-firestore.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -50,6 +51,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.2",
