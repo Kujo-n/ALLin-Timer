@@ -20,8 +20,9 @@ import {
 
 /** tournament.name は schema 上 max 制約がないが、画像の見栄えと URL 長で実用 cap。 */
 const TOURNAMENT_NAME_MAX = 60;
-/** group.name の zod max と一致させる。 */
+/** group.name の zod max と一致させる（winner / season 共用）。 */
 const SEASON_GROUP_NAME_MAX = 60;
+const WINNER_GROUP_NAME_MAX = SEASON_GROUP_NAME_MAX;
 /** 1 トーナメント当たりの最大参加人数 = MAX_TABLES (6) × MAX_SEATS_PER_TABLE (10) = 60。 */
 const MAX_PARTICIPANTS = 60;
 /** 累計ポイントの実用上限。1 シーズン 99999pt は越えない（基本値 10pt × 1000+ 試合）。 */
@@ -60,6 +61,11 @@ export const WINNER_CARD_QUERY_SCHEMA = z.object({
   participants: z.coerce.number().int().min(1).max(MAX_PARTICIPANTS),
   /** 端末 TZ で format 済み日付（例: "2026/5/7"）。 */
   finishedAtLabel: z.string().min(1).max(LABEL_MAX),
+  /**
+   * Phase A.4 footer-box: サークル名（footer box に出す）。
+   * 旧クライアントからの URL 互換のため optional とする（未指定なら footer から省略）。
+   */
+  groupName: z.string().min(1).max(WINNER_GROUP_NAME_MAX).optional(),
   /** Content-Disposition 用 filename stem。任意、未指定なら "card"。 */
   filename: z.string().min(1).max(FILENAME_STEM_MAX).optional(),
   /** Phase A.2: サークル設定済みの背景画像 URL（公開 / host allowlist 強制）。 */
@@ -112,6 +118,7 @@ export function buildWinnerCardUrl(tid: string, q: WinnerCardQuery): string {
     participants: String(q.participants),
     finishedAtLabel: q.finishedAtLabel,
   });
+  if (q.groupName !== undefined) sp.set("groupName", q.groupName);
   if (q.filename !== undefined) sp.set("filename", q.filename);
   if (q.bgImageUrl !== undefined) sp.set("bgImageUrl", q.bgImageUrl);
   if (q.bgTextTheme !== undefined) sp.set("bgTextTheme", q.bgTextTheme);
@@ -211,6 +218,11 @@ export interface WinnerShareInputsParams {
   tournamentName: string;
   participants: number;
   finishedAt: Date;
+  /**
+   * Phase A.4 footer-box: サークル名。footer ボックスに表示するため optional で受ける。
+   * 既存呼出を壊さないため `undefined` を許容するが、新規呼出は必ず渡す方針。
+   */
+  groupName?: string;
   /** Phase A.2: サークル設定済みの優勝カード背景画像メタデータ（null / undefined のときは未設定）。 */
   cardBackground?: CardBackground | null;
 }
@@ -230,6 +242,7 @@ export function buildWinnerShareInputs(
     participants: params.participants,
     finishedAtLabel: formatDateForLabel(params.finishedAt),
     filename: filenameStem,
+    ...(params.groupName !== undefined ? { groupName: params.groupName } : {}),
     ...bg,
   });
   return { url, filenameStem };

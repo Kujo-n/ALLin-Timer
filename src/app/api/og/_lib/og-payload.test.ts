@@ -111,6 +111,40 @@ describe("WINNER_CARD_QUERY_SCHEMA", () => {
     });
     expect(r.success).toBe(false);
   });
+
+  it("groupName が指定されたら受理される（footer-box 用）", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      groupName: "週末サークル",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.groupName).toBe("週末サークル");
+  });
+
+  it("groupName 未指定でも受理される（旧クライアント互換）", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.groupName).toBeUndefined();
+  });
+
+  it("groupName が 60 文字超なら reject", () => {
+    const r = WINNER_CARD_QUERY_SCHEMA.safeParse({
+      winnerName: "Alice",
+      tournamentName: "サタデー",
+      participants: "8",
+      finishedAtLabel: VALID_LABEL,
+      groupName: "あ".repeat(61),
+    });
+    expect(r.success).toBe(false);
+  });
 });
 
 describe("SEASON_CARD_QUERY_SCHEMA", () => {
@@ -561,6 +595,29 @@ describe("buildWinnerShareInputs", () => {
       finishedAt,
     });
     expect(r).toEqual({ url: expectedUrl, filenameStem: expectedFilename });
+  });
+
+  it("groupName を渡すと URL の groupName key に含まれる", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday",
+      participants: 8,
+      finishedAt,
+      groupName: "週末サークル",
+    });
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.get("groupName")).toBe("週末サークル");
+  });
+
+  it("groupName 未指定なら URL の key に含まれない（旧クライアント互換）", () => {
+    const r = buildWinnerShareInputs("t-1", {
+      winnerName: "Alice",
+      tournamentName: "Saturday",
+      participants: 8,
+      finishedAt,
+    });
+    const sp = new URLSearchParams(r.url.split("?")[1]);
+    expect(sp.has("groupName")).toBe(false);
   });
 });
 
