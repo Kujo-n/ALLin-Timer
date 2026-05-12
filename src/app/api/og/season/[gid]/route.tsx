@@ -13,7 +13,6 @@ import {
 import {
   resolveCardTheme,
   ScrimLayer,
-  TextBox,
 } from "@/app/api/og/_lib/og-readability";
 import {
   readSeasonCardQuery,
@@ -44,10 +43,17 @@ function PodiumRow({
   rank,
   name,
   points,
+  shadowStyle,
 }: {
   rank: 0 | 1 | 2;
   name: string;
   points: number;
+  /**
+   * 背景画像時の text-shadow を spread するための object。
+   * `{ textShadow?: string }`。undefined を直接 style に入れると Satori が
+   * `.toString()` でクラッシュするため、必ず spread で渡す。
+   */
+  shadowStyle: { textShadow?: string };
 }) {
   const fontSize = rank === 0 ? 64 : rank === 1 ? 52 : 44;
   const opacity = rank === 0 ? 1 : rank === 1 ? 0.92 : 0.82;
@@ -70,11 +76,21 @@ function PodiumRow({
             fontWeight: 700,
             color: OG_COLORS.seasonAccent,
             letterSpacing: 2,
+            ...shadowStyle,
           }}
         >
           {MEDAL_LABEL[rank]}
         </div>
-        <div style={{ display: "flex", fontSize, fontWeight: 700 }}>{name}</div>
+        <div
+          style={{
+            display: "flex",
+            fontSize,
+            fontWeight: 700,
+            ...shadowStyle,
+          }}
+        >
+          {name}
+        </div>
       </div>
       <div
         style={{
@@ -82,6 +98,7 @@ function PodiumRow({
           fontSize: rank === 0 ? 48 : 36,
           fontWeight: 700,
           color: OG_COLORS.seasonAccent,
+          ...shadowStyle,
         }}
       >
         {points.toFixed(2)} pt
@@ -126,11 +143,16 @@ export async function GET(
           return null;
         })
       : null;
-    const { fg, boxBg } = resolveCardTheme(
+    const { fg, textShadow } = resolveCardTheme(
       !!bgDataUri,
       q.bgTextTheme,
       "season",
     );
+    // Satori は `textShadow: undefined` を内部で `.toString()` するためクラッシュする
+    // （winner route と同じ対策。条件 spread で key 自体を出し入れする）。
+    const shadowStyle: { textShadow?: string } = textShadow
+      ? { textShadow }
+      : {};
 
     const response = new ImageResponse(
       (
@@ -172,7 +194,13 @@ export async function GET(
               position: "relative",
             }}
           >
-            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-start" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignSelf: "flex-start",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -180,11 +208,20 @@ export async function GET(
                   fontWeight: 700,
                   color: OG_COLORS.seasonAccent,
                   letterSpacing: 4,
+                  ...shadowStyle,
                 }}
               >
                 SEASON LEADERBOARD
               </div>
-              <div style={{ display: "flex", marginTop: 16, fontSize: 48, fontWeight: 700 }}>
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 16,
+                  fontSize: 48,
+                  fontWeight: 700,
+                  ...shadowStyle,
+                }}
+              >
                 {q.groupName}
               </div>
               <div
@@ -193,11 +230,12 @@ export async function GET(
                   marginTop: 8,
                   fontSize: 22,
                   color: OG_COLORS.seasonMuted,
+                  ...shadowStyle,
                 }}
               >
                 シーズン開始: {startDateLabel}
               </div>
-            </TextBox>
+            </div>
             <div
               style={{
                 display: "flex",
@@ -206,27 +244,55 @@ export async function GET(
                 justifyContent: "center",
               }}
             >
-              <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "stretch" }}>
-                <PodiumRow rank={0} name={q.top1Name} points={q.top1Points} />
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignSelf: "stretch",
+                }}
+              >
+                <PodiumRow
+                  rank={0}
+                  name={q.top1Name}
+                  points={q.top1Points}
+                  shadowStyle={shadowStyle}
+                />
                 {q.top2Name !== undefined && q.top2Points !== undefined ? (
-                  <PodiumRow rank={1} name={q.top2Name} points={q.top2Points} />
+                  <PodiumRow
+                    rank={1}
+                    name={q.top2Name}
+                    points={q.top2Points}
+                    shadowStyle={shadowStyle}
+                  />
                 ) : null}
                 {q.top3Name !== undefined && q.top3Points !== undefined ? (
-                  <PodiumRow rank={2} name={q.top3Name} points={q.top3Points} />
+                  <PodiumRow
+                    rank={2}
+                    name={q.top3Name}
+                    points={q.top3Points}
+                    shadowStyle={shadowStyle}
+                  />
                 ) : null}
-              </TextBox>
+              </div>
             </div>
-            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-end" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignSelf: "flex-end",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
                   fontSize: 22,
                   color: OG_COLORS.seasonMuted,
+                  ...shadowStyle,
                 }}
               >
                 ALLin-PokerTimer
               </div>
-            </TextBox>
+            </div>
           </div>
         </div>
       ),

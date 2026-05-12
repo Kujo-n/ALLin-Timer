@@ -13,7 +13,6 @@ import {
 import {
   resolveCardTheme,
   ScrimLayer,
-  TextBox,
 } from "@/app/api/og/_lib/og-readability";
 import {
   sanitizeFilename,
@@ -76,11 +75,22 @@ export async function GET(
           return null;
         })
       : null;
-    const { fg, boxBg } = resolveCardTheme(
+    const { fg, textShadow, footerBox } = resolveCardTheme(
       !!bgDataUri,
       q.bgTextTheme,
       "winner",
     );
+    // Satori は `textShadow: undefined` を内部で `.toString()` するためクラッシュする
+    // （`failed to pipe response` / `Cannot read properties of undefined`）。
+    // textShadow / footer 内 shadow をそれぞれ条件 spread 用 object に変換しておく:
+    //   - shadowStyle: 背景画像時の文字 outer glow（footer 外側のテキストブロック用）
+    //   - innerShadowStyle: footer 内のテキスト用。footerBox があるときは shadow を出さない
+    const shadowStyle: { textShadow?: string } = textShadow
+      ? { textShadow }
+      : {};
+    const innerShadowStyle: { textShadow?: string } = footerBox
+      ? {}
+      : shadowStyle;
 
     const response = new ImageResponse(
       (
@@ -125,69 +135,157 @@ export async function GET(
               position: "relative",
             }}
           >
-            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-start" }}>
-              <div
-                style={{
-                  display: "flex",
-                  fontSize: 56,
-                  fontWeight: 700,
-                  letterSpacing: 2,
-                }}
-              >
-                TOURNAMENT CHAMPION
-              </div>
-              <div style={{ display: "flex", marginTop: 24, fontSize: 36, fontWeight: 700 }}>
-                {q.tournamentName}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  marginTop: 8,
-                  fontSize: 24,
-                  opacity: 0.75,
-                }}
-              >
-                {q.finishedAtLabel}
-              </div>
-            </TextBox>
+            {/* 最上部・中央揃え: トーナメント名 */}
             <div
               style={{
                 display: "flex",
-                flexDirection: "column",
+                justifyContent: "center",
+                fontSize: 36,
+                fontWeight: 700,
+                ...shadowStyle,
+              }}
+            >
+              {q.tournamentName}
+            </div>
+
+            {/*
+              上下左右の中央: 優勝者名 (winnerName) そのものをコンテナ中心に置き、
+              WINNER ラベルは winnerName の真上に absolute で乗せる。
+              WINNER の高さを縦中央計算に含めないため、winnerName 単体が画面中央になる。
+                - WINNER 実高さ ≈ fontSize 28 × lineHeight 1.2 ≒ 34px
+                - WINNER と winnerName の間隔 = 6px（直前指示で半分に）
+                - 合計 40px だけ winnerName 上端より上にオフセット
+            */}
+            <div
+              style={{
+                display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flex: 1,
+                width: "100%",
               }}
             >
-              <TextBox boxBg={boxBg} extraStyle={{ alignItems: "center" }}>
-                <div style={{ display: "flex", fontSize: 28, opacity: 0.6 }}>WINNER</div>
+              <div style={{ position: "relative", display: "flex" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -40,
+                    left: 0,
+                    right: 0,
+                    display: "flex",
+                    justifyContent: "center",
+                    fontSize: 36,
+                    opacity: 0.6,
+                    ...shadowStyle,
+                  }}
+                >
+                  WINNER!!
+                </div>
                 <div
                   style={{
                     display: "flex",
-                    marginTop: 12,
                     fontSize: 120,
                     fontWeight: 700,
                     lineHeight: 1.1,
+                    ...shadowStyle,
                   }}
                 >
                   {q.winnerName}
                 </div>
-                <div style={{ display: "flex", marginTop: 16, fontSize: 28 }}>
-                  {q.participants} 人参加
-                </div>
-              </TextBox>
-            </div>
-            <TextBox boxBg={boxBg} extraStyle={{ alignSelf: "flex-end" }}>
-              <div
-                style={{
-                  display: "flex",
-                  fontSize: 22,
-                  opacity: 0.65,
-                }}
-              >
-                ALLin-PokerTimer
               </div>
-            </TextBox>
+            </div>
+
+            {/*
+              最下部・中央寄せボックス: サークル名 / 開催日 / 参加人数 / アプリ名 を横並び。
+              背景画像時は半透明 box（textTheme で色切替）。グラデ背景時は box 無しでフラット。
+              owner 要望により box で背景画像が部分的に隠れることは許容。
+            */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                width: "100%",
+              }}
+            >
+              {(() => {
+                // 4 要素間の区切り縦線。foreground 色を弱透明で使うことで box 内の
+                // light / dark 両テーマに自動追従する（box 背景の上に 1px 縦線）。
+                // 同一 JSX を複数箇所に置くと duplicate key 警告になるため毎回生成。
+                const sep = () => (
+                  <div
+                    style={{
+                      display: "flex",
+                      width: 1,
+                      height: 28,
+                      backgroundColor: fg,
+                      opacity: 0.35,
+                    }}
+                  />
+                );
+                return (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 20,
+                      backgroundColor: footerBox ?? "transparent",
+                      borderRadius: footerBox ? OG_COLORS.bgFooterBoxRadius : 0,
+                      padding: footerBox
+                        ? `${OG_COLORS.bgFooterBoxPaddingY}px ${OG_COLORS.bgFooterBoxPaddingX}px`
+                        : 0,
+                    }}
+                  >
+                    {q.groupName ? (
+                      <>
+                        <div
+                          style={{
+                            display: "flex",
+                            fontSize: 28,
+                            opacity: 0.85,
+                            ...innerShadowStyle,
+                          }}
+                        >
+                          {q.groupName}
+                        </div>
+                        {sep()}
+                      </>
+                    ) : null}
+                    <div
+                      style={{
+                        display: "flex",
+                        fontSize: 28,
+                        opacity: 0.85,
+                        ...innerShadowStyle,
+                      }}
+                    >
+                      {q.finishedAtLabel}
+                    </div>
+                    {sep()}
+                    <div
+                      style={{
+                        display: "flex",
+                        fontSize: 28,
+                        opacity: 0.85,
+                        ...innerShadowStyle,
+                      }}
+                    >
+                      {q.participants} 人参加
+                    </div>
+                    {sep()}
+                    <div
+                      style={{
+                        display: "flex",
+                        fontSize: 16,
+                        opacity: 0.7,
+                        ...innerShadowStyle,
+                      }}
+                    >
+                      ALLin-PokerTimer
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       ),
