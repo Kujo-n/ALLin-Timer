@@ -966,3 +966,83 @@ dev server を起動し以下を目視確認:
 - A.2 review の F-7（`window.confirm` → shadcn `<Dialog>` 揃え）を本 phase の Task 6 / 7 で完全クローズ
 - A.2 report の deviations（CardBackgroundCard の gid 注入 / live-client の URL 組立 / `updateCardBackgroundTextTheme` の 2 関数化）は本 phase で **再修正しない**（既存設計が安定運用に耐えると A.2 で判断済）
 - 本 phase は PRD 5 のドライラン投入準備の最終 phase。次は `/code-review` → `/prp-pr` で merge までを完結する
+
+---
+
+## Post-merge follow-up (2026-05-12)
+
+本 plan に従って A.3 を merge した直後、サークル owner から「**画像の上を塗りつぶす範囲が大きく、デザインが損なわれる**」という不評をもらった。原因は readability layer のうち:
+
+1. **テキストグループ単位の rgba 半透明 box overlay**（中央 WINNER ブロックを含む 3 ブロック）
+2. **上下 scrim の濃さ・高さ**（上 25% + 下 20% × `rgba(0,0,0,0.55)`）
+
+の 2 段が想定以上に強く、特に中央 WINNER（名前 120px + 上下 padding 16px の box）が画像の主役領域を覆っていた点が大きい。
+
+そのため当該 polish 後フォローアップで以下に倒した:
+
+- **box overlay を全廃** — `bgBoxLight` / `bgBoxDark` / `bgBoxRadius` / `bgBoxPaddingX` / `bgBoxPaddingY` の 5 定数を削除、`<TextBox>` component も削除
+- **scrim を大幅弱化** — 上 15% / `rgba(0,0,0,0.35)`、下 12% / `rgba(0,0,0,0.3)`
+- **text-shadow（outer glow）で文字側を縁取り** — `bgTextShadowLight` / `bgTextShadowDark` を additive 追加し、各テキスト要素の `style` に直接付与（Satori の継承挙動に依存しない設計）
+
+実装の詳細・差分・検証結果は [phase-a.3-layout-polish-and-readability-report.md](../../reports/phase-a.3-layout-polish-and-readability-report.md) 末尾の **"Post-merge follow-up (2026-05-12)"** セクション参照。
+
+### 本 plan の元設計に対する位置づけ
+
+本 plan の Problem → Solution / UX Design / 各 Task は **A.3 初版（box overlay あり）の意図を残したまま**保管する（完了済み plan の immutable 性のため）。実コードベースは現時点で:
+
+- `OG_COLORS.bgBox*` 系定数は **存在しない**（本 follow-up で削除済）
+- `<TextBox>` component は **存在しない**（同上）
+- `resolveCardTheme` は `{ fg, textShadow }` を返す（plan の文中では `{ fg, boxBg }` を返す形になっているが、現状は textShadow）
+
+後続 phase で本 plan を参照する場合は、上記 follow-up の方向に差分がある前提で読むこと。本 plan の「box overlay を rgba で巻く」設計判断は **ドライラン投入前の owner フィードバックで覆った**ため、新規実装で同パターンを再導入してはならない。
+
+---
+
+## Post-merge follow-up 2 (2026-05-12): Winner OG レイアウト確定 + footer-box 再導入
+
+上記 follow-up（box overlay 全廃）の後、owner との対話的 polish を通じて winner OG のレイアウトと footer 表示をさらに以下に確定させた。詳細・差分・検証結果は [phase-a.3-layout-polish-and-readability-report.md](../../reports/phase-a.3-layout-polish-and-readability-report.md) 末尾の **"Post-merge follow-up 2"** セクション参照。
+
+### Layout 確定（winner OG のみ）
+
+| 位置 | 内容 | 配置方法 |
+| --- | --- | --- |
+| 最上部 | トーナメント名 (`fontSize 36`) | `justifyContent: center` で中央揃え |
+| 上下左右の中央 | 優勝者名 (`fontSize 120`) | `flex: 1` 内で `alignItems / justifyContent: center` |
+| WINNER ラベル | `fontSize 36`（手動調整、"WINNER!!"） | winnerName を `position: relative` で包み、ラベルは `position: absolute / top: -40` で **真上に絶対配置**。winnerName の縦中央計算にラベル高さを含めないため winnerName 自体が画面中央に来る |
+| 最下部 | サークル名 / 開催日 / 参加人数 / アプリ名 の 4 要素 | `justifyContent: center` でボックスを中央配置 |
+
+`OG_PADDING` は元 plan の `64` → owner 手動調整で `12` に縮小（最上部 / 最下部の余白を画像端ぎりぎりまで詰める）。
+
+### footer-box 再導入（box overlay の局所復活）
+
+「box overlay 全廃」方針を一部緩和し、**最下部 footer の 4 要素ボックスのみ box overlay を復活**させた。owner からの「ボックスで背景が部分的に隠れることは許容する」明示要望に基づく。
+
+- 背景画像時のみ box を出す（グラデ背景時は box 無し / フラット）
+- box 色は `textTheme` に連動:
+  - `light` → `rgba(255,255,255,0.78)` (`bgFooterBoxLight`)
+  - `dark`  → `rgba(15,23,42,0.72)` (`bgFooterBoxDark`)
+- 4 要素間に foreground 色（透明度 0.35）の **1px 縦線で区切り**
+- 各要素の fontSize はサークル名 / 開催日 / 参加人数 = 28、アプリ名 = 16（手動調整）
+
+### `groupName` クエリ追加
+
+footer-box にサークル名を出すため、`WINNER_CARD_QUERY_SCHEMA` に `groupName` を **optional で additive 追加**。旧クライアントとの URL 互換のため optional（未指定なら footer から省略 + 縦線も省略）。`buildWinnerShareInputs` / `WinnerCardDownloadButton` も同様に optional prop 経由で接続。
+
+### Satori `textShadow: undefined` クラッシュ対策
+
+`textShadow` プロパティに `undefined` を渡すと Satori が `.toString()` でクラッシュして `failed to pipe response` になることが判明。winner / season 両 route で `const ts = textShadow ?? undefined; textShadow: ts` の pattern を廃し、**条件 spread** に統一:
+
+```ts
+const shadowStyle: { textShadow?: string } = textShadow ? { textShadow } : {};
+// ...style={{ display: "flex", ...shadowStyle }}
+```
+
+season route は事象 report がない時点で防御的に同じ pattern に揃えた。
+
+### 本 plan の元設計に対する位置づけ（更新）
+
+上記の通り、A.3 初版は「box overlay を全部に巻く / scrim 強め」、polish 1 は「box 全廃 / scrim 弱化 + text-shadow」、polish 2 は「scrim 弱め維持 + text-shadow + footer のみ box 再導入 + Layout 最上部中央 / 真ん中 / 最下部中央寄せ」と段階的に転換した。後続 phase の参照ポイント:
+
+- box overlay は **footer 限定**で再導入された（テキストグループ単位の box は廃止のまま）
+- text-shadow は **外側ブロック**（タイトル / WINNER / 優勝者名）に使用、footer 内では box があるため出さない
+- winner クエリには `groupName` が乗る（optional）。`groups/{gid}.name` を呼出側から流し込む経路

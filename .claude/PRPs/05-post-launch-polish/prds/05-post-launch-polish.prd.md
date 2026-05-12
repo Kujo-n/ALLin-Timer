@@ -297,7 +297,7 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | ----- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | -------- | ------- | ---------------------------------------------------------------------------------------------- |
 | A.1   | Track A: Storage Foundation                 | Firebase Storage 初期化、Blaze プラン移行手順、firebase.json / storage.rules / SDK singleton 追加、emulator 統合、`groups/{gid}` schema 拡張、repository / service / rules ブランチ、emulator validator | complete    | with B.1 | -       | [phase-a.1-storage-foundation.plan.md](../plans/completed/phase-a.1-storage-foundation.plan.md) — Report: [phase-a.1-storage-foundation-report.md](../reports/phase-a.1-storage-foundation-report.md) |
 | A.2   | Track A: Background Image UI & SSR          | サークル詳細画面に WinnerCardBackgroundCard / SeasonCardBackgroundCard を追加（ファイル選択 / クライアント圧縮 / プレビュー / 保存 / 解除）、Storage upload + 旧 asset 削除、OG route 拡張（bgImageUrl 受取 + fetch + Satori 画像表示） | complete    | -        | A.1     | [phase-a.2-background-image-ui-and-ssr.plan.md](../plans/completed/phase-a.2-background-image-ui-and-ssr.plan.md) — Report: [phase-a.2-background-image-ui-and-ssr-report.md](../reports/phase-a.2-background-image-ui-and-ssr-report.md) |
-| A.3   | Track A: Layout Polish & Readability        | 上下黒グラデーションスクリム + テキストグループ rgba 背景 box overlay、ライト / ダーク テキストテーマトグル、テキスト位置の最終調整、E2E + visual regression、ドキュメント整備 | complete    | -        | A.2     | [phase-a.3-layout-polish-and-readability.plan.md](../plans/completed/phase-a.3-layout-polish-and-readability.plan.md) — Report: [phase-a.3-layout-polish-and-readability-report.md](../reports/phase-a.3-layout-polish-and-readability-report.md) |
+| A.3   | Track A: Layout Polish & Readability        | 初版: 上下スクリム + テキストグループ rgba box overlay。Post-merge polish で 2 段転換: ①box 全廃 + scrim 弱化 + text-shadow ②winner レイアウト確定（最上部中央 / 真ん中 / 最下部中央寄せ footer-box 4 要素 + 縦線区切り）+ `groupName` クエリ追加 + Satori `textShadow:undefined` クラッシュ対策。詳細は plan/report の Post-merge follow-up セクション | complete    | -        | A.2     | [phase-a.3-layout-polish-and-readability.plan.md](../plans/completed/phase-a.3-layout-polish-and-readability.plan.md) — Report: [phase-a.3-layout-polish-and-readability-report.md](../reports/phase-a.3-layout-polish-and-readability-report.md) |
 | B.1   | Track B: Top Page Promotion (note 記事リンク)   | トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを常時表示。`Button asChild` + `<a>` パターンで描画、a11y / e2e PageObject 対応 | complete    | with A.1 | -       | [note-articles-link-on-top-page.plan.md](../plans/completed/note-articles-link-on-top-page.plan.md) — Report: [note-articles-link-on-top-page-report.md](../reports/note-articles-link-on-top-page-report.md) |
 
 ### Phase Details
@@ -370,6 +370,18 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
   - 明るい画像 + dark theme / 暗い画像 + light theme / 中間画像 + 両 theme で文字が読める
   - 既存 group（背景未設定）のカード PNG が完全に同一（regression ゼロ）
   - ドライラン投入準備完了（README / 運営ガイドへの記載完了、Codex review 通過）
+- **Post-merge polish (2026-05-12 / 2 段)**: 上記 Scope の「テキストグループ rgba box overlay」は
+  owner からの「画像を塗りつぶす範囲が大きくデザインが損なわれる」フィードバックで撤回し、以下に転換:
+  1. **box overlay 全廃** + scrim 弱化（上 15% / 下 12% / 透明度 0.3〜0.35）+ text-shadow（light/dark
+     テーマで外側ブロックに outer glow）
+  2. winner OG レイアウトを「最上部中央のトーナメント名 / 上下左右中央の優勝者名（WINNER ラベルは
+     真上に absolute 配置）/ 最下部中央寄せの footer-box（サークル名・開催日・参加人数・アプリ名の 4
+     要素を縦線で区切り、テーマ連動の半透明背景で局所的にのみ box 復活）」に確定。
+     `WINNER_CARD_QUERY_SCHEMA` に `groupName` を optional で additive 追加。Satori が
+     `textShadow: undefined` を `.toString()` するクラッシュ対策で全 textShadow を条件 spread に統一
+  - 詳細・差分・検証結果は [plan](../plans/completed/phase-a.3-layout-polish-and-readability.plan.md)
+    末尾の "Post-merge follow-up" / "Post-merge follow-up 2" セクション、および
+    [report](../reports/phase-a.3-layout-polish-and-readability-report.md) の同名セクションを参照
 
 **Phase B.1: Track B: Top Page Promotion (note 記事リンク)**
 
@@ -422,8 +434,12 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | Track A Storage 公開設定 | `bgImages` path のみ public read | signed URL / Cloud Functions 経由 | OG SSR route から fetch する必要があり、signed URL は Cloud Functions / Admin SDK が必要で複雑度大。装飾目的で個人情報を含まない前提 |
 | Track A OG データ取得 | クライアントが query param で bgImageUrl を渡す | OG route が SSR で `getDoc(groups/{gid})` | 既存の CDN キャッシュ（`s-maxage=86400`）が「同一 query = 決定的に同じ PNG」を前提。query param 経由なら自動的に cache 無効化が成立 |
 | Track A Phase 分割 | 3 phases（Storage 基盤 → UI / OG → Layout polish） | 2 phases / 4 phases | 各 phase が独立 deploy / dogfood 可能、PR サイズが適度 |
-| Track A 可読性デフォルト | 上下黒グラデーションスクリム + テキストグループ rgba 半透明 box | 全画面 50% 黒 overlay / カード型 rounded box overlay | 全画面 overlay は背景画像を冷重金化、カード型は装飾的すぎる。スクリム + テキスト box が背景を活かしつつ局所可読性確保 |
-| Track A readability 実装 | rgba 半透明 div + linear-gradient overlay | textShadow / drop-shadow filter | Satori は `textShadow` / `filter: drop-shadow()` 未対応 |
+| Track A 可読性デフォルト（A.3 初版） | 上下黒グラデーションスクリム + テキストグループ rgba 半透明 box | 全画面 50% 黒 overlay / カード型 rounded box overlay | 全画面 overlay は背景画像を冷重金化、カード型は装飾的すぎる。スクリム + テキスト box が背景を活かしつつ局所可読性確保 |
+| Track A readability 実装（A.3 初版） | rgba 半透明 div + linear-gradient overlay | textShadow / drop-shadow filter | （当時の認識）Satori は textShadow 未対応。**※ 実は Satori は `textShadow` をサポートしており、A.3 polish で前提が覆った。後述「Track A 可読性 polish (2026-05-12)」参照** |
+| Track A 可読性 polish (2026-05-12 / A.3 初版を撤回) | scrim 大幅弱化 + 文字 outer glow text-shadow + footer のみ局所 box（テーマ連動 + 4 要素縦線区切り） | 元設計（テキストグループ全てに box overlay）維持 / box 完全廃止して text-shadow のみ | ドライラン直前の owner フィードバック「画像を塗りつぶす範囲が大きくデザインが損なわれる」を踏まえ box を全廃 → text-shadow に切替。さらに footer の情報量（サークル名 / 日付 / 人数 / アプリ名）を読みやすくするため owner 明示要望で footer のみ box を再導入（背景の部分隠れは許容）。Satori は `textShadow` を実際にはサポートしていることが本 polish で確認された |
+| Track A winner レイアウト (A.3 polish 2) | 最上部中央 トーナメント名 / 上下左右中央 優勝者名（WINNER ラベルは真上に absolute 配置）/ 最下部中央寄せ footer-box | 中央寄せでない asymmetric layout を維持 / WINNER ラベルを優勝者名と同じブロックで縦中央計算 | owner 要望に直接合わせる。WINNER ラベル absolute 配置により「優勝者名そのもの」が画面中央になる構造を実現 |
+| Track A `groupName` クエリ | `WINNER_CARD_QUERY_SCHEMA` に optional で additive 追加 | required 化 / 別 endpoint 化 | optional のため旧クライアントが発行した URL は互換維持。新規発行 URL は常に含める方向 |
+| Track A Satori `textShadow: undefined` 対策 | 全 textShadow を条件 spread で渡す（`{ textShadow }` または `{}` をスプレッド） | `"none"` フォールバック / 受け側で `?? undefined` 維持 | `textShadow: undefined` を Satori が内部で `.toString()` してクラッシュ（`failed to pipe response`）するため CSS プロパティ値として undefined を渡さないルールを採用。winner / season 両 route に防御的展開 |
 | Track A 旧 asset の扱い | **3 回 retry 付き確実削除**（最終失敗時のみ warn ログ + orphan 残留） | best-effort（1 回のみ）/ 物理削除を tx 化 / 永続保持 | Storage delete は別 SDK 呼び出しで Firestore tx に組み込めず厳密な atomic は不可。retry でほぼ orphan ゼロを実現しつつ、3 回失敗時は UX を阻害しない設計。サークルあたり保持画像数を winner / season カード分の最大 2 枚に収束させたいという要件（2026-05-10 ユーザー確認）を満たす |
 | Track A クライアント画像処理 | canvas API で 1200×630 jpg quality 0.8 | Web Worker 化 / 外部ライブラリ | 月 1〜2 回利用で worker は overkill。canvas API は標準で依存追加なし |
 | Track A Storage 上限 | 1 ファイル 1MB | 500KB / 5MB | 1200×630 jpg quality 0.8 が typical 150-250KB なので 1MB は十分余裕 |
