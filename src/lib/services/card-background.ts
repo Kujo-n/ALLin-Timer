@@ -21,6 +21,9 @@ import { setSeasonCardBackground, setWinnerCardBackground } from "./group";
  *   - 本 service は「upload → Firestore pointer 更新 → 旧 asset retry 削除」の順序保証と、
  *     theme-only 更新（image を再 upload しない）の dispatch を持つ
  *
+ * Phase A architect-refactor (T1): winner/season で対称な 6 関数を 3 internal helper に集約し、
+ * export 関数は kind 差分の thin wrapper として残す（API 互換維持）。
+ *
  * 設計上の race / orphan の扱い:
  *   - Storage upload 失敗時は Firestore 未更新で throw → 新 orphan は残らない（成功時のみ pointer 更新）
  *   - upload 成功 → Firestore 更新失敗（rule 違反等）は新 asset が orphan として残る。
@@ -28,6 +31,8 @@ import { setSeasonCardBackground, setWinnerCardBackground } from "./group";
  *   - 旧 asset 削除は `deleteWithRetry` で最大 3 回試行し、最終失敗は warn のみで握りつぶす
  *     ことで「Firestore pointer は新 asset を指している」状態を維持する
  */
+
+type CardBackgroundKind = "winner" | "season";
 
 const RETRY_OPTIONS = {
   attempts: 3,
@@ -59,7 +64,11 @@ interface UpdateTextThemeParams {
   textTheme: CardTextTheme;
 }
 
-function logOrphanWarn(kind: "winner" | "season", gid: string, assetId: string) {
+function kindSetter(kind: CardBackgroundKind) {
+  return kind === "winner" ? setWinnerCardBackground : setSeasonCardBackground;
+}
+
+function logOrphanWarn(kind: CardBackgroundKind, gid: string, assetId: string) {
   return (e: unknown) =>
     logger.warn("orphan card background asset", {
       kind,
@@ -69,8 +78,23 @@ function logOrphanWarn(kind: "winner" | "season", gid: string, assetId: string) 
     });
 }
 
-/** winner カード背景の upload + pointer 更新 + 旧 asset 削除（retry）。 */
-export async function uploadAndSetWinnerCardBackground(
+async function retryDeletePrevious(
+  kind: CardBackgroundKind,
+  gid: string,
+  previousAssetId: string | null,
+): Promise<void> {
+  if (previousAssetId === null) return;
+  await deleteWithRetry(
+    () => deleteCardBackgroundAsset(gid, previousAssetId),
+    {
+      ...RETRY_OPTIONS,
+      onFinalFailure: logOrphanWarn(kind, gid, previousAssetId),
+    },
+  );
+}
+
+async function uploadAndSetCardBackground(
+  kind: CardBackgroundKind,
   opts: UploadAndSetParams,
 ): Promise<void> {
   const assetId = crypto.randomUUID();
@@ -80,110 +104,74 @@ export async function uploadAndSetWinnerCardBackground(
     opts.blob,
     opts.contentType,
   );
-  await setWinnerCardBackground({
+  await kindSetter(kind)({
     gid: opts.gid,
     uid: opts.uid,
     value: { imageUrl, storageAssetId: assetId, textTheme: opts.textTheme },
   });
-  if (opts.previousAssetId !== null) {
-    const prev = opts.previousAssetId;
-    await deleteWithRetry(
-      () => deleteCardBackgroundAsset(opts.gid, prev),
-      {
-        ...RETRY_OPTIONS,
-        onFinalFailure: logOrphanWarn("winner", opts.gid, prev),
-      },
-    );
-  }
+  await retryDeletePrevious(kind, opts.gid, opts.previousAssetId);
+}
+
+async function clearCardBackground(
+  kind: CardBackgroundKind,
+  opts: ClearParams,
+): Promise<void> {
+  await kindSetter(kind)({
+    gid: opts.gid,
+    uid: opts.uid,
+    value: null,
+  });
+  await retryDeletePrevious(kind, opts.gid, opts.previousAssetId);
+}
+
+async function updateCardBackgroundTextTheme(
+  kind: CardBackgroundKind,
+  opts: UpdateTextThemeParams,
+): Promise<void> {
+  await kindSetter(kind)({
+    gid: opts.gid,
+    uid: opts.uid,
+    value: { ...opts.current, textTheme: opts.textTheme },
+  });
+}
+
+/** winner カード背景の upload + pointer 更新 + 旧 asset 削除（retry）。 */
+export function uploadAndSetWinnerCardBackground(
+  opts: UploadAndSetParams,
+): Promise<void> {
+  return uploadAndSetCardBackground("winner", opts);
 }
 
 /** season カード背景の upload + pointer 更新 + 旧 asset 削除（retry）。 */
-export async function uploadAndSetSeasonCardBackground(
+export function uploadAndSetSeasonCardBackground(
   opts: UploadAndSetParams,
 ): Promise<void> {
-  const assetId = crypto.randomUUID();
-  const imageUrl = await uploadCardBackgroundAsset(
-    opts.gid,
-    assetId,
-    opts.blob,
-    opts.contentType,
-  );
-  await setSeasonCardBackground({
-    gid: opts.gid,
-    uid: opts.uid,
-    value: { imageUrl, storageAssetId: assetId, textTheme: opts.textTheme },
-  });
-  if (opts.previousAssetId !== null) {
-    const prev = opts.previousAssetId;
-    await deleteWithRetry(
-      () => deleteCardBackgroundAsset(opts.gid, prev),
-      {
-        ...RETRY_OPTIONS,
-        onFinalFailure: logOrphanWarn("season", opts.gid, prev),
-      },
-    );
-  }
+  return uploadAndSetCardBackground("season", opts);
 }
 
 /** winner カード背景を解除（pointer を null 化し、旧 asset を retry 削除）。 */
-export async function clearWinnerCardBackground(opts: ClearParams): Promise<void> {
-  await setWinnerCardBackground({
-    gid: opts.gid,
-    uid: opts.uid,
-    value: null,
-  });
-  if (opts.previousAssetId !== null) {
-    const prev = opts.previousAssetId;
-    await deleteWithRetry(
-      () => deleteCardBackgroundAsset(opts.gid, prev),
-      {
-        ...RETRY_OPTIONS,
-        onFinalFailure: logOrphanWarn("winner", opts.gid, prev),
-      },
-    );
-  }
+export function clearWinnerCardBackground(opts: ClearParams): Promise<void> {
+  return clearCardBackground("winner", opts);
 }
 
 /** season カード背景を解除。 */
-export async function clearSeasonCardBackground(opts: ClearParams): Promise<void> {
-  await setSeasonCardBackground({
-    gid: opts.gid,
-    uid: opts.uid,
-    value: null,
-  });
-  if (opts.previousAssetId !== null) {
-    const prev = opts.previousAssetId;
-    await deleteWithRetry(
-      () => deleteCardBackgroundAsset(opts.gid, prev),
-      {
-        ...RETRY_OPTIONS,
-        onFinalFailure: logOrphanWarn("season", opts.gid, prev),
-      },
-    );
-  }
+export function clearSeasonCardBackground(opts: ClearParams): Promise<void> {
+  return clearCardBackground("season", opts);
 }
 
 /**
  * winner カードのテキストテーマのみ差し替え（画像 / assetId は据え置き）。
  * UI 側で「current が非 null かつ画像保持中」のときのみ呼ぶこと。
  */
-export async function updateWinnerCardBackgroundTextTheme(
+export function updateWinnerCardBackgroundTextTheme(
   opts: UpdateTextThemeParams,
 ): Promise<void> {
-  await setWinnerCardBackground({
-    gid: opts.gid,
-    uid: opts.uid,
-    value: { ...opts.current, textTheme: opts.textTheme },
-  });
+  return updateCardBackgroundTextTheme("winner", opts);
 }
 
 /** season カードのテキストテーマのみ差し替え。 */
-export async function updateSeasonCardBackgroundTextTheme(
+export function updateSeasonCardBackgroundTextTheme(
   opts: UpdateTextThemeParams,
 ): Promise<void> {
-  await setSeasonCardBackground({
-    gid: opts.gid,
-    uid: opts.uid,
-    value: { ...opts.current, textTheme: opts.textTheme },
-  });
+  return updateCardBackgroundTextTheme("season", opts);
 }
