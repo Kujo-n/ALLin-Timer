@@ -520,54 +520,65 @@ export async function setSeasonPointsRule({
 
 /**
  * Phase A.1 (05-post-launch-polish Track A):
- * 優勝者カード背景画像メタデータを設定・解除する。owner-only。
+ * 結果カード背景画像メタデータを設定・解除する owner-only service の internal helper。
+ *
+ * Phase A architect-refactor (T3): kind を駆動軸にして winner/season で対称な
+ * assertOwner + repository 呼出 + logger.info を集約する。
+ *
  * - `value=null` で解除（imageUrl / storageAssetId / textTheme を null 化）
  * - `value=object` で設定。imageUrl と storageAssetId は同時に string が必須
  *   （application-side invariant、repository の `validateCardBackground` で enforce）
  * - 実際の Storage upload / 旧 asset delete は Phase A.2 の UI 側で行い、
  *   本 service は Firestore pointer 更新のみ責務とする
  */
-export async function setWinnerCardBackground({
+type CardBackgroundKind = "winner" | "season";
+
+const CARD_BG_KIND_LOG_LABEL: Record<CardBackgroundKind, string> = {
+  winner: "setWinnerCardBackground ok",
+  season: "setSeasonCardBackground ok",
+};
+
+async function setCardBackground({
+  kind,
   gid,
   uid,
   value,
 }: {
+  kind: CardBackgroundKind;
   gid: string;
   uid: string;
   value: CardBackground;
 }): Promise<void> {
   const group = await getGroup(gid);
   assertOwner(group, uid);
-  await updateWinnerCardBackground(gid, value);
-  logger.info("setWinnerCardBackground ok", {
+  const updater =
+    kind === "winner"
+      ? updateWinnerCardBackground
+      : updateSeasonCardBackground;
+  await updater(gid, value);
+  logger.info(CARD_BG_KIND_LOG_LABEL[kind], {
     gid,
     uid,
     cleared: value === null,
   });
 }
 
-/**
- * Phase A.1 (05-post-launch-polish Track A):
- * シーズン戦績カード背景画像メタデータを設定・解除する。owner-only。
- * 構造は `setWinnerCardBackground` と同型・対称。
- */
-export async function setSeasonCardBackground({
-  gid,
-  uid,
-  value,
-}: {
+/** Phase A.1: 優勝者カード背景画像メタデータの owner-only 設定・解除。詳細は internal helper 参照。 */
+export function setWinnerCardBackground(args: {
   gid: string;
   uid: string;
   value: CardBackground;
 }): Promise<void> {
-  const group = await getGroup(gid);
-  assertOwner(group, uid);
-  await updateSeasonCardBackground(gid, value);
-  logger.info("setSeasonCardBackground ok", {
-    gid,
-    uid,
-    cleared: value === null,
-  });
+  return setCardBackground({ kind: "winner", ...args });
+}
+
+/** Phase A.1: シーズン戦績カード背景画像メタデータの owner-only 設定・解除。winner と同型。 */
+export function setSeasonCardBackground(args: {
+  gid: string;
+  uid: string;
+  value: CardBackground;
+}): Promise<void> {
+  return setCardBackground({ kind: "season", ...args });
 }
 
 /**
