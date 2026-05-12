@@ -6,6 +6,7 @@ import {
   type CardBackground,
   DISPLAY_NAME_MAX_LENGTH,
 } from "@/lib/firebase/schemas/group";
+import { MAX_SEATS_PER_TABLE, MAX_TABLES } from "@/lib/limits";
 
 /**
  * Phase B: OG image route の query 文字列 schema + URL 組立純関数。
@@ -21,10 +22,13 @@ import {
 /** tournament.name は schema 上 max 制約がないが、画像の見栄えと URL 長で実用 cap。 */
 const TOURNAMENT_NAME_MAX = 60;
 /** group.name の zod max と一致させる（winner / season 共用）。 */
-const SEASON_GROUP_NAME_MAX = 60;
-const WINNER_GROUP_NAME_MAX = SEASON_GROUP_NAME_MAX;
-/** 1 トーナメント当たりの最大参加人数 = MAX_TABLES (6) × MAX_SEATS_PER_TABLE (10) = 60。 */
-const MAX_PARTICIPANTS = 60;
+const GROUP_NAME_MAX = 60;
+/**
+ * 1 トーナメント当たりの最大参加人数 = `MAX_TABLES * MAX_SEATS_PER_TABLE`。
+ * Phase A architect-refactor (T6) で `limits.ts` 連動化。値変更時は本所より limits.ts を
+ * 真実源として参照する。
+ */
+const MAX_PARTICIPANTS = MAX_TABLES * MAX_SEATS_PER_TABLE;
 /** 累計ポイントの実用上限。1 シーズン 99999pt は越えない（基本値 10pt × 1000+ 試合）。 */
 const MAX_TOTAL_POINTS = 99999;
 /** 端末 TZ で format 済み日付ラベルの最大長（"2026年5月7日" / "2026/5/7" 等を許容）。 */
@@ -65,7 +69,7 @@ export const WINNER_CARD_QUERY_SCHEMA = z.object({
    * Phase A.4 footer-box: サークル名（footer box に出す）。
    * 旧クライアントからの URL 互換のため optional とする（未指定なら footer から省略）。
    */
-  groupName: z.string().min(1).max(WINNER_GROUP_NAME_MAX).optional(),
+  groupName: z.string().min(1).max(GROUP_NAME_MAX).optional(),
   /** Content-Disposition 用 filename stem。任意、未指定なら "card"。 */
   filename: z.string().min(1).max(FILENAME_STEM_MAX).optional(),
   /** Phase A.2: サークル設定済みの背景画像 URL（公開 / host allowlist 強制）。 */
@@ -76,7 +80,7 @@ export const WINNER_CARD_QUERY_SCHEMA = z.object({
 export type WinnerCardQuery = z.infer<typeof WINNER_CARD_QUERY_SCHEMA>;
 
 export const SEASON_CARD_QUERY_SCHEMA = z.object({
-  groupName: z.string().min(1).max(SEASON_GROUP_NAME_MAX),
+  groupName: z.string().min(1).max(GROUP_NAME_MAX),
   /** 端末 TZ で format 済み日付ラベル。null = 未設定（シーズン未開始 group）。 */
   seasonStartDateLabel: z.string().min(1).max(LABEL_MAX).nullable(),
   top1Name: z.string().min(1).max(DISPLAY_NAME_MAX_LENGTH),
