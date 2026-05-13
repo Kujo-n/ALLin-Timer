@@ -912,6 +912,7 @@ describe("deriveRole", () => {
     seasonPointsRule: null,
     winnerCardBackground: null,
     seasonCardBackground: null,
+    latestJoinCodeId: null,
     createdAt: now,
   };
 
@@ -953,6 +954,7 @@ describe("isSoleOwner", () => {
     seasonPointsRule: null,
     winnerCardBackground: null,
     seasonCardBackground: null,
+    latestJoinCodeId: null,
     createdAt: now,
   };
 

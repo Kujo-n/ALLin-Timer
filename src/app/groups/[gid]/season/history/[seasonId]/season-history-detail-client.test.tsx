@@ -50,6 +50,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     seasonCardBackground: null,
     createdAt,
     joinCodeId: null,
+    latestJoinCodeId: null,
     ...overrides,
   };
 }

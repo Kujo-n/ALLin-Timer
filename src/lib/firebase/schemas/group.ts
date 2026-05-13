@@ -133,6 +133,12 @@ export const groupBodySchema = z
     // 監査用ではなく rule の consumption proof。owner が自由に null に戻してよい。
     // 既存（Phase 4.6 まで）の doc では存在しないため optional。
     joinCodeId: z.string().min(1).nullable().optional(),
+    // dryrun-feedback-batch-1 (Phase C.1): `generateJoinCode` が「最新発行コード」へのポインタ
+    //   として管理する。再発行時に旧コードを best-effort delete するためのライフサイクル管理用で、
+    //   `joinCodeId`（最後に消費されたコードの rule consumption proof）とは意味が別。
+    //   旧 doc（Phase E 以前）はフィールド不在のため default(null) で hydrate される。
+    //   organizer が `affectedKeys.hasOnly(['latestJoinCodeId'])` で string | null を書込可。
+    latestJoinCodeId: z.string().min(1).nullable().default(null),
     // Phase 4.7: uid → displayName のマップ snapshot（各メンバーが自分の entry を書込）。
     //   - 旧 doc（Phase 4.6 以前）は default({}) で受容、UI は UID フォールバック
     //   - rule は self-key 書込のみ許可: diff().affectedKeys().hasOnly([auth.uid])
