@@ -45,14 +45,19 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / **seasonPointsRule** / createdAt / **joinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / **seasonPointsRule** / createdAt / **joinCodeId** / **latestJoinCodeId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
+  - `latestJoinCodeId`（dryrun-feedback-batch-1 / Phase C.1 追加）: `generateJoinCode` service が新規コード発行直後に書き込むライフサイクル管理用 pointer。
+    次回再発行時に旧コードを best-effort delete するためのリンクで、`joinCodeId`（self-add consumption proof）とは意味が別。
+    旧 doc（Phase E 以前）はフィールド不在のため `default(null)` で hydrate される。書込経路は service の
+    `generateJoinCode` 一系統のみで、rule は organizer 以上が `affectedKeys().hasOnly(['latestJoinCodeId'])` で
+    `string | null` を書込可能。owner は full owner-update 経路で自由に変更可能
   - `finishedTournamentCount`（Phase 4.16 追加）: 当該サークルで `state="finished"` に遷移したトーナメントの累計数。
     自動経路は `finishTournament()` の runTransaction で `increment(1)`（tx 内で `state !== "finished"` を
     再 read することで複数端末同時呼び出し時の二重 increment race を防止）、手動経路はサークル詳細画面の
-    inline edit（owner / organizer 限定）。新規作成画面のデフォルト名連番（`[サークル名]トーナメント-X`）に使用。
+    inline edit（owner / organizer 限定）。新規作成画面のデフォルト名連番（`Tournament-No.X`）に使用。
     rule は organizer 以上の任意の非負整数値書換を許可（任意フィールド変更は deny）。空書込攻撃のリスクは
     [既知のセキュリティリスク](#既知のセキュリティリスク) 参照。
   - `defaultSeatsPerTable`（Phase 4.17 追加・Phase A で default 9 → 8 に変更）:
@@ -346,6 +351,11 @@ Phase 5.4 「同じ参加者で次のトーナメントを作成」のため、`
 - **失効操作**: group オーナーは任意時点でコードを削除（失効）できること
 - **ログ**: 加入成功・失敗イベントは `logger.info` / `logger.warn` で記録（[error-logging.md](error-logging.md) 準拠）
 - **rule 側の保護**: 加入書込は `groupJoinCodes/{code}` の有効性チェックを rule に必ず含める（クライアント検証のみに依存しない）。詳細は本ファイル前半の「招待コードの rule 側検証（Phase 4.6.1）」を参照
+- **再発行時の旧コード処理**（dryrun-feedback-batch-1 / Phase C.1 追加）: `generateJoinCode` service は新コード create 直後に
+  `groups/{gid}.latestJoinCodeId` を新コードに update し、旧 pointer 値が指していたコードを **best-effort delete** する。
+  delete 失敗（rule 拒否 / network 等）でも新コード発行は成功扱いとし、後段で `cleanup-orphan-firestore.ts` が
+  expired コードを定期清掃する想定。delete の rule 権限は Phase C.1 で `isOwner` → `isOrganizer` に widening 済み
+  （issue 経路と delete 経路の権限を揃える整合性向上）
 
 ## 参照
 

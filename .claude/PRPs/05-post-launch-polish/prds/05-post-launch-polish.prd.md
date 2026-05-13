@@ -40,10 +40,13 @@ PRD 01〜04（Foundation / シーズン戦績 / PWA / 観戦モード）が完�
   - 旧 PRD `05-result-card-image-bg` の全内容を内包。Phase 1〜3 の構成は維持
 - **Track B: Top Page Promotion**（トップ画面プロモーション動線）
   - note 公開記事 2 本（アプリ紹介 / 運営チートシート）へのリンク追加から開始
+- **Track C: Dryrun Feedback Bundle**（ドライラン直後のフィードバック集約）
+  - ドライラン投入直後に挙がった改善要望を「単発 PRD として独立させるほどの大きさはないが
+    放置するとユーザー体験 / データ衛生に影響する」粒度で 1 phase = 複数改善の bundle として扱う
+  - Phase C.1（本 batch）: トーナメントデフォルト名 + 一覧の参加済み表示 + 招待コード自動整理 + 匿名 Auth クリーンアップ script
 
 将来的な追加 Track 候補（着手は別途判断）:
 
-- Track C: ダッシュボード入場後の onboarding hint（初回 owner 向け tooltip）
 - Track D: 結果カードのテキストスタイル選択肢拡張
 - Track E: 共有 URL 短縮 / カスタム OG image preset
 - 他、ドライラン中に発生する小〜中規模の polish
@@ -299,6 +302,7 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | A.2   | Track A: Background Image UI & SSR          | サークル詳細画面に WinnerCardBackgroundCard / SeasonCardBackgroundCard を追加（ファイル選択 / クライアント圧縮 / プレビュー / 保存 / 解除）、Storage upload + 旧 asset 削除、OG route 拡張（bgImageUrl 受取 + fetch + Satori 画像表示） | complete    | -        | A.1     | [phase-a.2-background-image-ui-and-ssr.plan.md](../plans/completed/phase-a.2-background-image-ui-and-ssr.plan.md) — Report: [phase-a.2-background-image-ui-and-ssr-report.md](../reports/phase-a.2-background-image-ui-and-ssr-report.md) |
 | A.3   | Track A: Layout Polish & Readability        | 初版: 上下スクリム + テキストグループ rgba box overlay。Post-merge polish で 2 段転換: ①box 全廃 + scrim 弱化 + text-shadow ②winner レイアウト確定（最上部中央 / 真ん中 / 最下部中央寄せ footer-box 4 要素 + 縦線区切り）+ `groupName` クエリ追加 + Satori `textShadow:undefined` クラッシュ対策。詳細は plan/report の Post-merge follow-up セクション | complete    | -        | A.2     | [phase-a.3-layout-polish-and-readability.plan.md](../plans/completed/phase-a.3-layout-polish-and-readability.plan.md) — Report: [phase-a.3-layout-polish-and-readability-report.md](../reports/phase-a.3-layout-polish-and-readability-report.md) |
 | B.1   | Track B: Top Page Promotion (note 記事リンク)   | トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを常時表示。`Button asChild` + `<a>` パターンで描画、a11y / e2e PageObject 対応 | complete    | with A.1 | -       | [note-articles-link-on-top-page.plan.md](../plans/completed/note-articles-link-on-top-page.plan.md) — Report: [note-articles-link-on-top-page-report.md](../reports/note-articles-link-on-top-page-report.md) |
+| C.1   | Track C: Dryrun Feedback Batch 1                | (1) トーナメントデフォルト名を `Tournament-No.X` に簡潔化 / (2) 一覧で member の参加済み tournament を「参加済み」ボタンで明示 / (3a) 招待コード再発行時に旧コードを `latestJoinCodeId` 経由で best-effort delete + `groupJoinCodes` delete rule を organizer に widening / (3b) 7 日以上経過した匿名 Auth ユーザーを admin script `cleanup-old-anonymous-users` で bulk 削除 / (4) `finishTournament` tx で `spectateEnabled=false` を additive 書込し終了済み tournament の anon 公開放置を防止 | complete | -        | -       | [dryrun-feedback-batch-1.plan.md](../plans/completed/dryrun-feedback-batch-1.plan.md) — Report: [dryrun-feedback-batch-1-report.md](../reports/dryrun-feedback-batch-1-report.md) |
 
 ### Phase Details
 
@@ -411,13 +415,68 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
   - 既存 e2e の `getByRole("button")` が新リンクで汚染されていない
   - リポジトリの code / commit history に note URL が一切残っていない
 
+**Phase C.1: Track C: Dryrun Feedback Batch 1**
+
+- **Goal**: ドライラン投入直後に上がった「すぐ直してほしい」フィードバック 3 件を 1 PR に bundle
+  して片付ける。トーナメント名のデフォルト変更（簡潔化）／一覧での参加済み明示（二重登録不安の解消）／
+  招待コード・匿名 Auth のゴミデータ整理を 1 phase でまとめて完結させる
+- **Scope**:
+  - **改善 1: トーナメントデフォルト名** — `src/app/tournaments/new/tournament-new-client.tsx:32` の
+    `[サークル名]トーナメント-X` を `Tournament-No.X` に変更（サークル名非依存・短い）
+  - **改善 2: 一覧の参加済み明示** — `src/app/tournaments/tournaments-client.tsx` で member 視点の
+    list fetch 完了後に `getPlayer(tid, uid)` を Promise.allSettled で並列取得し、参加済み row の
+    Button を `variant="outline"` + label "参加済み" に切替。link 自体は `/live` のまま維持し
+    受付確認 UX に到達できる動線を保つ
+  - **改善 3a: 招待コード自動整理** —
+    - `groups/{gid}.latestJoinCodeId: string \| null` を additive 追加（zod schema + 既存 doc は default null）
+    - repository `updateLatestJoinCodeId` / `deleteJoinCode` を新規追加
+    - service `generateJoinCode` を 4 ステップ化（read prev → create new → update pointer → best-effort delete prev）
+    - `firestore.rules`: `groupJoinCodes` delete を `isOwner` → `isOrganizer` に widening（issue 経路と
+      delete 経路の権限を揃える）+ `groups/{gid}` update に `latestJoinCodeId` 単独書換ブランチを
+      additive 追加（Phase 4.16 / 4.17 と同パターン）
+    - `scripts/test-rules-latest-join-code.mjs` emulator validator を新規追加
+  - **改善 3b: 匿名 Auth + `users/{uid}` クリーンアップ script** —
+    - `scripts/cleanup-old-anonymous-users.ts` を新規追加（`cleanup-orphan-firestore.ts` + `cleanup-test-auth-users.ts` を mirror）
+    - `admin.auth().listUsers()` paging で全 user を走査 → `providerData.length === 0 && metadata.creationTime < now - 7 days`
+      の uid を抽出 → 各 uid について以下 2 ステップで削除:
+      1. `users/{uid}` doc を delete
+      2. `admin.auth().deleteUsers([...uids])` で Auth を 1000 件 chunk batch 削除
+    - **意図的に保持**（参照価値があるため）:
+      - `tournaments/{tid}/players/{uid}` — 過去トーナメント参照時の参加者一覧 / WinnerBanner /
+        結果シェアカード / OG image / PlayersCard / AverageStackCard は player の `displayName` snapshot に
+        依存しており、player を消すと**過去トーナメントの優勝者表示・参加者一覧・結果カード生成が壊れる**
+      - `groups/{gid}/seasonStats/{uid}` — シーズンランキング基礎、displayName は doc 内 snapshot 済み
+      - `groups/{gid}/seasonHistory/{seasonId}.entries[]` — append-only / 改竄禁止 rule
+    - **そもそも対象外**: `groups/{gid}.memberUids` / `memberDisplayNames`（匿名ユーザーは招待コード経路を通らないため元々含まれない）
+    - 既存 `attemptAnonymousSelfDelete`（finish/cancel/logout 経路）と削除対象を完全一致させ、
+      即時 vs 遅延の「タイミング非対称」に留める（即時には残るのに 1 週間経つと消えるという UX 非対称を回避）
+    - dry-run / `--execute` / `--days=N` の CLI フラグを既存 script と同型で実装
+    - `package.json` に `cleanup:old-anonymous-users` npm script 追加
+  - **改善 4: 観戦 URL 自動 OFF** — `finishTournament` の tx 内 `tx.update(ref, {...})` に
+    `spectateEnabled: false` を additive 追加。rule は既存 broad organizer update で許可済みのため
+    変更不要。終了済み tournament の anon read 経路を**運営者の toggle 忘れ**に依存しない設計に倒す。
+    手動 toggle（`setSpectateEnabled` service）は据え置きで、終了後の再 ON も自由
+  - **規約ファイル更新**: `.claude/rules/firebase-patterns.md`（allowed-keys 表）と
+    `.claude/rules/group-membership.md`（データモデル + 招待コード設計原則）を同 PR で更新
+- **Success signal**:
+  - `npm run typecheck` / `npm run lint` / `npm run build` グリーン
+  - vitest 全 green（新規 `generateJoinCode` / `deleteJoinCode` / `tournaments-client` のテスト追加）
+  - `npm run test:rules-latest-join-code` および `npm run test:rules-limits` グリーン
+  - `npx playwright test` 全 green（改善 1 の旧文字列依存 spec があれば更新済み）
+  - 手動: 新規作成画面で `Tournament-No.X` プリフィル、member 一覧で参加済み row が「参加済み」表示、
+    再発行後に旧 QR の URL が無効化、`cleanup:old-anonymous-users` dry-run で想定数の匿名 user を列挙
+  - `firebase deploy --only firestore:rules` 完了
+  - PRD 05 / 関連 rule ファイルが同 PR で更新済み
+
 ### Parallelism Notes
 
 - **A.1 と B.1 は並列可能**。Track A は Storage / Firestore / OG route 系の変更で、Track B は
   トップ画面の static リンク追加のみ。両者の touch ファイルは重ならない
 - **Track A 内**: A.1 → A.2 → A.3 は厳密直列（A.1 が完了しないと Storage 書込不可、
   A.2 が完了しないと OG route が背景画像を読まない）
-- **将来追加 Track**: Track C 以降が立ち上がる場合、原則として既存 Track と並列。Track 間で共通
+- **Track C は Track A / B と独立**で並列可能。touch ファイルは Tournament 一覧 / 招待コード / cleanup script
+  系のみで Track A / B とは重ならない
+- **将来追加 Track**: Track D 以降が立ち上がる場合、原則として既存 Track と並列。Track 間で共通
   helper / lib に touch する場合は別 plan で抽出を分離
 
 ---
@@ -450,6 +509,18 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | Track B e2e の扱い | PageObject に locator 追加のみ、新規 spec は作らない | 専用 spec 新設 | testing.md 規約「観測可能な振る舞い」を既存 spec 経由で検証可能 |
 | Track B a11y | aria-label に「新しいタブで開く」を含める | 視覚的なアイコンのみ / sr-only span 別出し | WCAG 2.4.4 / 3.2.5 を最小コードで担保 |
 | 旧 PRD `05-result-card-image-bg` のリネーム | フォルダ + PRD ファイル両方を `05-post-launch-polish` にリネーム | フォルダ番号変更 / 旧 PRD を complete 化して新 PRD（06）を起こす | git mv でリネームし内容を Track A として包含。番号 05 を維持することで既存の plan ファイル参照や Implementation Phases の番号空間を破壊しない |
+| Track C を独立 Track 化 | ドライラン直後の小規模フィードバック集約を新規 Track C として追加し、各 Phase = 複数改善の bundle として運用 | 各改善を独立 PRD として起こす / 既存 Track A / B に追記 / 完了済み PRD 01〜04 に追記 | 1 件あたりの粒度が小さく独立 PRD は過剰。Track A / B はテーマが固定（カード装飾・トップ動線）のため文脈が合わない。完了済み PRD への追記は memory 規則違反。「ドライラン由来の polish 集約」専用 Track が PRD 全体方針と整合 |
+| 改善 1: トーナメントデフォルト名を `Tournament-No.X` 形式に変更 | サークル名を含まないシンプルな英語連番にする | `[サークル名]トーナメント-X` のままで一部のサークルだけ短縮 / 完全カスタム可能な template field | サークル名が長いと表示崩れする問題のドライラン報告に対し最小変更で対応。「サークル名抜きシンプル英語連番」は国際標準的で table 名 / 観戦リンク URL とも親和性が高い。設定可能化は YAGNI。`finishedTournamentCount` 連番は既存のまま引き継ぐ |
+| 改善 2: 一覧での参加済み表示 | member 視点で list fetch 完了後に `getPlayer(tid, uid)` を Promise.allSettled で並列取得し、参加済み row のボタンを `variant="outline"` + label "参加済み" に切替 | 新規 batch read API を追加 / 「観戦」「結果」等の別動線ボタンを追加 / `/live` ではなく専用 confirm 画面に遷移 | UI は単なる label / variant 切替に留め、`/live` link は維持して受付確認 UX を集約済みの設計を維持。`getPlayer` の個別 read 量はサークル規模が 6 卓・月 1〜2 回スケールで無視可能。`Promise.allSettled` で個別 row の failure（permission-denied / network）が他 row を巻き込まない |
+| Track C Phase C.1 を 1 plan で bundle | 3 件の改善を 1 plan ファイル / 1 phase / 1 PR で扱う | 改善ごとに plan / phase を分割 | 3 件とも「ドライラン直後の小規模 polish」というテーマで束ねられ、touch ファイルは独立で衝突しない。実装順序が明示できれば PR を分けても良いが、レビュー時の文脈統一を優先 |
+| 改善 3a: 旧コード処理を `latestJoinCodeId` 追跡で実装 | `groups/{gid}.latestJoinCodeId` を additive 追加して service 層で「new create → pointer update → prev delete (best-effort)」を実装 | `cleanup-orphan-firestore.ts --only=joinCodes` の定期実行のみで expired を清掃 / Cloud Functions で trigger 化 / UI 側に「旧コード削除」ボタンを別追加 | ユーザー要望が **「作成時に削除する」** 明示。`groupJoinCodes` collection は `allow list: if false` で query 不可のため、外部 pointer（`latestJoinCodeId`）が現実的。CF 不採用は project 全体方針と整合 |
+| 改善 3a: `groupJoinCodes` delete を organizer に widening | rule の delete 条件を `isOwner` → `isOrganizer` に拡大 | owner-only のまま維持（その場合 organizer が再発行しても旧コードを消せない） | 既に organizer が `allow create` を持っているため「発行はできるが削除はできない」非対称が不自然。組織者は元々 group 内の全 CRUD を持つ信頼ロールであり、widening の信頼境界外露出はない。権限マトリクスは `.claude/rules/group-membership.md` で更新 |
+| 改善 3b: 匿名 Auth クリーンアップを admin script で実装 | `scripts/cleanup-old-anonymous-users.ts` を新規追加し、手動 / GitHub Actions cron で運用 | Cloud Functions + Cloud Scheduler で daily 自動実行 / Vercel Cron で実装 / 既存 `cleanup-orphan-firestore.ts` に統合 | プロジェクトに Cloud Functions の既存事例ゼロで導入コストが大きい。既存 admin script パターンが確立済みで、ドライラン規模では週次手動実行で十分。`orphan-firestore` との統合は責務分離（orphan 検知 vs. 古い匿名検知）の観点で避ける |
+| 改善 3b: 1 週間 cutoff を維持 | `--days=7` を default、CLI で override 可能 | 即時削除 / 1 日 cutoff / 1 ヶ月 cutoff | ドライラン中の会場での参加セッションが当日中に完結する前提で、1 週間あれば「翌週末のリプレイ参加」などのエッジケースも吸収できる。CLI override で運用調整可能 |
+| 改善 3b: 削除対象は Auth + `users/{uid}` のみ | `players` / `seasonStats` / `seasonHistory` は意図的に保持 | player も collectionGroup で列挙して完全消去 / seasonStats も一緒に消す | **過去トーナメント参照時の参加者一覧 / WinnerBanner / 結果シェアカード / OG image はすべて `players` collection と `displayName` snapshot に依存**しているため、player を消すと「終了済みトーナメントを開いたら優勝者が表示されない」「過去 SNS シェア URL が描画できない」事態を招く。`displayName` snapshot 経路で表示維持される `seasonStats` も同方針で残す。匿名 Auth + orphan `users/{uid}` だけ消せば運用上の「Firebase Auth 総アカウント数肥大化」要望は満たせる |
+| 改善 3b: 即時 self-delete と bulk cleanup の削除対象を一致 | 両経路とも `users/{uid}` + Auth user のみ削除、`players` / `seasonStats` は残す | bulk のみ player も消す（非対称） | 即時には残るのに 1 週間経つと消える、という UX 非対称を回避。両経路を「同じデータセットをタイミング違い」にすることで一貫性を保つ |
+| 改善 4: 観戦 URL を `finishTournament` tx で自動 OFF | `tx.update(ref, {...})` に `spectateEnabled: false` を additive 追加 | 別の自動化（schedule task / `setSpectateEnabled` service の自動呼出）/ rule で「終了済み tournament の spectate read を deny」/ 手動 OFF を運営者に依頼するドキュメント追記のみ | 終了処理と同一 tx に同梱することで「終了したのに観戦 ON のまま」状態を生じさせない。rule 変更不要（broad organizer update が既に許可済み）。終了済み + 再 ON の運用自由度は維持（運営者が手動で再 ON できる UX を阻害しない） |
+| 改善 4: 旧 doc の遡及 backfill は行わない | 過去の `state=finished` tournament の `spectateEnabled` は据え置き | migration script で全 finished tournament を spectateEnabled=false に遡及 | 既存運営者は手動で OFF にできる UI を既に持っており、データ衛生として急務ではない。週次 `cleanup-orphan-firestore.ts` で同類の衛生課題は別途扱う方針と整合 |
 
 ---
 
@@ -485,4 +556,5 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 
 _Originally generated as `05-result-card-image-bg.prd.md`: 2026-05-10_
 _Renamed and re-scoped to `05-post-launch-polish.prd.md`: 2026-05-10_
-_Status: DRAFT - Track A complete (A.1 / A.2 / A.3) / Track B Phase B.1 complete_
+_Track C added: 2026-05-13_
+_Status: DRAFT - Track A complete (A.1 / A.2 / A.3) / Track B Phase B.1 complete / Track C Phase C.1 complete_

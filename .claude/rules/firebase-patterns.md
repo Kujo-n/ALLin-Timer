@@ -267,6 +267,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | **seasonStartDate update**（Phase A） | organizer | `seasonStartDate`（`is timestamp`） |
 | **defaultTableLabels update**（Phase C） | organizer | `defaultTableLabels`（`is list` + `size() <= 6`、各要素 string 長は service / schema 側で enforce） |
 | **seasonPointsRule update**（Phase E） | organizer | `seasonPointsRule`（`null` または `is map` + `base.size() 1..9` + `baseline 2..10`、各要素 `>= 0 number` は schema / service 側で enforce） |
+| **latestJoinCodeId update**（dryrun-feedback-batch-1 / Phase C.1） | organizer | `latestJoinCodeId`（`string` または `null`。`generateJoinCode` service が新コード発行直後に呼び出すライフサイクル管理用 pointer。`joinCodeId`（self-add consumption proof）とは別フィールド） |
 
 新規フィールドを `groups/{gid}` に追加する場合の手順:
 
