@@ -778,6 +778,29 @@ describe("finishTournament", () => {
     expect(groupPayload.finishedTournamentCount).toEqual({ __op: "increment", n: 1 });
   });
 
+  it("auto-disables spectateEnabled in the same tx (dryrun-feedback-batch-1)", async () => {
+    // 観戦モード ON の状態で finish しても tx で `spectateEnabled: false` が書込まれる。
+    // 冪等のため tournament の現在値に関わらず無条件で false を書込む。
+    mockGetTournament(
+      makeTournament({ state: "running", groupId: "g1", spectateEnabled: true }),
+    );
+    mockListPlayers();
+    const updates: Array<[unknown, Record<string, unknown>]> = [];
+    mockFinishTransaction(
+      makeTournament({ state: "running", groupId: "g1", spectateEnabled: true }),
+      {
+        captureUpdate: (ref, patch) => updates.push([ref, patch]),
+      },
+    );
+
+    await finishTournament("t1", "u1", ["g1"]);
+
+    // 1st update payload (tournaments/{tid}) に spectateEnabled: false が含まれる
+    const tournamentPayload = updates[0][1];
+    expect(tournamentPayload.spectateEnabled).toBe(false);
+    expect(tournamentPayload.state).toBe("finished");
+  });
+
   it("re-reads inside tx and skips increment when another client already finished (race guard)", async () => {
     // 事前 read（assertCanManage）では running だが、tx 内 read で finished を観測するケース。
     // 二重 increment を防ぐため update は呼ばれない。

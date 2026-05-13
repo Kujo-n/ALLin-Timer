@@ -805,6 +805,11 @@ export async function finishTournament(
           state: "finished",
           finishedAt: serverTimestamp(),
           pausedAt: null,
+          // dryrun-feedback-batch-1 (Phase C.1): 終了と同時に観戦 URL を自動 OFF。
+          //   運営者の toggle 忘れによる終了済み tournament の anon 公開放置を防ぐ。
+          //   冪等（既に false でも no-op 相当）。手動 toggle (`setSpectateEnabled`) は据え置きで、
+          //   終了後に運営者が再 ON にする自由度は維持。rule は既存 broad organizer update で許可済み。
+          spectateEnabled: false,
           updatedAt: serverTimestamp(),
         });
         tx.update(groupDocRef(cur.groupId), {
