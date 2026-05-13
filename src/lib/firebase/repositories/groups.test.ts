@@ -41,6 +41,7 @@ import {
   updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
   updateGroupRoles,
+  updateLatestJoinCodeId,
   updateSeasonCardBackground,
   updateSeasonPointsRule,
   updateWinnerCardBackground,
@@ -88,6 +89,36 @@ describe("updateGroupRoles", () => {
     expect(patch).toEqual({
       ownerUids: ["u1", "u2"],
       organizerUids: ["u1", "u2", "u3"],
+    });
+  });
+});
+
+describe("updateLatestJoinCodeId", () => {
+  it("writes latestJoinCodeId as a single field (string)", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await updateLatestJoinCodeId("g1", "abc123");
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ latestJoinCodeId: "abc123" });
+  });
+
+  it("allows null (release pointer)", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await updateLatestJoinCodeId("g1", null);
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ latestJoinCodeId: null });
+  });
+
+  it("wraps Firestore errors with firestore/write_failed code", async () => {
+    vi.mocked(updateDoc).mockRejectedValue(new Error("boom") as never);
+
+    await expect(updateLatestJoinCodeId("g1", "abc")).rejects.toMatchObject({
+      code: "firestore/write_failed",
     });
   });
 });

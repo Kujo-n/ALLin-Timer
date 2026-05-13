@@ -82,6 +82,9 @@ export async function createGroup(
         seasonCardBackground: null,
         createdAt: serverTimestamp(),
         joinCodeId: null,
+        // dryrun-feedback-batch-1: 新規作成時は最新発行コード未追跡。`generateJoinCode` で最初の発行時に
+        //   `updateLatestJoinCodeId` 経由で更新される。
+        latestJoinCodeId: null,
       });
       return ref.id;
     },
@@ -282,6 +285,28 @@ export async function updateFinishedTournamentCount(
     { gid },
   );
   logger.info("group finishedTournamentCount updated", { gid, value });
+}
+
+/**
+ * dryrun-feedback-batch-1 (Phase C.1): groups/{gid}.latestJoinCodeId を `string | null` で上書きする。
+ *   - `generateJoinCode` service が新規コード発行直後に呼び出すライフサイクル管理用ポインタ。
+ *     `joinCodeId`（self-add rule の consumption proof）とは別フィールド。
+ *   - rule は organizer 以上の場合のみ許可し、affectedKeys を 'latestJoinCodeId' のみに限定。
+ *   - null は「最新コード追跡を解除」を意味する（owner はフルアクセス経由で自由に null 化可能）。
+ */
+export async function updateLatestJoinCodeId(
+  gid: string,
+  code: string | null,
+): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "招待コードポインタの更新に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), { latestJoinCodeId: code });
+    },
+    { gid },
+  );
+  logger.info("update latestJoinCodeId ok", { gid, code });
 }
 
 /**

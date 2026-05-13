@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -80,6 +81,25 @@ export async function createJoinCode(input: CreateGroupJoinCodeInput): Promise<s
     if (result) return result;
   }
   throw new AppError("招待コードの生成に失敗しました（衝突が連続）", "firestore/write_failed");
+}
+
+/**
+ * dryrun-feedback-batch-1 (Phase C.1): 招待コード doc を削除する。
+ *   - `generateJoinCode` service が再発行時に旧コードを best-effort delete するために使う。
+ *   - rule は Phase C.1 で `isOwner` から `isOrganizer` に widening 済み（issue 経路と delete 経路の
+ *     権限を揃えるための整合性向上）。
+ *   - 失敗時の握りつぶしは service 層で行う（本関数は AppError を throw する）。
+ */
+export async function deleteJoinCode(code: string): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "招待コード削除に失敗しました",
+    async () => {
+      await deleteDoc(joinCodeDocRef(code));
+    },
+    { code },
+  );
+  logger.info("delete join code ok", { code });
 }
 
 export async function getJoinCode(code: string): Promise<GroupJoinCodeDoc | null> {
