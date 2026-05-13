@@ -290,6 +290,7 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run test:rules-season`              | `seasonStats` / `seasonHistory` ルールを emulator 上で検証（Phase A）             |
 | `npm run test:rules-season-points-rule`  | `groups/{gid}.seasonPointsRule` ルールを emulator 上で検証（Phase E）             |
 | `npm run test:rules-spectate`            | `tournaments.spectateEnabled` 観戦経路ルールを emulator 上で検証（04-spectate-mode Phase 1） |
+| `npm run test:rules-latest-join-code`    | `groups/{gid}.latestJoinCodeId` 単独書換 rule と `groupJoinCodes` delete の organizer widening を emulator 上で検証（05-post-launch-polish Phase C.1） |
 | `npm run test:rules-table-labels`        | `defaultTableLabels` / `tables/{n}.label` / `.color` ルールを emulator 上で検証（Phase C） |
 | `npm run test:storage-rules`             | `storage.rules`（`groups/{gid}/bgImages/{assetId}`）を Storage Emulator 上で検証（Phase A.1） |
 | `npm run test:e2e`                       | Playwright E2E テスト実行（emulator と dev server を自動起動）                      |
@@ -297,6 +298,9 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 | `npm run test:e2e:headed`                | ヘッドレス無効で E2E 実行（`playwright test --headed`）                             |
 | `npm run test:e2e:debug`                 | Playwright inspector で E2E デバッグ（`playwright test --debug`）                   |
 | `npm run emulator`                       | Firebase Emulator (auth + firestore + storage + ui) のみ起動（`allin-pokertimer-e2e` 隔離） |
+| `npm run cleanup:test-auth-users`        | E2E Emulator に残った test 用 Auth user を一括削除（`tsx scripts/cleanup-test-auth-users.ts`） |
+| `npm run cleanup:orphan-firestore`       | 本番 Firestore の orphan データ（孤立 doc）を整理（`tsx scripts/cleanup-orphan-firestore.ts`） |
+| `npm run cleanup:old-anonymous-users`    | 本番 Firebase Auth の 7 日以上経過した匿名 user + `users/{uid}` doc を一括削除（`tsx scripts/cleanup-old-anonymous-users.ts`、Phase C.1）|
 | `npm run format`                         | Prettier で書式修正 (`prettier --write .`)                                          |
 | `npm run format:check`                   | Prettier で書式チェックのみ (`prettier --check .`)                                  |
 | `firebase deploy --only firestore:rules` | Firestore セキュリティルールのデプロイ（npm script ではなく firebase CLI）          |
@@ -415,9 +419,14 @@ src/
 scripts/
 ├─ generate-pwa-icons.mjs         # PWA アイコン再生成（`public/icons/icon_pwa.png` を source に 4 サイズ書出し）
 ├─ migrate-phase-4.6-roles.ts     # Phase 4.6 admin SDK migration（本番運用 group 向けの予備実装）
-└─ test-rules-*.mjs               # Firestore Rules emulator validator（limits / clone-players / season /
-                                  # season-points-rule / default-seats / finished-count / pd / spectate /
-                                  # table-labels の 9 本。手動 / CI 対象外）
+├─ cleanup-test-auth-users.ts     # E2E Emulator 用 test Auth user の一括削除
+├─ cleanup-orphan-firestore.ts    # 本番 Firestore の orphan データ（孤立 doc）を整理
+├─ cleanup-old-anonymous-users.ts # 本番 Firebase Auth の 7 日以上経過した匿名 user + `users/{uid}` を bulk delete（Phase C.1）
+├─ test-storage-rules.mjs         # `storage.rules`（`groups/{gid}/bgImages/{assetId}`）の Storage Emulator 上での検証（Phase A.1）
+└─ test-rules-*.mjs               # Firestore Rules emulator validator（card-background / clone-players /
+                                  # default-seats / finished-count / latest-join-code / limits / pd /
+                                  # season / season-points-rule / spectate / table-labels の 11 本。
+                                  # 手動 / CI 対象外）
 tests/
 └─ e2e/                           # Playwright + Firebase Emulator ベースの E2E（Phase 4.5）
 ```

@@ -7,8 +7,9 @@ relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
   - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
-targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）/ 優勝カードの画像保存・Web Share API は Phase B・D 完了時点 / 観戦モード（owner / 運営担当者の opt-in 公開）は 04-spectate-mode Phase 1〜4 完了時点
-lastUpdated: 2026-05-10
+  - .claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md
+targetPhase: Phase 5.4 完了時点（複製機能まで完了、フィールドテスト中）/ 優勝カードの画像保存・Web Share API は Phase B・D 完了時点 / 観戦モード（owner / 運営担当者の opt-in 公開）は 04-spectate-mode Phase 1〜4 完了時点 / 一覧の「参加済み」表示・終了時の観戦自動 OFF は 05-post-launch-polish Phase C.1 完了時点
+lastUpdated: 2026-05-13
 status: stable
 ---
 
@@ -43,7 +44,7 @@ status: stable
 
 #### 2.2.4 失敗系: 受付の二重登録防止
 
-A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5Btid%5D) を開く → 「すでに参加済みです」と表示される → 重複登録は起きない（同じ ID で 2 回目の登録は弾かれる）。
+A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5Btid%5D) を開く → 「すでに参加済みです」と表示される → 重複登録は起きない（同じ ID で 2 回目の登録は弾かれる）。さらに、一覧画面 [/tournaments](/tournaments) でも自分が受付済みのカードはボタンが「参加済み」（線囲みスタイル）に切り替わっており、A さんは受付済みであることを開き直さなくても一目で確認できる。
 
 #### 2.2.5 失敗系: 一般メンバーが新規作成にアクセス
 
@@ -97,6 +98,8 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - 観戦モード ON のトーナメントには「観戦公開中」バッジが表示される（誤公開放置の検知用）。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 各カードを押すと該当トーナメントのダッシュボード or 参加者画面に遷移する
 - 一般メンバーは「受付完了している自分のトーナメント」を中心に表示される
+- **自分が受付済みのトーナメントは、カード右側のボタンが「参加済み」表示（線囲みスタイル）に切り替わる**。リンク先は変わらず [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live) なので、その場で受付完了画面に遷移して自席や状況を確認できる
+- 自分が受付済みかどうかの判定は他のメンバーの参加状況とは独立して走り、一部の判定が読み取りに失敗してもボタンは「参加する」表示のままに倒れる（誤って「参加済み」と見せない）
 
 #### 3.2.2 誰が・いつ使うか
 
@@ -423,7 +426,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - **複製の上限 50 人**: 過去最大規模を超える運用は想定外（現実のサークル規模では十分）
 - **賞金計算は未実装**: 単純分配を含めて v1 では非対応
 - **リバイ・アドオンの実行操作は未実装**: ストラクチャに量フィールドはあるが、実行 UI はない
-- **観戦モードはトグル単位の opt-in**: 公開対象を絞り込む短命 token / revocable code は未提供（詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)）
+- **観戦モードはトグル単位の opt-in**: 公開対象を絞り込む短命 token / revocable code は未提供（詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)）。トーナメント終了処理時には観戦モードを自動で OFF に倒すため、終了済みトーナメントが ON 放置になる事故は防がれる（運営者が再 ON にすることは引き続き可能）
 - **PWA 化は対応済み**（[09-pwa-app-shell.spec.md](09-pwa-app-shell.spec.md) 参照）。ホーム画面アイコンからの起動が可能
 
 ## 7. 関連 spec / ドキュメント
@@ -438,6 +441,7 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 2（受付 / CRUD）/ Phase 4.5（自動終了 / Winner 演出）/ Phase 4.14（削除 cascade）/ Phase 5.1〜5.4（PD / レベル時間動的変更 / レベル末尾追加 / 複製）
 - 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase B（優勝カード PNG）/ Phase D（Web Share API）— Winner 演出の画像保存・シェアボタンの提供元
 - 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 3（toggle UI と共有導線）— ダッシュボード上の観戦モードカード提供元
+- 関連 PRD: [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Phase C.1 — トーナメントデフォルト名の `Tournament-No.X` 化・一覧での「参加済み」表示・終了時の観戦モード自動 OFF
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -447,5 +451,5 @@ A さんが受付完了したあとに、誤って再度 [/join/[tid]](/join/%5B
 - 画面: [/tournaments](/tournaments) / [/tournaments/new](/tournaments/new) / [/tournaments/[tid]](/tournaments/%5Btid%5D) / [/tournaments/[tid]/edit](/tournaments/%5Btid%5D/edit) / [/tournaments/[tid]/clone](/tournaments/%5Btid%5D/clone) / [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live) / [/join/[tid]](/join/%5Btid%5D)
 - 主な操作: 新規作成 / 編集（準備中）/ 受付（3 択フロー）/ 自分のキャンセル / 「席を決定」/ 開始 / 一時停止 / 巻戻し / 次レベル / 終了 / 複製 / 削除（準備中 or 終了）/ 優勝カード（Winner 画面）の画像保存・Web Share / 観戦モード ON/OFF（ダッシュボード上のカード経由）/ 観戦 URL のコピー・QR 提示
 - 設定項目: 名前 / ストラクチャ / 1 Table あたりの席数 / 参加者選択（複製時）/ 観戦モード ON/OFF（既定 OFF / トーナメント単位）
-- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止 / 終了時の自動 Winner 演出 / 終了直後の優勝カード共有 / 削除 cascade / 観戦 URL の予備モニタ投影 / 一覧の「観戦公開中」バッジ確認
+- 関連シーン: 通常運営 / 同メンバーでの 2 戦目 / 受付の 3 択フロー / 二重登録防止（受付画面 + 一覧の「参加済み」表示）/ 終了時の自動 Winner 演出 / 終了直後の優勝カード共有 / 終了時に観戦モードが自動 OFF / 削除 cascade / 観戦 URL の予備モニタ投影 / 一覧の「観戦公開中」バッジ確認
 - 関連 PRD: 上記参照

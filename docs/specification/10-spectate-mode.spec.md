@@ -6,8 +6,9 @@ audience: サークル運営者・新メンバー・遅刻参加者・外部レ�
 relatedPrd:
   - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
-targetPhase: Phase 1〜4 完了時点（schema・ルール・観戦ページ・toggle UI・PWA キャッシュまで完了、フィールドテスト中）
-lastUpdated: 2026-05-10
+  - .claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md
+targetPhase: Phase 1〜4 完了時点（schema・ルール・観戦ページ・toggle UI・PWA キャッシュまで完了、フィールドテスト中）/ 終了時の自動 OFF は 05-post-launch-polish Phase C.1 完了時点
+lastUpdated: 2026-05-13
 status: stable
 ---
 
@@ -38,7 +39,7 @@ status: stable
 
 #### 2.2.3 失敗系: 観戦モードを OFF に切り替えた直後の挙動
 
-観戦中の C さんがブラウザで [/spectate/[tid]](/spectate/%5Btid%5D) を開いている → 運営者がトーナメント終了後に観戦モードを OFF → C さんの画面が **「観戦が終了しました」** に自動遷移する → 白画面 / 不明エラーにはならない → C さんはトーナメント終了を察知し、ブラウザを閉じる。
+観戦中の C さんがブラウザで [/spectate/[tid]](/spectate/%5Btid%5D) を開いている → 運営者がトーナメントを終了処理にした瞬間に、観戦モードが **自動で OFF に倒れる**（運営者が手動でスイッチを操作する必要なし） → C さんの画面が **「観戦が終了しました」** に自動遷移する → 白画面 / 不明エラーにはならない → C さんはトーナメント終了を察知し、ブラウザを閉じる。
 
 #### 2.2.4 失敗系: レイトレジスト締切後の遅刻
 
@@ -63,6 +64,7 @@ iPad で観戦投影中、会場の Wi-Fi が瞬断 → 観戦ページもタイ
 - 「ON にする」確定後、観戦 URL（フル URL）と QR コードがカード内に表示される
 - OFF に切り替えると、URL は同じだが **観戦ページは「観戦が終了しました」表示に自動遷移** する（観戦中の閲覧者にも即時反映）
 - 切替後の状態（ON / OFF）は他の運営者の画面にも自動反映される
+- **トーナメントを終了状態に進めると、観戦モードは自動的に OFF に倒れる**（運営者が手動で OFF にする必要がない）。終了処理と観戦 OFF はまとめて確定されるため、終了したのに「観戦公開中」のまま放置される事故が起きない。必要であれば終了後に運営者が同じカードから再度 ON にできる
 
 #### 3.1.2 誰が・いつ使うか
 
@@ -83,7 +85,7 @@ iPad で観戦投影中、会場の Wi-Fi が瞬断 → 観戦ページもタイ
 
 - ON 切替時の確認ダイアログは **省略不可**（誤公開防止のため、スイッチ単独では切り替わらない設計）
 - 一般メンバー / ゲスト匿名には観戦モードカード自体が表示されない（toggle 経由の誤操作不可）
-- ON 状態のまま放置するとトーナメント終了後も誰でも閲覧できる状態が続く。終了時は OFF を推奨
+- **トーナメント終了時に観戦モードは自動 OFF に倒れる**ため、「終了したのに観戦公開中のまま」状態は起きない。ただし運営者が終了後にあえて再度 ON に戻すことは可能（リプレイ振り返り用途など）
 - スイッチ切替後の反映は 1 〜 2 秒以内（他端末の画面にも自動同期）
 
 ### 3.2 観戦 URL の表示・コピー・QR コード
@@ -352,7 +354,7 @@ iPad で観戦投影中、会場の Wi-Fi が瞬断 → 観戦ページもタイ
 - **観戦者向けインタラクションなし**: チャット / リアクション / 拍手などの双方向機能は未提供（read-only に徹する）
 - **特定メンバーのみへの限定公開なし**: 公開は「誰でも見られる / 完全に閉じる」の二択
 - **観戦アクセス数の集計なし**: 公開頻度・効果測定は運営者の手動ヒアリング
-- **観戦中の自動 OFF（タイムアウト）なし**: 運営者が明示的に OFF 操作するまで公開状態が続く。長期 ON 放置の検知は一覧バッジのみ
+- **観戦中の自動 OFF（タイムアウト）なし**: 観戦中の経過時間で自動 OFF されることはない。**ただしトーナメントを終了状態に進めた瞬間には自動 OFF に倒れる**（運営者の手動操作なしで公開停止）。長期 ON 放置の検知は一覧バッジで補う
 
 ## 7. 関連 spec / ドキュメント
 
@@ -363,6 +365,7 @@ iPad で観戦投影中、会場の Wi-Fi が瞬断 → 観戦ページもタイ
 - 関連: PWA キャッシュと観戦ページの整合は [09-pwa-app-shell.spec.md](09-pwa-app-shell.spec.md)
 - 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 1（schema・ルール・ emulator）/ Phase 2（観戦ページ）/ Phase 3（toggle UI と共有導線）/ Phase 4（PWA キャッシュ）
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) — オフライン耐性 / 端末制御の文脈
+- 関連 PRD: [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Phase C.1 — トーナメント終了時の観戦モード自動 OFF
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -370,7 +373,7 @@ iPad で観戦投影中、会場の Wi-Fi が瞬断 → 観戦ページもタイ
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
 - 画面: [/tournaments/[tid]](/tournaments/%5Btid%5D)（ダッシュボード上の観戦モードカード）/ [/tournaments](/tournaments)（一覧の「観戦公開中」バッジ）/ [/spectate/[tid]](/spectate/%5Btid%5D)（観戦専用ページ）
-- 主な操作: 観戦モード ON/OFF 切替（確認ダイアログ込み）/ 観戦 URL のコピー / QR コードの提示 / 観戦ページの閲覧 / OFF 切替後の自動遷移閲覧
-- 設定項目: 観戦モード ON/OFF（既定 OFF / トーナメント単位）
-- 関連シーン: 会場予備モニタへの投影 / 遅刻参加者へのレイトレジスト可否共有 / 終了後の OFF 忘れ検知（一覧バッジ）/ 通信瞬断時の継続表示 / 観戦経路から運営操作に進めない安全性
-- 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 1〜4
+- 主な操作: 観戦モード ON/OFF 切替（確認ダイアログ込み）/ 観戦 URL のコピー / QR コードの提示 / 観戦ページの閲覧 / OFF 切替後の自動遷移閲覧 / トーナメント終了処理時の自動 OFF（運営者の操作なし）
+- 設定項目: 観戦モード ON/OFF（既定 OFF / トーナメント単位 / 終了時は自動 OFF）
+- 関連シーン: 会場予備モニタへの投影 / 遅刻参加者へのレイトレジスト可否共有 / 終了時の自動 OFF / 終了後の OFF 忘れ検知（一覧バッジ）/ 通信瞬断時の継続表示 / 観戦経路から運営操作に進めない安全性
+- 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 1〜4 / [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Phase C.1
