@@ -35,12 +35,14 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   setMemberDisplayName: vi.fn(),
   updateFinishedTournamentCount: vi.fn(),
   updateDefaultSeatsPerTable: vi.fn(),
+  updateLatestJoinCodeId: vi.fn(),
   updateSeasonPointsRule: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
   joinCodeDocRef: vi.fn((code: string) => ({ __ref: "joinCode", code })),
   createJoinCode: vi.fn(),
+  deleteJoinCode: vi.fn(),
   getJoinCode: vi.fn(),
   isJoinCodeUsable: (codeDoc: GroupJoinCodeDoc, now: Date = new Date()): boolean => {
     if (codeDoc.expiresAt.toMillis() <= now.getTime()) return false;
@@ -93,9 +95,14 @@ import {
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
+  updateLatestJoinCodeId,
   updateSeasonPointsRule,
 } from "@/lib/firebase/repositories/groups";
-import { createJoinCode, getJoinCode } from "@/lib/firebase/repositories/groupJoinCodes";
+import {
+  createJoinCode,
+  deleteJoinCode,
+  getJoinCode,
+} from "@/lib/firebase/repositories/groupJoinCodes";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import {
   addGroupIdToUser,
@@ -150,6 +157,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     seasonPointsRule: null,
     winnerCardBackground: null,
     seasonCardBackground: null,
+    latestJoinCodeId: null,
     createdAt: now,
     ...overrides,
   };
@@ -181,6 +189,8 @@ beforeEach(() => {
   vi.mocked(updateSeasonPointsRule).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
+  vi.mocked(deleteJoinCode).mockReset();
+  vi.mocked(updateLatestJoinCodeId).mockReset();
   vi.mocked(addGroupIdToUser).mockReset();
   vi.mocked(removeGroupIdFromUser).mockReset();
   vi.mocked(runTransaction).mockReset();
@@ -385,8 +395,12 @@ describe("leaveGroup", () => {
 });
 
 describe("generateJoinCode", () => {
-  it("calls createJoinCode with default 7-day expiry and null maxUses", async () => {
+  it("calls createJoinCode with default 7-day expiry and null maxUses (prev null)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ organizerUids: ["u-owner"], latestJoinCodeId: null }),
+    );
     vi.mocked(createJoinCode).mockResolvedValue("abc123");
+    vi.mocked(updateLatestJoinCodeId).mockResolvedValue(undefined);
 
     const code = await generateJoinCode({ gid: "g1", createdByUid: "u-owner" });
 
@@ -397,12 +411,95 @@ describe("generateJoinCode", () => {
     expect(arg.createdByUid).toBe("u-owner");
     expect(arg.maxUses).toBeNull();
     expect(arg.expiresAt).toBeInstanceOf(Timestamp);
+    expect(updateLatestJoinCodeId).toHaveBeenCalledWith("g1", "abc123");
+    // prev is null → deleteJoinCode は呼ばれない
+    expect(deleteJoinCode).not.toHaveBeenCalled();
   });
 
   it("rejects non-positive expiresInDays", async () => {
     await expect(
       generateJoinCode({ gid: "g1", createdByUid: "u1", expiresInDays: 0 }),
     ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("rejects when caller is not organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-mem"],
+      }),
+    );
+    await expect(
+      generateJoinCode({ gid: "g1", createdByUid: "u-mem" }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(createJoinCode).not.toHaveBeenCalled();
+    expect(updateLatestJoinCodeId).not.toHaveBeenCalled();
+    expect(deleteJoinCode).not.toHaveBeenCalled();
+  });
+
+  it("deletes previous join code on re-issue", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ organizerUids: ["u-owner"], latestJoinCodeId: "old123" }),
+    );
+    vi.mocked(createJoinCode).mockResolvedValue("new456");
+    vi.mocked(updateLatestJoinCodeId).mockResolvedValue(undefined);
+    vi.mocked(deleteJoinCode).mockResolvedValue(undefined);
+
+    const code = await generateJoinCode({ gid: "g1", createdByUid: "u-owner" });
+
+    expect(code).toBe("new456");
+    expect(updateLatestJoinCodeId).toHaveBeenCalledWith("g1", "new456");
+    expect(deleteJoinCode).toHaveBeenCalledWith("old123");
+  });
+
+  it("does not delete when prev === new (collision retry edge)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ organizerUids: ["u-owner"], latestJoinCodeId: "same" }),
+    );
+    vi.mocked(createJoinCode).mockResolvedValue("same");
+    vi.mocked(updateLatestJoinCodeId).mockResolvedValue(undefined);
+
+    const code = await generateJoinCode({ gid: "g1", createdByUid: "u-owner" });
+
+    expect(code).toBe("same");
+    expect(deleteJoinCode).not.toHaveBeenCalled();
+  });
+
+  it("succeeds even when deleteJoinCode rejects (best-effort)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ organizerUids: ["u-owner"], latestJoinCodeId: "old" }),
+    );
+    vi.mocked(createJoinCode).mockResolvedValue("new");
+    vi.mocked(updateLatestJoinCodeId).mockResolvedValue(undefined);
+    vi.mocked(deleteJoinCode).mockRejectedValue(
+      new AppError("perm-denied", "firestore/permission-denied"),
+    );
+
+    const code = await generateJoinCode({ gid: "g1", createdByUid: "u-owner" });
+
+    expect(code).toBe("new");
+    expect(deleteJoinCode).toHaveBeenCalledWith("old");
+    // updateLatestJoinCodeId は成功扱いとして pointer は new に進む（旧 doc が残るが
+    //   cleanup-orphan-firestore で最終整理される設計）
+    expect(updateLatestJoinCodeId).toHaveBeenCalledWith("g1", "new");
+  });
+
+  it("propagates failure when updateLatestJoinCodeId rejects", async () => {
+    // pointer の整合性を最優先するため、updateLatestJoinCodeId 失敗時は throw する。
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({ organizerUids: ["u-owner"], latestJoinCodeId: null }),
+    );
+    vi.mocked(createJoinCode).mockResolvedValue("new");
+    vi.mocked(updateLatestJoinCodeId).mockRejectedValue(
+      new AppError("write fail", "firestore/write_failed"),
+    );
+
+    await expect(
+      generateJoinCode({ gid: "g1", createdByUid: "u-owner" }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+    // 既に new code は作成済みなので revert はしない（cleanup-orphan-firestore に委譲）
+    expect(createJoinCode).toHaveBeenCalled();
+    expect(deleteJoinCode).not.toHaveBeenCalled();
   });
 });
 

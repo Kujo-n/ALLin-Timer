@@ -28,6 +28,7 @@ import {
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
+  updateLatestJoinCodeId,
   updateSeasonCardBackground,
   updateSeasonPointsRule,
   updateWinnerCardBackground,
@@ -44,6 +45,7 @@ import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import {
   createJoinCode,
   defaultExpiresAt,
+  deleteJoinCode,
   getJoinCode,
   isJoinCodeUsable,
   joinCodeDocRef,
@@ -243,6 +245,13 @@ export async function leaveGroup({ gid, uid }: { gid: string; uid: string }): Pr
 /**
  * 招待コードを発行する。default 7 日有効、`maxUses` は null（無制限）。
  * Phase 4.6: rule 側で isOrganizer チェック。一般メンバーは発行不可。
+ *
+ * dryrun-feedback-batch-1 (Phase C.1): 再発行時の旧コードゴミ蓄積を防ぐため 4 ステップ化:
+ *   1. group を read（assertOrganizer + prev コード ID 把握）
+ *   2. 新コードを create（rule で isOrganizer enforced）
+ *   3. groups doc の latestJoinCodeId を新コードに update
+ *   4. 旧コードを best-effort delete（失敗しても新コード発行は成功扱い）
+ * 失敗時の握りつぶしは旧コードの delete のみで、3 までは順次 throw する（pointer ずれ防止）。
  */
 export async function generateJoinCode({
   gid,
@@ -261,7 +270,36 @@ export async function generateJoinCode({
   const expiresAt = Timestamp.fromDate(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
   // default の場合は 7 日：呼び出し側からの override が無ければ defaultExpiresAt と一致
   void defaultExpiresAt;
-  return createJoinCode({ gid, createdByUid, expiresAt, maxUses });
+
+  // 1. group を read（assertOrganizer + prev コード ID 把握）
+  const group = await getGroup(gid);
+  assertOrganizer(group, createdByUid);
+  const prev = group.latestJoinCodeId ?? null;
+
+  // 2. 新コード create
+  const code = await createJoinCode({ gid, createdByUid, expiresAt, maxUses });
+
+  // 3. groups doc の pointer を新コードに更新
+  await updateLatestJoinCodeId(gid, code);
+
+  // 4. 旧コードを best-effort delete（`prev !== code` ガードは pointer === createJoinCode 戻り値の
+  //    edge を防ぐ防御。129bit ランダム空間で偶然一致は事実上発生しない）。
+  //    delete 失敗 (rule deny / network) 時は warn のみで握りつぶし、新コード発行は成功扱いとする。
+  //    残った旧コードは `expiresAt` までは有効だが、scripts/cleanup-orphan-firestore.ts step 5
+  //    (`expiresAt < now`) で expired 検知後に削除される。**ステップ 3 (updateLatestJoinCodeId) 失敗
+  //    時に発生する「orphan な新コード」も同様で、expiresAt 経由 (default 7 日) で最終整理される**。
+  if (prev && prev !== code) {
+    try {
+      await deleteJoinCode(prev);
+    } catch (e) {
+      logger.warn("previous join code delete failed", {
+        errorCode: getErrorCode(e),
+        gid,
+        prev,
+      });
+    }
+  }
+  return code;
 }
 
 /**
