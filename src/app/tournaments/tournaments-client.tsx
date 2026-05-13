@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppError, formatErrorForDisplay } from "@/lib/errors";
+import { AppError, formatErrorForDisplay, getErrorCode } from "@/lib/errors";
+import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { getPlayer } from "@/lib/firebase/repositories/players";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc, TournamentState } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
@@ -64,9 +66,18 @@ function toneForState(state: TournamentState): StateTone {
 
 export function TournamentsClient() {
   const { currentGroupId, groups, isOrganizer } = useCurrentGroup();
+  const { user } = useAuthUser();
+  // `AuthProvider` は `refreshUser()` のたびに user オブジェクトの参照が変わる
+  // （updateProfile 後の displayName 反映 bump）。uid のみを依存に取り出して
+  // 無関係な再 fetch（参加済み判定の全 tournament 分の read）を防ぐ。
+  const userId = user?.uid ?? null;
   const [items, setItems] = useState<TournamentDoc[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // dryrun-feedback-batch-1: member 視点で「自分が参加済みの tournament」を Set で保持し、
+  //   ボタンを `variant="outline"` + label "参加済み" に切り替える。link は維持する（`/live` で
+  //   受付確認 UX に到達できる動線を残す）。organizer は本判定を走らせない（不要 read 削減）。
+  const [joinedTids, setJoinedTids] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!currentGroupId) return;
@@ -75,7 +86,32 @@ export function TournamentsClient() {
       setLoading(true);
       try {
         const list = await listTournamentsByGroup(currentGroupId);
-        if (!cancelled) setItems(list);
+        if (cancelled) return;
+        setItems(list);
+        // 参加済み判定: member（非 organizer）でかつ user がいるときのみ Promise.allSettled で並列取得。
+        //   個別 row の failure（permission-denied / network）は warn のみで握りつぶし、
+        //   他 row の表示は壊さない。観戦モード anon 視聴では userId===null で分岐に入らず既存 UX 維持。
+        if (!isOrganizer && userId && list.length > 0) {
+          const results = await Promise.allSettled(
+            list.map((t) => getPlayer(t.id, userId).then((p) => (p ? t.id : null))),
+          );
+          if (cancelled) return;
+          const next = new Set<string>();
+          for (let i = 0; i < results.length; i++) {
+            const r = results[i];
+            if (r.status === "fulfilled" && r.value) {
+              next.add(r.value);
+            } else if (r.status === "rejected") {
+              logger.warn("joined check failed", {
+                tid: list[i]?.id,
+                code: getErrorCode(r.reason),
+              });
+            }
+          }
+          setJoinedTids(next);
+        } else {
+          setJoinedTids(new Set());
+        }
       } catch (e) {
         const wrapped = AppError.from(e, "firestore/read_failed", "一覧取得失敗");
         logger.warn(wrapped.message, { code: wrapped.code });
@@ -87,7 +123,7 @@ export function TournamentsClient() {
     return () => {
       cancelled = true;
     };
-  }, [currentGroupId]);
+  }, [currentGroupId, isOrganizer, userId]);
 
   const currentGroup = groups.find((g) => g.id === currentGroupId);
 
@@ -181,7 +217,19 @@ export function TournamentsClient() {
                       </Link>
                     ) : null}
                     <Link href={`/tournaments/${t.id}/live`}>
-                      <Button size="sm">{isOrganizer ? "タイマー" : "参加する"}</Button>
+                      {isOrganizer ? (
+                        <Button size="sm">タイマー</Button>
+                      ) : joinedTids.has(t.id) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={`${t.name} の受付確認に戻る（参加済み）`}
+                        >
+                          参加済み
+                        </Button>
+                      ) : (
+                        <Button size="sm">参加する</Button>
+                      )}
                     </Link>
                   </div>
                 </CardContent>

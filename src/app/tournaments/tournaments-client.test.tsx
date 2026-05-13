@@ -17,10 +17,20 @@ vi.mock("@/lib/firebase/repositories/tournaments", () => ({
   listTournamentsByGroup: vi.fn(),
 }));
 
+vi.mock("@/lib/firebase/repositories/players", () => ({
+  getPlayer: vi.fn(),
+}));
+
 vi.mock("@/lib/services/current-group", () => ({
   useCurrentGroup: vi.fn(),
 }));
 
+vi.mock("@/lib/firebase/AuthProvider", () => ({
+  useAuthUser: vi.fn(),
+}));
+
+import { useAuthUser } from "@/lib/firebase/AuthProvider";
+import { getPlayer } from "@/lib/firebase/repositories/players";
 import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments";
 import { useCurrentGroup } from "@/lib/services/current-group";
 
@@ -84,9 +94,19 @@ function setCurrentGroupMock(overrides: Partial<{
   });
 }
 
+function setAuthUserMock(user: { uid: string } | null = null) {
+  vi.mocked(useAuthUser).mockReturnValue({
+    user: user as never,
+    loading: false,
+    refreshUser: vi.fn(),
+  });
+}
+
 beforeEach(() => {
   setCurrentGroupMock();
+  setAuthUserMock(null);
   vi.mocked(listTournamentsByGroup).mockReset();
+  vi.mocked(getPlayer).mockReset();
 });
 
 afterEach(() => {
@@ -213,5 +233,118 @@ describe("TournamentsClient — 観戦モード badge (Phase 3 / 04-spectate-mod
       screen.getByRole("group", { name: /Member View/ }),
     );
     expect(within(card).getByLabelText("観戦モード公開中")).toBeInTheDocument();
+  });
+});
+
+describe("TournamentsClient — 参加済み表示 (dryrun-feedback-batch-1)", () => {
+  it("organizer 視点では「タイマー」ボタンが出る（getPlayer は呼ばない）", async () => {
+    setCurrentGroupMock({ isOrganizer: true });
+    setAuthUserMock({ uid: "u-org" });
+    vi.mocked(listTournamentsByGroup).mockResolvedValue([
+      makeTournament({ id: "t-org", name: "Org View" }),
+    ]);
+
+    render(<TournamentsClient />);
+
+    const card = await waitFor(() =>
+      screen.getByRole("group", { name: /Org View/ }),
+    );
+    expect(within(card).getByRole("button", { name: "タイマー" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /参加/ })).not.toBeInTheDocument();
+    // organizer 視点では参加済み判定の read を発行しない
+    expect(vi.mocked(getPlayer)).not.toHaveBeenCalled();
+  });
+
+  it("member + 参加済みの row は「参加済み」（outline）に切り替わる", async () => {
+    setCurrentGroupMock({ isOrganizer: false });
+    setAuthUserMock({ uid: "u-member" });
+    vi.mocked(listTournamentsByGroup).mockResolvedValue([
+      makeTournament({ id: "t-joined", name: "Joined T" }),
+    ]);
+    vi.mocked(getPlayer).mockResolvedValue({
+      id: "u-member",
+      displayName: "Me",
+      uid: "u-member",
+    } as never);
+
+    render(<TournamentsClient />);
+
+    const card = await waitFor(() =>
+      screen.getByRole("group", { name: /Joined T/ }),
+    );
+    await waitFor(() =>
+      expect(
+        within(card).getByRole("button", { name: /参加済み/ }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(card).queryByRole("button", { name: "参加する" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("member + 未参加の row は「参加する」のまま", async () => {
+    setCurrentGroupMock({ isOrganizer: false });
+    setAuthUserMock({ uid: "u-member" });
+    vi.mocked(listTournamentsByGroup).mockResolvedValue([
+      makeTournament({ id: "t-unjoined", name: "Unjoined T" }),
+    ]);
+    vi.mocked(getPlayer).mockResolvedValue(null);
+
+    render(<TournamentsClient />);
+
+    const card = await waitFor(() =>
+      screen.getByRole("group", { name: /Unjoined T/ }),
+    );
+    await waitFor(() =>
+      expect(within(card).getByRole("button", { name: "参加する" })).toBeInTheDocument(),
+    );
+    expect(within(card).queryByText("参加済み")).not.toBeInTheDocument();
+  });
+
+  it("getPlayer が permission-denied で reject しても他 row の表示は壊れない", async () => {
+    setCurrentGroupMock({ isOrganizer: false });
+    setAuthUserMock({ uid: "u-member" });
+    vi.mocked(listTournamentsByGroup).mockResolvedValue([
+      makeTournament({ id: "t-ok", name: "OK T" }),
+      makeTournament({ id: "t-deny", name: "Deny T" }),
+    ]);
+    vi.mocked(getPlayer).mockImplementation(async (tid: string) => {
+      if (tid === "t-ok") {
+        return { id: "u-member", displayName: "Me", uid: "u-member" } as never;
+      }
+      throw new Error("permission denied");
+    });
+
+    render(<TournamentsClient />);
+
+    const okCard = await waitFor(() =>
+      screen.getByRole("group", { name: /OK T/ }),
+    );
+    const denyCard = screen.getByRole("group", { name: /Deny T/ });
+    await waitFor(() =>
+      expect(within(okCard).getByRole("button", { name: /参加済み/ })).toBeInTheDocument(),
+    );
+    // deny 側は「参加する」のまま（fail-safe）
+    expect(
+      within(denyCard).getByRole("button", { name: "参加する" }),
+    ).toBeInTheDocument();
+  });
+
+  it("user が null（観戦 anon 視聴想定）では「参加する」表示のまま", async () => {
+    setCurrentGroupMock({ isOrganizer: false });
+    setAuthUserMock(null);
+    vi.mocked(listTournamentsByGroup).mockResolvedValue([
+      makeTournament({ id: "t-anon", name: "Anon T" }),
+    ]);
+
+    render(<TournamentsClient />);
+
+    const card = await waitFor(() =>
+      screen.getByRole("group", { name: /Anon T/ }),
+    );
+    expect(
+      within(card).getByRole("button", { name: "参加する" }),
+    ).toBeInTheDocument();
+    expect(vi.mocked(getPlayer)).not.toHaveBeenCalled();
   });
 });
