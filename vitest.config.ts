@@ -36,6 +36,11 @@ export default defineConfig({
         "src/lib/firebase/repositories/players.ts",
         "src/lib/firebase/repositories/structures.ts",
         "src/lib/firebase/repositories/users.ts",
+        // Phase A.2 (05-post-launch-polish): Firebase Storage SDK の薄いラッパ
+        // (uploadBytes / getDownloadURL / deleteObject)。service 層
+        // (card-background.test.ts) で完全に mock 化してテスト済みのため、
+        // 他 SDK ラッパと同じ基準で対象外。
+        "src/lib/firebase/repositories/cardBackgroundStorage.ts",
       ],
       thresholds: {
         lines: 80,
