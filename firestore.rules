@@ -334,6 +334,23 @@ service cloud.firestore {
             )
           )
         )
+      ) || (
+        // dryrun-feedback-batch-1 (Phase C.1): organizer による latestJoinCodeId の単独書換。
+        //   `generateJoinCode` service が新コード発行直後に呼び出すライフサイクル管理用ポインタ。
+        //   `joinCodeId`（self-add rule の consumption proof）とは別フィールド・別ブランチで管理。
+        //   affectedKeys は 'latestJoinCodeId' のみに限定。他フィールドは触らせない。
+        //   string または null のみ許可（null は「最新コード追跡解除」を意味する）。
+        //   organizer は元々サークルの全 CRUD を持つ信頼ロールのため、空値書込のリスクは許容範囲。
+        isOrganizer(gid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['latestJoinCodeId'])
+        && (
+          request.resource.data.latestJoinCodeId == null
+          || (
+            request.resource.data.latestJoinCodeId is string
+            && request.resource.data.latestJoinCodeId.size() >= 1
+          )
+        )
       );
 
       allow delete: if isSignedIn()
@@ -401,8 +418,13 @@ service cloud.firestore {
                     && (resource.data.maxUses == null
                         || request.resource.data.usesCount <= resource.data.maxUses);
 
+      // dryrun-feedback-batch-1 (Phase C.1): delete を `isOwner` から `isOrganizer` に widening。
+      //   `generateJoinCode` が再発行時に旧コードを best-effort delete する経路を有効化するため、
+      //   issue 経路（create: isOrganizer）と delete 経路の権限を揃える整合性向上。
+      //   `generateJoinCode` 自体が assertOrganizer を service 層でも enforce するため、
+      //   一般 member が直接 `deleteJoinCode` を呼んでも rule で deny される。
       allow delete: if isSignedIn()
-                    && isOwner(resource.data.gid);
+                    && isOrganizer(resource.data.gid);
     }
 
     // structures: read は group メンバー、write は organizer のみ
