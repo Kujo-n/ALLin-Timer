@@ -21,15 +21,17 @@ export function TournamentNewClient() {
     }
   }, [loading, isOrganizer, router]);
 
-  // Phase 4.16: `[サークル名]トーナメント-X` を name 欄のデフォルト値として渡す
+  // Phase 4.16 / dryrun-feedback-batch-1: `Tournament-No.X` を name 欄のデフォルト値として渡す
   //   （X = 終了済みトーナメント数 + 1）。`useCurrentGroup` 既ロードの `groups` から
   //   派生するため追加 fetch 不要。legacy doc は zod default で 0 として hydrate されるため
   //   `g.finishedTournamentCount` は常に number（fallback 不要）。
+  //   旧 `[サークル名]トーナメント-X` 形式は dryrun フィードバックを受けてサークル名非依存・
+  //   簡潔な国際標準的命名に変更（finishedTournamentCount 連番は引き継ぐ）。
   const defaultName = useMemo(() => {
     if (!currentGroupId) return "";
     const g = groups.find((x) => x.id === currentGroupId);
     if (!g) return "";
-    return `[${g.name}]トーナメント-${g.finishedTournamentCount + 1}`;
+    return `Tournament-No.${g.finishedTournamentCount + 1}`;
   }, [currentGroupId, groups]);
 
   // Phase 4.17: サークル設定の `defaultSeatsPerTable` を新規作成画面の初期値として流し込む。

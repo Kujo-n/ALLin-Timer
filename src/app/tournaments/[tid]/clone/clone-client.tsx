@@ -84,7 +84,7 @@ export function CloneClient({ tid }: { tid: string }) {
   );
   const defaultName = useMemo(() => {
     if (!targetGroup) return (src?.name ?? "");
-    return `[${targetGroup.name}]トーナメント-${targetGroup.finishedTournamentCount + 1}`;
+    return `Tournament-No.${targetGroup.finishedTournamentCount + 1}`;
   }, [targetGroup, src?.name]);
 
   // 非 organizer は dashboard 経由で /live に redirect 済みだが、URL 直叩きの保険として
