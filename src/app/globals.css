@@ -27,25 +27,31 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    /*
+     * Track D Phase D.1: chic dark palette.
+     *   - background hue 220 (深ネイビー) で落ち着きを出し、stock の zinc から脱却
+     *   - foreground hue 35 (暖色シルバー) で長時間視認の眼精疲労を抑える
+     *   - ring hue 35 で focus が機械的にならず、落ち着いた暖色アクセント
+     */
+    --background: 220 30% 8%;
+    --foreground: 35 25% 92%;
+    --card: 222 28% 11%;
+    --card-foreground: 35 25% 92%;
+    --popover: 222 28% 11%;
+    --popover-foreground: 35 25% 92%;
+    --primary: 35 25% 92%;
+    --primary-foreground: 222 35% 12%;
+    --secondary: 220 18% 18%;
+    --secondary-foreground: 35 25% 92%;
+    --muted: 220 18% 18%;
+    --muted-foreground: 220 10% 65%;
+    --accent: 220 18% 18%;
+    --accent-foreground: 35 25% 92%;
+    --destructive: 0 65% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --border: 220 18% 18%;
+    --input: 220 18% 18%;
+    --ring: 35 25% 70%;
   }
 }
 
