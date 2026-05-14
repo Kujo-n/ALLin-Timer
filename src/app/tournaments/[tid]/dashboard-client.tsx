@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
@@ -243,6 +243,24 @@ export function DashboardClient({ tid }: { tid: string }) {
     players,
     onError: setError,
   });
+
+  // SeatingBoard / PlayerList の PD checkbox 両方で同形の handler を渡すため集約。
+  // 同卓 1 PD 制約の tx race guard は orchestrator.setIsPlayingDealer 内で行われる。
+  const handleTogglePd = useCallback(
+    async (player: PlayerDoc, value: boolean) => {
+      if (!user) return;
+      const tableMates = getSameTableActiveOtherIds(player, players);
+      await setIsPlayingDealer(
+        tid,
+        user.uid,
+        groupIds,
+        player.id,
+        value,
+        tableMates,
+      );
+    },
+    [tid, user, groupIds, players],
+  );
 
   if (timerError) {
     return (
@@ -489,17 +507,7 @@ export function DashboardClient({ tid }: { tid: string }) {
               onSaveTableLabel={async (tableNum, patch) => {
                 await updateTableLabel(tid, tableNum, patch);
               }}
-              onTogglePd={async (player, value) => {
-                const tableMates = getSameTableActiveOtherIds(player, players);
-                await setIsPlayingDealer(
-                  tid,
-                  user.uid,
-                  groupIds,
-                  player.id,
-                  value,
-                  tableMates,
-                );
-              }}
+              onTogglePd={handleTogglePd}
             />
           </CardContent>
         </Card>
@@ -511,21 +519,7 @@ export function DashboardClient({ tid }: { tid: string }) {
         subscribeError={playersError}
         canManage={isMember}
         tournamentState={data.state}
-        onTogglePd={async (player, value) => {
-          // 通常 PlayerList の PD checkbox は setup 中 (tableNum=null) のみ表示するため
-          // tableMates は空配列で済む。ただし将来 visibility を seating 以降に広げた場合の
-          // 安全策として、player.tableNum が確定していれば SeatingBoard 経路と同じ
-          // 同卓 ID 計算を行う（同卓 1 PD 制約の tx race guard を生かす）。
-          const tableMates = getSameTableActiveOtherIds(player, players);
-          await setIsPlayingDealer(
-            tid,
-            user.uid,
-            groupIds,
-            player.id,
-            value,
-            tableMates,
-          );
-        }}
+        onTogglePd={handleTogglePd}
       />
 
       <StructureSnapshotCard
