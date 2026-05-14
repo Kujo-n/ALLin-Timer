@@ -276,64 +276,28 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     }
   }
 
-  async function onStartSeason() {
-    if (!user) return;
-    setWorking(true);
-    setError(null);
-    try {
-      await startNewSeason({ gid, uid: user.uid });
-      await reload();
-      await refreshGroups();
-    } catch (e) {
-      const err = unwrapOrFrom(e, "season/start-failed", "シーズン開始に失敗しました");
-      setError(formatErrorForDisplay(err));
-    } finally {
-      setConfirmStartSeasonOpen(false);
-      setWorking(false);
-    }
-  }
-
-  async function onSaveSeasonPointsRule(next: SeasonPointsRule) {
-    if (!user) return;
-    setWorking(true);
-    setError(null);
-    try {
-      await setSeasonPointsRule({ gid, uid: user.uid, value: next });
-      await reload();
-      await refreshGroups();
-    } catch (e) {
-      const err = unwrapOrFrom(
-        e,
-        "validation/season-points-rule-invalid",
-        "ポイント計算ルールの更新に失敗しました",
-      );
-      setError(formatErrorForDisplay(err));
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function onResetSeasonPointsRule() {
-    if (!user) return;
-    setWorking(true);
-    setError(null);
-    try {
-      await setSeasonPointsRule({ gid, uid: user.uid, value: null });
-      await reload();
-      await refreshGroups();
-    } catch (e) {
-      const err = unwrapOrFrom(
-        e,
-        "validation/season-points-rule-invalid",
-        "ポイント計算ルールのリセットに失敗しました",
-      );
-      setError(formatErrorForDisplay(err));
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function runRoleAction(fn: () => Promise<void>, errorLabel: string) {
+  /**
+   * setWorking + setError(null) + try{fn → reload → refreshGroups} + catch{unwrapOrFrom + setError}
+   * + finally{closeDialog? + setWorking(false)} の共通 7 行パターンを集約する helper。
+   *
+   * 適用範囲: role 操作 4 種 / onStartSeason / onSaveSeasonPointsRule /
+   * onResetSeasonPointsRule の 7 callsite。
+   *
+   * **据え置き callsite**: onIssueCode (reload 不要 + setIssuedCode side effect) /
+   * onRename (rethrow + setError(null) しない) / onLeave / onDelete
+   * (router.push + setCurrentGroupId side effect + reload 不要)。これらは setError(null)
+   * の有無や reload skip 等で観測可能挙動が変わるため inline 維持。
+   *
+   * architect-refactor 20260514-2 finding-4 (LOW)。
+   */
+  async function runReloadRefreshAction(
+    fn: () => Promise<unknown>,
+    options: {
+      errorCode: string;
+      errorMessage: string;
+      closeDialog?: () => void;
+    },
+  ): Promise<void> {
     setWorking(true);
     setError(null);
     try {
@@ -341,11 +305,50 @@ export function GroupDetailClient({ gid }: { gid: string }) {
       await reload();
       await refreshGroups();
     } catch (e) {
-      const err = unwrapOrFrom(e, "group/role-change-failed", errorLabel);
+      const err = unwrapOrFrom(e, options.errorCode, options.errorMessage);
       setError(formatErrorForDisplay(err));
     } finally {
+      options.closeDialog?.();
       setWorking(false);
     }
+  }
+
+  async function onStartSeason() {
+    if (!user) return;
+    await runReloadRefreshAction(() => startNewSeason({ gid, uid: user.uid }), {
+      errorCode: "season/start-failed",
+      errorMessage: "シーズン開始に失敗しました",
+      closeDialog: () => setConfirmStartSeasonOpen(false),
+    });
+  }
+
+  async function onSaveSeasonPointsRule(next: SeasonPointsRule) {
+    if (!user) return;
+    await runReloadRefreshAction(
+      () => setSeasonPointsRule({ gid, uid: user.uid, value: next }),
+      {
+        errorCode: "validation/season-points-rule-invalid",
+        errorMessage: "ポイント計算ルールの更新に失敗しました",
+      },
+    );
+  }
+
+  async function onResetSeasonPointsRule() {
+    if (!user) return;
+    await runReloadRefreshAction(
+      () => setSeasonPointsRule({ gid, uid: user.uid, value: null }),
+      {
+        errorCode: "validation/season-points-rule-invalid",
+        errorMessage: "ポイント計算ルールのリセットに失敗しました",
+      },
+    );
+  }
+
+  async function runRoleAction(fn: () => Promise<void>, errorLabel: string) {
+    await runReloadRefreshAction(fn, {
+      errorCode: "group/role-change-failed",
+      errorMessage: errorLabel,
+    });
   }
 
   return (
