@@ -132,8 +132,6 @@ export function SettingsClient() {
               </Link>
             </div>
           </form>
-          <hr className="my-6 border-border" />
-          <AccountDeleteSection user={user} />
         </CardContent>
       </Card>
 
@@ -153,6 +151,13 @@ export function SettingsClient() {
           <ThemeToggle />
         </CardContent>
       </Card>
+
+      {/*
+        アカウント削除は取り消し不能・影響範囲が最大の destructive 操作のため、
+        個人設定ページの最下部に固定で配置する。新しい設定 Card を追加するときは
+        必ずこの section より上に挿入すること。
+      */}
+      <AccountDeleteSection user={user} />
     </main>
   );
 }
