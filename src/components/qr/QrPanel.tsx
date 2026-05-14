@@ -1,8 +1,8 @@
 "use client";
 
-import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
+import { ThemedQRCode } from "@/components/qr/ThemedQRCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { logger } from "@/lib/logger";
@@ -49,8 +49,14 @@ export function QrPanel({ tid, className, lateEntryDeadlineLevel }: Props) {
       <CardContent className="space-y-4">
         {url ? (
           <>
-            <div className="flex justify-center rounded-md border bg-white p-4">
-              <QRCodeSVG value={url} size={224} />
+            {/*
+              Track D Phase D.2: ThemedQRCode が resolvedTheme に応じて fg/bg を切替える。
+              dark では card / foreground tokens に揃い、light では canonical な黒/白。
+              wrapper の `bg-card` は QR 自身の bgColor と同色なので、quiet zone は外側
+              padding + QR 内部の `marginSize={4}` で二重防御。
+            */}
+            <div className="flex justify-center rounded-md border bg-card p-4">
+              <ThemedQRCode value={url} size={224} />
             </div>
             <div className="space-y-2">
               <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-xs">{url}</p>

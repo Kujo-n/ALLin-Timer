@@ -1,8 +1,8 @@
 "use client";
 
-import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 
+import { ThemedQRCode } from "@/components/qr/ThemedQRCode";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -157,8 +157,9 @@ export function SpectateModeCard({
             </Button>
           </div>
           {showQr ? (
-            <div className="flex justify-center rounded-md border bg-white p-4">
-              <QRCodeSVG
+            // Track D Phase D.2: ThemedQRCode が resolvedTheme に応じて fg/bg を切替える。
+            <div className="flex justify-center rounded-md border bg-card p-4">
+              <ThemedQRCode
                 value={url}
                 size={224}
                 aria-label="観戦 URL の QR コード"

@@ -11,6 +11,12 @@ vi.mock("@/lib/services/qr", () => ({
   ),
 }));
 
+// ThemedQRCode 内部の useTheme は ThemeProvider を要求するため stub。
+// 本テストでは QR の色そのものではなく、表示/非表示と上位の振る舞いを検証する。
+vi.mock("@/lib/services/theme", () => ({
+  useTheme: () => ({ theme: "light", resolvedTheme: "light", setTheme: vi.fn() }),
+}));
+
 import { setSpectateEnabled } from "@/lib/services/tournament";
 
 import { SpectateModeCard } from "./SpectateModeCard";

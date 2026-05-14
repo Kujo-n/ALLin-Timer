@@ -33,6 +33,10 @@ vi.mock("@/lib/services/auth-actions", () => ({
 vi.mock("@/lib/services/receipt", () => ({
   joinAsCurrentUser: vi.fn().mockResolvedValue("created"),
 }));
+// QrPanel が transit で読む ThemedQRCode → useTheme を stub（Track D Phase D.2）。
+vi.mock("@/lib/services/theme", () => ({
+  useTheme: () => ({ theme: "light", resolvedTheme: "light", setTheme: vi.fn() }),
+}));
 // current-group は firebase client を import するため軽量 mock する（Phase 4.9）。
 vi.mock("@/lib/services/current-group", () => ({
   useCurrentGroup: vi.fn(() => ({
