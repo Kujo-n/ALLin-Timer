@@ -367,9 +367,11 @@ src/
 │  ├─ nav/                        # AppShell / HeaderMenuButton / PrimaryNav / nav-state（Phase 4.13 ナビ刷新）
 │  ├─ pwa/                        # ServiceWorkerRegistration / PwaInstallPromotion / IOsInstallHint
 │  │                              # / install-dismiss-storage（Phase A PWA インストール導線）
-│  ├─ qr/                         # QrPanel（受付 URL + QR）
+│  ├─ qr/                         # QrPanel（受付 URL + QR）/ ThemedQRCode（テーマ追従 QR、framed prop、Track D Phase D.1）
 │  ├─ structure/                  # StructureForm / LevelTable
 │  │                              # / StructureTemplateCard / StructureTemplatePicker（Phase 4.8）
+│  ├─ theme/                      # ThemeToggle（ライト/ダーク/system の 3 値 radiogroup、Track D Phase D.1）
+│  ├─ og/                         # CardReadabilityPreview（結果カード可読性プレビュー、Phase A.2）
 │  ├─ tournament/                 # TournamentForm / PlayerList / TimerDisplay / TimerControls / WinnerBanner
 │  │                              # / BustButton / SeatingBoard / BalancingInstructionCard
 │  │                              # / AverageStackCard / ConnectionBadge / NextBreakCard
@@ -406,13 +408,20 @@ src/
 │  │                              # / useAutoFinish / useImplicitAudioUnlock（Phase 5.1）
 │  │                              # / useInlineNumberEdit / useManualSeatChange
 │  │                              # / useOrientationLock / useWakeLock（ライブビュー画面常時表示）
-│  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer
+│  │                              # / useClipboardCopy（clipboard copy + flash パターン、20260514 refactor）
+│  ├─ utils/                      # image-resize（canvas API リサイズ + 圧縮、Phase A.2）
+│  │                              # / retry（指数 backoff の helper、Phase A.1）
+│  ├─ sw/                         # sw-allowlist（Service Worker キャッシュ対象パスの判定、test 同梱）
+│  └─ services/                   # auth-actions / receipt / qr / redirect / group / current-group / timer / tournament
 │                                 # / account-delete（通常アカウント自己削除 orchestrator、Phase 5.5）
 │                                 # / firestore-offline（offline 検知 helper）
 │                                 # / format-table-label（卓ラベル整形の純関数）
 │                                 # / tournament-state（state ガードの純関数集約、Phase 4 architect-refactor）
 │                                 # / tournament-clone（同参加者クローンの orchestrator、Phase 5.4）
 │                                 # / season-points（シーズンポイント計算の純関数、Phase A）
+│                                 # / card-background（結果カード背景画像 upload/delete service、Phase A.1）
+│                                 # / theme（ThemeProvider + useTheme、Track D Phase D.1）
+│                                 # / theme-storage（localStorage["allinpt.theme"] helper、Track D Phase D.1）
 │     └─ seating/                 # engine（純粋関数の TDA バランシング + cascade）/ orchestrator（Firestore 副作用）
 │                                 # / pd（PD rotation pure function、Phase 5.1）
 │                                 # / same-table（同卓判定 helper）/ prng
