@@ -55,12 +55,9 @@ export function InviteCodeCard({
             </p>
             {/*
               Track D Phase D.2: ThemedQRCode が resolvedTheme に応じて fg/bg を切替える。
-              wrapper の `bg-card` は QR の bgColor と同色になるため、quiet zone は外側
-              padding + QR 内部の `marginSize={4}` で二重防御。
+              framed=true（default）で内部の bg-card rounded border + p-4 wrapper を持つ。
             */}
-            <div className="flex justify-center rounded-md border bg-card p-4">
-              <ThemedQRCode value={inviteUrl} size={192} aria-label="招待 URL の QR コード" />
-            </div>
+            <ThemedQRCode value={inviteUrl} size={192} aria-label="招待 URL の QR コード" />
             <div className="flex flex-wrap items-center gap-2">
               <Input readOnly value={inviteUrl} className="flex-1 min-w-0" />
               <Button

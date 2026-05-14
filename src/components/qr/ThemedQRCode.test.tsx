@@ -60,4 +60,36 @@ describe("ThemedQRCode", () => {
     const svg = container.querySelector("svg");
     expect(svg?.getAttribute("aria-label")).toBe("参加 URL の QR コード");
   });
+
+  it("framed=true（default）のとき `bg-card` rounded border wrapper で囲んで描画する", () => {
+    useThemeMock.mockReturnValue({
+      theme: "light",
+      resolvedTheme: "light",
+      setTheme: vi.fn(),
+    });
+    const { container } = render(
+      <ThemedQRCode value="https://example.test/join/t1" />,
+    );
+    const wrapper = container.firstElementChild;
+    expect(wrapper?.tagName).toBe("DIV");
+    expect(wrapper?.className).toContain("rounded-md");
+    expect(wrapper?.className).toContain("border");
+    expect(wrapper?.className).toContain("bg-card");
+    expect(wrapper?.className).toContain("p-4");
+    // wrapper の中に SVG が居る
+    expect(wrapper?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("framed=false のとき wrapper を描画せず素の SVG を返す", () => {
+    useThemeMock.mockReturnValue({
+      theme: "light",
+      resolvedTheme: "light",
+      setTheme: vi.fn(),
+    });
+    const { container } = render(
+      <ThemedQRCode value="https://example.test/join/t1" framed={false} />,
+    );
+    // 最上位が SVG
+    expect(container.firstElementChild?.tagName).toBe("svg");
+  });
 });

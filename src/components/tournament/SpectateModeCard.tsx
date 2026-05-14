@@ -143,13 +143,12 @@ export function SpectateModeCard({
           </div>
           {showQr ? (
             // Track D Phase D.2: ThemedQRCode が resolvedTheme に応じて fg/bg を切替える。
-            <div className="flex justify-center rounded-md border bg-card p-4">
-              <ThemedQRCode
-                value={url}
-                size={224}
-                aria-label="観戦 URL の QR コード"
-              />
-            </div>
+            // framed=true（default）で内部の bg-card rounded border + p-4 wrapper を持つ。
+            <ThemedQRCode
+              value={url}
+              size={224}
+              aria-label="観戦 URL の QR コード"
+            />
           ) : null}
         </CardContent>
       ) : null}

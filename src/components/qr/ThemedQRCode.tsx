@@ -8,6 +8,13 @@ interface ThemedQRCodeProps {
   value: string;
   size?: number;
   "aria-label"?: string;
+  /**
+   * `<div className="flex justify-center rounded-md border bg-card p-4">` の
+   * 装飾 wrapper で囲むかどうか。default true。3 callsite（QrPanel / InviteCodeCard /
+   * SpectateModeCard）で同形だった wrapper を集約する目的（architect-refactor 20260514
+   * finding-2）。framed=false にすると素の SVG のみを返す。
+   */
+  framed?: boolean;
 }
 
 /**
@@ -18,7 +25,7 @@ interface ThemedQRCodeProps {
  *     純白の塊が浮かないようにする。スマホ前提なら反転 QR は iOS 11+ /
  *     最新 Android Camera / LINE / 決済アプリで問題なく読み取れる
  *   - `marginSize={4}` で QR 仕様準拠の 4 モジュール quiet zone を SVG 内部に確保
- *     （外側 wrapper の `bg-card p-4` と二重防御）
+ *     （framed=true のとき外側 wrapper の `bg-card p-4` と二重防御）
  *
  * ⚠ DRIFT WARNING: dark の bgColor / fgColor は [globals.css](../../app/globals.css)
  * の `.dark` ブロック `--card` / `--foreground` と連動。テーマ palette を変更した場合は
@@ -28,6 +35,7 @@ export function ThemedQRCode({
   value,
   size = 224,
   "aria-label": ariaLabel,
+  framed = true,
 }: ThemedQRCodeProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -35,7 +43,7 @@ export function ThemedQRCode({
   const bgColor = isDark ? "hsl(222, 28%, 11%)" : "#FFFFFF";
   const fgColor = isDark ? "hsl(35, 25%, 92%)" : "#000000";
 
-  return (
+  const svg = (
     <QRCodeSVG
       value={value}
       size={size}
@@ -44,5 +52,12 @@ export function ThemedQRCode({
       marginSize={4}
       aria-label={ariaLabel}
     />
+  );
+
+  if (!framed) return svg;
+  return (
+    <div className="flex justify-center rounded-md border bg-card p-4">
+      {svg}
+    </div>
   );
 }
