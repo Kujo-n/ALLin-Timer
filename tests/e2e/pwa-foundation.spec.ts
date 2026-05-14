@@ -37,7 +37,9 @@ test.describe("PWA Foundation (Phase A)", () => {
     expect(manifest.scope).toBe("/");
     expect(manifest.display).toBe("standalone");
     expect(manifest.theme_color).toBe("#0a0a0f");
-    expect(manifest.background_color).toBe("#ffffff");
+    // Track D Phase D.1: splash 背景を dark palette と整合させるため `#ffffff` → `#0E1422`。
+    // light モード時のブラウザ chrome 色は `<meta name="theme-color" media="(prefers-color-scheme: light)">` で別途供給。
+    expect(manifest.background_color).toBe("#0E1422");
     expect(manifest.lang).toBe("ja");
 
     const icons = manifest.icons as Array<{
@@ -95,9 +97,20 @@ test.describe("PWA Foundation (Phase A)", () => {
     const manifestLink = page.locator('link[rel="manifest"]');
     await expect(manifestLink).toHaveAttribute("href", /manifest\.webmanifest/);
 
-    // viewport.themeColor → <meta name="theme-color" content="#0a0a0f">
-    const themeColor = page.locator('meta[name="theme-color"]');
-    await expect(themeColor).toHaveAttribute("content", "#0a0a0f");
+    // Track D Phase D.1: viewport.themeColor は light / dark の 2 値配列で供給され、
+    // `<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa">` と
+    // `<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E1422">` の
+    // 2 タグが head に並ぶ。strict locator の二重ヒットを避けるため individual に検証する。
+    const lightThemeColor = page.locator(
+      'meta[name="theme-color"][media="(prefers-color-scheme: light)"]',
+    );
+    const darkThemeColor = page.locator(
+      'meta[name="theme-color"][media="(prefers-color-scheme: dark)"]',
+    );
+    await expect(lightThemeColor).toHaveAttribute("content", "#fafafa");
+    await expect(darkThemeColor).toHaveAttribute("content", "#0E1422");
+    // 合計 2 タグであること（旧 single tag が残置していないことの negative 検証）
+    await expect(page.locator('meta[name="theme-color"]')).toHaveCount(2);
 
     // appleWebApp.title (capable) → Next.js 15 は title を必ず吐き、capable も状態に応じて吐く。
     // ただし `apple-mobile-web-app-capable` は近年「`mobile-web-app-capable` を使え」という
