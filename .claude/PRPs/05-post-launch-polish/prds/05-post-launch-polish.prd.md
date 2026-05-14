@@ -44,11 +44,16 @@ PRD 01〜04（Foundation / シーズン戦績 / PWA / 観戦モード）が完�
   - ドライラン投入直後に挙がった改善要望を「単発 PRD として独立させるほどの大きさはないが
     放置するとユーザー体験 / データ衛生に影響する」粒度で 1 phase = 複数改善の bundle として扱う
   - Phase C.1（本 batch）: トーナメントデフォルト名 + 一覧の参加済み表示 + 招待コード自動整理 + 匿名 Auth クリーンアップ script
+- **Track D: Chic Dark Theme & Theme Toggle**（シックなダークモード基調 + 個人単位テーマ切替）
+  - 「夜帯セッション / SNS スクリーンショット見栄え」要望に応える chic 配色のダークパレットと、
+    Light / Dark / System の 3 状態トグル UI を 1 PR に bundle。`next-themes` 非採用（手動実装）。
+    真実源は `localStorage["allinpt.theme"]`（個人 preference / 端末ごとに独立）。Firestore / `groups/{gid}` / rule
+    変更ゼロ。サークル単位設定への昇格は将来候補（D.2 以降）
 
 将来的な追加 Track 候補（着手は別途判断）:
 
-- Track D: 結果カードのテキストスタイル選択肢拡張
-- Track E: 共有 URL 短縮 / カスタム OG image preset
+- Track E: 結果カードのテキストスタイル選択肢拡張
+- Track F: 共有 URL 短縮 / カスタム OG image preset
 - 他、ドライラン中に発生する小〜中規模の polish
 
 ## Key Hypothesis
@@ -303,6 +308,7 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | A.3   | Track A: Layout Polish & Readability        | 初版: 上下スクリム + テキストグループ rgba box overlay。Post-merge polish で 2 段転換: ①box 全廃 + scrim 弱化 + text-shadow ②winner レイアウト確定（最上部中央 / 真ん中 / 最下部中央寄せ footer-box 4 要素 + 縦線区切り）+ `groupName` クエリ追加 + Satori `textShadow:undefined` クラッシュ対策。詳細は plan/report の Post-merge follow-up セクション | complete    | -        | A.2     | [phase-a.3-layout-polish-and-readability.plan.md](../plans/completed/phase-a.3-layout-polish-and-readability.plan.md) — Report: [phase-a.3-layout-polish-and-readability-report.md](../reports/phase-a.3-layout-polish-and-readability-report.md) |
 | B.1   | Track B: Top Page Promotion (note 記事リンク)   | トップ画面 `/` に note 公開記事 2 本（アプリ紹介 / 運営チートシート）への外部リンクを常時表示。`Button asChild` + `<a>` パターンで描画、a11y / e2e PageObject 対応 | complete    | with A.1 | -       | [note-articles-link-on-top-page.plan.md](../plans/completed/note-articles-link-on-top-page.plan.md) — Report: [note-articles-link-on-top-page-report.md](../reports/note-articles-link-on-top-page-report.md) |
 | C.1   | Track C: Dryrun Feedback Batch 1                | (1) トーナメントデフォルト名を `Tournament-No.X` に簡潔化 / (2) 一覧で member の参加済み tournament を「参加済み」ボタンで明示 / (3a) 招待コード再発行時に旧コードを `latestJoinCodeId` 経由で best-effort delete + `groupJoinCodes` delete rule を organizer に widening / (3b) 7 日以上経過した匿名 Auth ユーザーを admin script `cleanup-old-anonymous-users` で bulk 削除 / (4) `finishTournament` tx で `spectateEnabled=false` を additive 書込し終了済み tournament の anon 公開放置を防止 | complete | -        | -       | [dryrun-feedback-batch-1.plan.md](../plans/completed/dryrun-feedback-batch-1.plan.md) — Report: [dryrun-feedback-batch-1-report.md](../reports/dryrun-feedback-batch-1-report.md) |
+| D.1   | Track D: Chic Dark Theme & Theme Toggle         | `globals.css` の `.dark` パレットを「深ネイビー + 暖色シルバー + 銀アクセント」の chic 配色に塗替え、`ThemeProvider`（手動実装・依存追加なし・個人単位 preference）+ **`/settings` 画面に新規「テーマ」Card を additive 追加（3 状態 radio、aria-radiogroup）** + FOUC 防止 inline script + `viewport.themeColor` の light/dark 2 値化 + ハードコード色（QR `bg-white` / amber グラデの dark variant 欠落）の補完 + `error-logging.md` への `theme/*` prefix 追加を 1 PR に bundle。OG 画像 / firestore.rules / DB schema / `groups/{gid}` / `PrimaryNav.tsx` への変更ゼロ。signed-out / 匿名は OS 設定追従 | complete    | -        | -       | [track-d-chic-dark-theme.plan.md](../plans/completed/track-d-chic-dark-theme.plan.md) — Report: [track-d-chic-dark-theme-report.md](../reports/track-d-chic-dark-theme-report.md) |
 
 ### Phase Details
 
@@ -468,6 +474,52 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
   - `firebase deploy --only firestore:rules` 完了
   - PRD 05 / 関連 rule ファイルが同 PR で更新済み
 
+**Phase D.1: Track D: Chic Dark Theme & Theme Toggle**
+
+- **Goal**: アプリ全体に「シックなダークモード」を **個人単位の preference として** 導入する。
+  ユーザーが端末ごとに Light / Dark / System を選択し、`localStorage["allinpt.theme"]` に永続化する。
+  chic palette は深ネイビー基調 + 暖色シルバー + 銀アクセント。Light は据置。`next-themes` 非採用（手動実装）。
+  Firestore / `groups/{gid}` / rule への変更ゼロ
+- **Scope (D.1 — 詳細は plan ファイル参照)**:
+  - **chic palette**: `src/app/globals.css` の `.dark` ブロックを chic 配色に塗替え
+    （HSL: background 220/30%/8%, foreground 35/25%/92%, ring 35/25%/70% 等）
+  - **localStorage helper**: `src/lib/services/theme-storage.ts` を新規追加。`localStorage["allinpt.theme"]` の
+    read/write、SSR ガード、`logger.warn("theme/storage-failed")`
+  - **ThemeProvider**: `src/lib/services/theme.tsx` を新規追加。`ThemeProvider` + `useTheme` hook、
+    matchMedia 連動、html.dark toggle
+  - **トグル UI**: `src/components/theme/ThemeToggle.tsx` を新規追加。Sun / Moon / Monitor の segmented control、
+    `role="radiogroup"` + 各 radio の aria-label で WCAG 4.1.2 対応
+  - **layout 改修**: `src/app/layout.tsx` の `<head>` 内 inline script で FOUC 防止 +
+    `<html suppressHydrationWarning>` + `viewport.themeColor` を light/dark 2 値配列 + Provider 階層に
+    `ThemeProvider` を **AuthProvider の外側**に追加（認証 state 非依存）
+  - **`/settings` 集約**: `src/app/settings/settings-client.tsx` の既存「アカウント設定」`<Card>` の下に
+    新規「テーマ」`<Card>` を additive 追加（中で `<ThemeToggle />` + 「設定はこの端末にのみ保存されます」の説明文）。
+    サイドバー footer / ヘッダー / 他画面には theme トグルを置かない（個人設定の集約場所一本化）
+  - **manifest**: `src/app/manifest.ts` の `background_color` を dark 寄り `#0E1422` に更新
+  - **ハードコード色補完**: QR `bg-white` × 3 箇所 → `bg-card` / WinnerBanner の `to-yellow-200` に dark variant
+  - **規約**: `error-logging.md` に `theme/*` プレフィックス追加（`pwa/*` と同列）
+  - **テスト**: 新規 3 ファイル（theme.test.tsx / theme-storage.test.ts / ThemeToggle.test.tsx）。
+    既存 `StructureSnapshotCard.test.tsx` は sky-500 token 据置のため **無修正**
+- **Success signal**:
+  - `npm run typecheck` / `npm run lint` / `npm run build` / `npm test` 全 green
+  - dev サーバで初回ロード時に FOUC が無く、`prefers-color-scheme: dark` の OS では即座に dark UI が描画される
+  - signed-in アカウントで `/settings` を開き「テーマ」Card のトグルで 3 状態切替が機能し、リロード後も preference 保持
+  - サイドバー / ヘッダー / 他画面に theme トグル UI が **存在しない** こと
+  - QR コードがダーク背景でもカメラ読取可能
+  - signed-out / 匿名ユーザーは明示切替不可だが、初期値 `system` で OS 設定追従するため UI 破綻なし
+  - PWA インストール時の chrome / splash 色が新パレットと整合
+  - OG SSR route / `firestore.rules` / DB schema は **無変更**（diff で確認）
+  - Codex review 通過
+- **転換履歴（2026-05-13、3 回）**:
+  1. 本 Phase 初版は「個人 preference + localStorage 永続化 + サイドバー footer の ThemeToggle」方針
+  2. **第 1 次転換**: ユーザー「色の設定はサークル単位で保持したい」要求で Firestore ベース・運営者管理方針に転換
+     （`groups/{gid}.theme` additive 追加 + `ThemeSettingCard` + GroupProvider 内側配置）
+  3. **第 2 次転換**: ユーザー「個人単位の設定に戻します」要求で個人 preference に再回帰（サイドバー footer 配置）
+  4. **第 3 次転換（最終）**: ユーザー「設定は個人設定の欄にまとめて」要求で、トグル UI を **`/settings` 画面の
+     新規「テーマ」Card に集約**。サイドバー footer 改修を撤回し、PrimaryNav.tsx は touch しない。副次効果として
+     signed-out / 匿名ユーザーは明示切替不可だが、初期値 `system` で OS 設定追従するため UI 破綻はない。
+     `/settings` を「個人設定の集約場所」として育てる方針
+
 ### Parallelism Notes
 
 - **A.1 と B.1 は並列可能**。Track A は Storage / Firestore / OG route 系の変更で、Track B は
@@ -476,7 +528,11 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
   A.2 が完了しないと OG route が背景画像を読まない）
 - **Track C は Track A / B と独立**で並列可能。touch ファイルは Tournament 一覧 / 招待コード / cleanup script
   系のみで Track A / B とは重ならない
-- **将来追加 Track**: Track D 以降が立ち上がる場合、原則として既存 Track と並列。Track 間で共通
+- **Track D は Track A / B / C と独立**で並列可能。touch ファイルは globals.css / Provider 階層 /
+  PrimaryNav footer / 一部 hardcoded color 箇所 / `error-logging.md` のみで他 Track と重ならない
+  （manifest.ts のみ Track 横断だが本 Track 完了時点で重複編集はない）。DB schema / `firestore.rules` /
+  `groups/{gid}` への変更ゼロのため deploy も rules / functions 系の作業を伴わない
+- **将来追加 Track**: Track E 以降が立ち上がる場合、原則として既存 Track と並列。Track 間で共通
   helper / lib に touch する場合は別 plan で抽出を分離
 
 ---
@@ -521,6 +577,23 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 | 改善 3b: 即時 self-delete と bulk cleanup の削除対象を一致 | 両経路とも `users/{uid}` + Auth user のみ削除、`players` / `seasonStats` は残す | bulk のみ player も消す（非対称） | 即時には残るのに 1 週間経つと消える、という UX 非対称を回避。両経路を「同じデータセットをタイミング違い」にすることで一貫性を保つ |
 | 改善 4: 観戦 URL を `finishTournament` tx で自動 OFF | `tx.update(ref, {...})` に `spectateEnabled: false` を additive 追加 | 別の自動化（schedule task / `setSpectateEnabled` service の自動呼出）/ rule で「終了済み tournament の spectate read を deny」/ 手動 OFF を運営者に依頼するドキュメント追記のみ | 終了処理と同一 tx に同梱することで「終了したのに観戦 ON のまま」状態を生じさせない。rule 変更不要（broad organizer update が既に許可済み）。終了済み + 再 ON の運用自由度は維持（運営者が手動で再 ON できる UX を阻害しない） |
 | 改善 4: 旧 doc の遡及 backfill は行わない | 過去の `state=finished` tournament の `spectateEnabled` は据え置き | migration script で全 finished tournament を spectateEnabled=false に遡及 | 既存運営者は手動で OFF にできる UI を既に持っており、データ衛生として急務ではない。週次 `cleanup-orphan-firestore.ts` で同類の衛生課題は別途扱う方針と整合 |
+| Track D を新規追加 | 「シックなダークモード基調デザイン」を既存の post-launch-polish PRD に新規 Track D として bundle | 独立 PRD 06 として立てる / Track A / B / C のいずれかに追記 | 「リリース後の UI polish」テーマで本 PRD の趣旨と整合。Storage / OG / 受付フロー（Track A / B / C のテーマ）とは独立で、bundle 先が無い。Track A〜C と並列で進行可能 |
+| Track D: テーマ設定の保持単位（最終確定） | **個人 preference（`localStorage["allinpt.theme"]`、端末ごとに独立）** | サークル単位（`groups/{gid}.theme`）/ アカウント単位（`users/{uid}`） | 2026-05-13 に 2 度の方針転換を経て個人単位で確定。理由: (1) 個人の見え方の好みは端末ごとに違うのが自然、(2) サークル単位ブランディングは結果カード [Track A] や招待動線 [Track B] で既に提供されている、(3) DB schema / rule / emulator validator / 規約ファイル touch ゼロでシンプルに完結、(4) signed-out / 観戦モード（anon）でも機能する |
+| Track D: 方針転換の audit trail | 初版 = 個人 preference → 第 1 次転換 = サークル単位（Firestore + `ThemeSettingCard`）→ 第 2 次転換 = 個人 preference に再回帰 | 履歴を消して最終方針のみ残す | 設計判断の経緯を残すことで future-self / Codex review / 後続開発者に「なぜこの選択か」の context を提供。同様の要求が再発したときの参照点になる |
+| Track D: `next-themes` 非採用 | `ThemeProvider` を手動実装（< 100 行）+ FOUC 防止 inline script | `next-themes` パッケージを `npm install` で追加 | security-base.md の「依存追加 ask モード」規約 + プロジェクト全体のミニマル依存方針。差分が小さく、SSR ガード / matchMedia / localStorage の 3 要素は既存 `current-group.tsx` / `install-dismiss-storage.ts` の先例パターンで完結する |
+| Track D: ThemeProvider の Provider 階層配置 | `AuthProvider` の **外側**（最上位）に配置 | `AuthProvider` の内側 / `GroupProvider` の内側 | テーマは認証 state に依存せず、ログイン前 / 匿名 / signed-in の全画面で同じ切替経路を持つべき。認証 Provider の外側に置くことで「認証エラー画面でもテーマが効く」「Provider 順序の依存ループを生まない」 |
+| Track D: OG 画像経路は対象外 | Satori が CSS 変数を解決しない構造のため Track A の `bgTextTheme` query で dual-theme 済み | OG 画像にも自動で dark variant を生成 | OG 画像はサーバサイド SSR + Vercel CDN cache の前提で、ユーザー個別 theme preference に追従させると cache 命中率が崩壊する。SNS シェアでは既存の light/dark 両カラーパターン（bgTextTheme query）で十分 |
+| Track D: 切替 UI 配置（最終確定） | **`/settings` 画面の新規「テーマ」Card に集約**（既存「アカウント設定」Card の下に並列追加） | サイドバー footer / ヘッダー右側 / トップ画面 / 複数箇所同時配置 | ユーザー要求「設定は個人設定の欄にまとめて」（2026-05-13 第 3 次転換）に直接対応。`/settings` を「個人設定の集約場所」として育てる方針と整合。副次メリット: (a) PrimaryNav.tsx を touch せず PR 差分が小さい、(b) サイドバー footer の現状（アカウント名 + ログアウト）の最小構成が保たれる、(c) 既存「アカウント設定」と同じ Card パターンで一貫性。副次デメリット: signed-out / 匿名は `/settings` に到達できないため明示切替不可（OS 設定追従で UX 破綻なし） |
+| Track D: signed-out / 匿名ユーザーの挙動 | 明示切替不可。ThemeProvider は全画面で動作し初期値 `system` で OS 設定追従 | signed-out / 匿名でもトグルを出す（ヘッダー / トップ画面に追加配置） | 個人設定の集約場所として `/settings`（`RequireAuth(allowAnonymous=false)`）を採用したため、未認証経路には到達できないのが必然。OS 設定追従で大半のユーザーは違和感なし。要望が増えれば D.2 でヘッダ右側に最小トグルを additive する選択肢を残す |
+| Track D: 切替値の永続化 | `localStorage["allinpt.theme"]`（既存 `allinpt.*` 命名規約に準拠） | Firestore に persistent / cookie | クライアント preference でデバイス横断同期が不要。`allinpt.currentGroupId` / `allinpt.pwaInstallDismissedAt` と同じ shape。SSR cookie 経由にすると Provider / Server Component への影響が大きく ROI 低 |
+| Track D: FOUC 防止 | `<head>` 直下 inline `<script>` で `localStorage["allinpt.theme"]` を読み、hydration 前に html.dark を設定 + `<html suppressHydrationWarning>` | SSR cookie 経路 / フラッシュを許容 | next-themes と等価な最小コードで実現可能。SSR cookie 経路は実装範囲が広がり Track の粒度を超える。フラッシュ許容は UX が悪い |
+| Track D: viewport.themeColor を 2 値化 | `[{ media: "(prefers-color-scheme: light)", color: "#fafafa" }, { media: "(prefers-color-scheme: dark)", color: "#0E1422" }]` | 単値据置 / dynamic に書換 | Next.js 15 の `Viewport` type が配列形式を公式サポート。ブラウザ chrome（モバイル URL バー / status bar）が OS 設定に追従。dynamic 書換は inline script の責務肥大化を招く |
+| Track D: PWA manifest の theme_color は単値据置 | `theme_color` は `#0a0a0f` のまま / `background_color` のみ dark 寄り `#0E1422` に微調整 | manifest.ts を dynamic 化 / theme_color も dual | PWA manifest は build 時 static で 1 色しか宣言できない仕様。dark 寄りで固定するのが「シック基調」の意図と整合 |
+| Track D: chic palette の hue 選定 | Background hue 220（深ネイビー）/ Foreground hue 35（暖色シルバー）/ Ring hue 35（銀色 focus ring） | shadcn stock zinc（hue 240）維持 / amber / gold 主導 | 220 はポーカー業界のクラシック調 + 落ち着きを体現。35 hue の暖色シルバーは長時間視認でも目に優しい。stock zinc は無機質、amber 主導は派手すぎ |
+| Track D: ハードコード色対策の最小化 | `bg-white` 3 件と `to-yellow-200` 1 件のみ補完。`bg-black` の Dialog/Sheet overlay は据え置き | 全 hardcoded 色を semantic token に統一 | Dialog/Sheet overlay の `bg-black/80` は shadcn 公式の overlay 規約で light/dark 両モードで機能する（黒の半透明は両モードで暗くなる）。全置換は YAGNI |
+| Track D: 既存テストの className assert 修正 | `StructureSnapshotCard.test.tsx` の `bg-sky-500/10` literal は無修正で維持（sky token は本 Track で触らないため） | regex / token-agnostic に置換 | sky-500 は本 Track のパレット塗替え対象外（state 色 = amber / sky / emerald は意味論的に固定）。literal でも green が保たれる |
+| Track D: 端末横断同期なしを受容 | 個人 preference のためデバイスごとに独立 | アカウント単位で Firestore に保存して同期 | 同期するためには `users/{uid}` の write 経路が必要で複雑度が増す。複数端末ユーザーは初回 system fallback で OS 設定に追従するため、実用上の苦痛は小さい。要求が強くなれば D.2 で `users/{uid}.themeOverride` を additive 追加 |
+| Track D: メンバー間で theme が異なることを受容 | 個人 preference のため同じサークルでもメンバー間で theme が一致しない | サークル単位設定にして統一 | サークル統一は要件ではなく、見え方の好みは個人ごとに違うのが自然（2026-05-13 第 2 次転換の判断）。サークルブランディングは結果カード / OG image / 招待 URL で既に提供済み |
 
 ---
 
@@ -557,4 +630,8 @@ shadcn `Button asChild`）の組み合わせのみで完結。Storage / Firestor
 _Originally generated as `05-result-card-image-bg.prd.md`: 2026-05-10_
 _Renamed and re-scoped to `05-post-launch-polish.prd.md`: 2026-05-10_
 _Track C added: 2026-05-13_
-_Status: DRAFT - Track A complete (A.1 / A.2 / A.3) / Track B Phase B.1 complete / Track C Phase C.1 complete_
+_Track D added: 2026-05-13_
+_Track D re-scoped to per-circle setting: 2026-05-13_
+_Track D re-scoped back to per-user setting: 2026-05-13_
+_Track D toggle placement consolidated under /settings (final): 2026-05-13_
+_Status: DRAFT - Track A complete (A.1 / A.2 / A.3) / Track B Phase B.1 complete / Track C Phase C.1 complete / Track D Phase D.1 complete（個人単位設定・`/settings` 集約方針・最終確定）_
