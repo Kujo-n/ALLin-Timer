@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ThemedQRCode } from "@/components/qr/ThemedQRCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { logger } from "@/lib/logger";
+import { useClipboardCopy } from "@/lib/hooks/useClipboardCopy";
 import { buildJoinUrl } from "@/lib/services/qr";
 
 interface Props {
@@ -21,25 +21,11 @@ interface Props {
 
 export function QrPanel({ tid, className, lateEntryDeadlineLevel }: Props) {
   const [url, setUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useClipboardCopy(url);
 
   useEffect(() => {
     setUrl(buildJoinUrl(tid));
   }, [tid]);
-
-  async function onCopy() {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      logger.warn("clipboard copy failed", {
-        code: "clipboard/unavailable",
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
 
   return (
     <Card className={className}>
@@ -60,7 +46,7 @@ export function QrPanel({ tid, className, lateEntryDeadlineLevel }: Props) {
             </div>
             <div className="space-y-2">
               <p className="break-all rounded-md bg-muted px-3 py-2 font-mono text-xs">{url}</p>
-              <Button variant="outline" size="sm" onClick={onCopy}>
+              <Button variant="outline" size="sm" onClick={() => void copy()}>
                 {copied ? "コピーしました" : "URL をコピー"}
               </Button>
             </div>

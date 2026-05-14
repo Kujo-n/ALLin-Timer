@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import { ThemedQRCode } from "@/components/qr/ThemedQRCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { logger } from "@/lib/logger";
+import { useClipboardCopy } from "@/lib/hooks/useClipboardCopy";
 
 interface InviteCodeCardProps {
   /** 発行済みの招待コード文字列。null なら未発行（Input 非表示）。 */
@@ -35,26 +33,7 @@ export function InviteCodeCard({
   onCopyError,
 }: InviteCodeCardProps) {
   const inviteUrl = issuedCode ? `${origin}/groups/join/${issuedCode}` : null;
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    setCopied(false);
-  }, [issuedCode]);
-
-  async function onCopy() {
-    if (!inviteUrl) return;
-    try {
-      await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      logger.warn("clipboard copy failed", {
-        code: "clipboard/unavailable",
-        message: e instanceof Error ? e.message : String(e),
-      });
-      onCopyError?.("clipboard/unavailable: クリップボードにコピーできませんでした");
-    }
-  }
+  const { copied, copy } = useClipboardCopy(inviteUrl, { onError: onCopyError });
 
   return (
     <Card>
@@ -88,7 +67,7 @@ export function InviteCodeCard({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => void onCopy()}
+                onClick={() => void copy()}
                 aria-label="招待 URL をコピー"
               >
                 {copied ? "コピーしました" : "URL をコピー"}

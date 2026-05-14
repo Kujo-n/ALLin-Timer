@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
-import { logger } from "@/lib/logger";
+import { useClipboardCopy } from "@/lib/hooks/useClipboardCopy";
 import { buildSpectateUrl } from "@/lib/services/qr";
 import { setSpectateEnabled } from "@/lib/services/tournament";
 
@@ -55,9 +55,9 @@ export function SpectateModeCard({
 }: SpectateModeCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
+  const { copied, copy } = useClipboardCopy(url, { onError });
 
   // SSR では `window.location.origin` が undefined。クライアント hydrate 後に確定する。
   useEffect(() => {
@@ -94,21 +94,6 @@ export function SpectateModeCard({
     }
   }
 
-  async function onCopy() {
-    if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      logger.warn("clipboard copy failed", {
-        code: "clipboard/unavailable",
-        message: e instanceof Error ? e.message : String(e),
-      });
-      onError("clipboard/unavailable: クリップボードにコピーできませんでした");
-    }
-  }
-
   return (
     <Card aria-label="spectate-mode-card">
       <CardHeader>
@@ -142,7 +127,7 @@ export function SpectateModeCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void onCopy()}
+              onClick={() => void copy()}
               aria-label="観戦 URL をコピー"
             >
               {copied ? "コピーしました" : "URL をコピー"}
