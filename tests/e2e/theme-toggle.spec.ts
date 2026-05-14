@@ -28,8 +28,9 @@ test.describe("Track D: テーマ切替", () => {
 
     await page.goto("/settings");
 
-    // テーマ Card と radiogroup が visible（CardTitle "テーマ" + radiogroup aria-label "テーマ"）
-    await expect(page.getByRole("heading", { name: "テーマ" })).toBeVisible();
+    // テーマ Card と radiogroup が visible（CardTitle "テーマ" + radiogroup aria-label "テーマ"）。
+    // `<CardTitle>` は shadcn の素朴な `<div>` で heading role を持たないため、テキスト一致で確認する。
+    await expect(page.getByText("テーマ", { exact: true })).toBeVisible();
     const radiogroup = page.getByRole("radiogroup", { name: "テーマ" });
     await expect(radiogroup).toBeVisible();
 
