@@ -6,8 +6,8 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
   - .claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md
-targetPhase: Phase A・B・C・D 完了時点（PWA 基盤・タイマーのオフライン耐性・端末制御・インストール促進）/ 観戦モードの PWA キャッシュ拡張は 04-spectate-mode Phase 4 完了時点
-lastUpdated: 2026-05-10
+targetPhase: Phase A・B・C・D 完了時点（PWA 基盤・タイマーのオフライン耐性・端末制御・インストール促進）/ 観戦モードの PWA キャッシュ拡張は 04-spectate-mode Phase 4 完了時点 / モバイル status bar とスプラッシュ背景色の dark 寄り更新およびテーマ追従は 05-post-launch-polish Track D Phase D.1 完了時点
+lastUpdated: 2026-05-14
 status: stable
 ---
 
@@ -61,6 +61,8 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 - スマートフォン・PC のホーム画面 / デスクトップに、ALLin-PokerTimer のアイコンを追加できる
 - アイコンをタップすると、ブラウザの URL バーやタブが見えない **standalone モード**（専用アプリのような表示）で起動する
 - アプリ名（ALLin-PokerTimer）・テーマカラー・起動時の背景色が定義済みで、OS のスプラッシュ画面に反映される
+- スプラッシュ背景色はダーク基調（深ネイビー）にしてあり、ホーム画面追加後の起動画面が違和感なくダークパレットに繋がる
+- モバイルブラウザのアドレスバー / status bar の色はアプリ側で **ライト用 / ダーク用の 2 値を提供** しており、利用者の端末 OS 設定（昼夜モード）に応じて自動で切り替わる
 
 #### 3.1.2 誰が・いつ使うか
 
@@ -82,6 +84,7 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 - **Desktop Chrome / Edge** ではアドレスバー右端のインストールアイコンから追加できる
 - インストール後もブラウザ版の利用は続けられる（強制ではない）
 - iOS では **約 7 日間アプリを開かないと内部のキャッシュが自動削除される** OS の仕様がある。月 1 回開催のサークルでは毎回起動時に部品が再取得される（数秒の起動遅延）
+- スプラッシュ画面の色（PWA インストール後のホーム画面アイコン起動時に最初に出る背景）は **ダーク寄りの 1 色固定**。OS のテーマ設定によらず同じ色が出る（モバイルブラウザの仕様で manifest は単一色しか定義できないため）。一方アプリ起動後の本体配色はテーマ切替に追従する（[11-theme-and-display.spec.md](11-theme-and-display.spec.md)）
 
 ### 3.2 インストール促進バナー（トップ画面 / 全ユーザー）
 
@@ -291,8 +294,10 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 - 関連: 音声通知の自動再生解除は [07-audio-notifications.spec.md](07-audio-notifications.spec.md)
 - 関連: トーナメント受付・運営の入口は [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: 観戦モードの公開仕様（PWA キャッシュ対象に追加された経緯）は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
+- 関連: PWA 起動後のアプリ本体配色と OS 設定追従の関係は [11-theme-and-display.spec.md](11-theme-and-display.spec.md)
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) Phase A（PWA 基盤）/ Phase B（タイマーのオフライン耐性）/ Phase C（端末制御）/ Phase D（インストール促進・最終仕上げ）
 - 関連 PRD: [04-spectate-mode.prd.md](../../.claude/PRPs/04-spectate-mode/prds/04-spectate-mode.prd.md) Phase 4（観戦ページの PWA キャッシュ追加）
+- 関連 PRD: [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Track D Phase D.1（スプラッシュ背景色の dark 寄り更新 / status bar 色の light-dark dual mode 化）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -300,7 +305,7 @@ iOS の運営者 B さんが 1 ヶ月以上アプリを開かなかった → �
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
 - 画面: [/](/)（インストール促進バナーの mount 点）/ [/tournaments/[tid]](/tournaments/%5Btid%5D)（通信切れバナー / 画面消灯防止 / 横向きロックが動作）/ [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live)（同じく）/ [/spectate/[tid]](/spectate/%5Btid%5D)（観戦ページもキャッシュ対象）
-- 主な操作: ホーム画面に追加 / インストール促進バナーを閉じる / 通信切れバナー閲覧 / 複数タブ警告閲覧
+- 主な操作: ホーム画面に追加 / インストール促進バナーを閉じる / 通信切れバナー閲覧 / 複数タブ警告閲覧 / モバイル status bar 色の OS 設定追従
 - 設定項目: なし（OS / ブラウザ標準のインストールフロー + バナーの 30 日 dismiss のみ）
-- 関連シーン: 月 1〜2 回の運営者がホーム画面追加 → 会場到着 → タイマー起動 → 通信瞬断でも進行継続 → プロジェクタ投影中も画面が消えない / 横にならない / 終了後にホーム画面アイコンから別の日も起動できる / 観戦モード公開時に予備モニタが Wi-Fi 瞬断でも継続表示
+- 関連シーン: 月 1〜2 回の運営者がホーム画面追加 → 会場到着 → タイマー起動 → 通信瞬断でも進行継続 → プロジェクタ投影中も画面が消えない / 横にならない / 終了後にホーム画面アイコンから別の日も起動できる / 観戦モード公開時に予備モニタが Wi-Fi 瞬断でも継続表示 / モバイルブラウザの status bar 色が OS 設定（ライト / ダーク）に自動追従
 - 関連 PRD: 上記参照

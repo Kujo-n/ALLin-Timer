@@ -6,8 +6,8 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md
-targetPhase: Phase 5.x 完了時点（フィールドテスト中）/ 7 日以上経過した匿名アカウントの定期清掃 script は 05-post-launch-polish Phase C.1 完了時点
-lastUpdated: 2026-05-13
+targetPhase: Phase 5.x 完了時点（フィールドテスト中）/ 7 日以上経過した匿名アカウントの定期清掃 script は 05-post-launch-polish Phase C.1 完了時点 / [/settings](/settings) のテーマ Card は 05-post-launch-polish Track D Phase D.1 完了時点
+lastUpdated: 2026-05-14
 status: stable
 ---
 
@@ -15,7 +15,7 @@ status: stable
 
 ## 1. 概要
 
-ALLin-PokerTimer を利用するすべてのユーザーがサークルに参加・運営するための入口。サインイン方式は **Google アカウント** / **メール+パスワード** / **匿名（ゲスト）** の 3 種類があり、トーナメント受付からは 3 方式すべてが選べる。サインイン後は **表示名（最大 15 文字）** がメンバー一覧や席表に表示される。匿名のゲストはサインアウト時に自動でアカウントが削除される（やり直しの手間を残さないため）。主に [/login](/login)・[/settings](/settings)・[/join/[tid]](/join/%5Btid%5D) の 3 画面で操作する。
+ALLin-PokerTimer を利用するすべてのユーザーがサークルに参加・運営するための入口。サインイン方式は **Google アカウント** / **メール+パスワード** / **匿名（ゲスト）** の 3 種類があり、トーナメント受付からは 3 方式すべてが選べる。サインイン後は **表示名（最大 15 文字）** がメンバー一覧や席表に表示される。匿名のゲストはサインアウト時に自動でアカウントが削除される（やり直しの手間を残さないため）。主に [/login](/login)・[/settings](/settings)・[/join/[tid]](/join/%5Btid%5D) の 3 画面で操作する。[/settings](/settings) には表示名の変更だけでなく **アプリ全体のテーマ（ライト / ダーク / OS 設定追従）** の切替カードと、通常アカウントの **退会（アカウント削除）** カードも同居している。テーマ切替の詳細は [11-theme-and-display.spec.md](11-theme-and-display.spec.md) を参照（個人 preference / 端末ごと）。
 
 ## 2. 想定利用シーン
 
@@ -317,6 +317,7 @@ Google サインインだけだと、Google アカウントを持たない人が
 - 関連: サークルへの加入・脱退・役割管理は [02-circles-and-membership.spec.md](02-circles-and-membership.spec.md)
 - 関連: トーナメント受付フロー（ゲスト匿名サインインを含む）は [04-tournaments.spec.md](04-tournaments.spec.md)
 - 関連: 観戦経路はサインイン不要で URL を踏めば誰でも閲覧できる。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
+- 関連: [/settings](/settings) 画面に同居する **テーマ切替（ライト / ダーク / OS 設定追従）** は [11-theme-and-display.spec.md](11-theme-and-display.spec.md)
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) の Phase 1 / Phase 4.5 / Phase 4.7 / Phase 5.1
 - 関連 PRD: [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Phase C.1 — 古いゲスト匿名アカウントの定期清掃スクリプト
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
