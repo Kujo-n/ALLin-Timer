@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { AccountDeleteSection } from "@/components/auth/AccountDeleteSection";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -133,6 +134,23 @@ export function SettingsClient() {
           </form>
           <hr className="my-6 border-border" />
           <AccountDeleteSection user={user} />
+        </CardContent>
+      </Card>
+
+      {/*
+        Track D Phase D.1: 個人 preference（端末ごと）のテーマ切替を集約する Card。
+        signed-in 必須なのは /settings 全体の RequireAuth に従う。ThemeProvider 自体は
+        全画面で動作し、未ログイン / 匿名ユーザーは初期値 "system" で OS 設定に追従する。
+      */}
+      <Card>
+        <CardHeader>
+          <CardTitle>テーマ</CardTitle>
+          <CardDescription>
+            アプリの色調を選択します。設定はこの端末にのみ保存されます。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemeToggle />
         </CardContent>
       </Card>
     </main>
