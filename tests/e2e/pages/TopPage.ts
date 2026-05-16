@@ -14,6 +14,9 @@ export class TopPage extends BasePage {
   readonly noteIntroLink: Locator = this.page.getByRole("link", {
     name: /アプリ紹介を読む/,
   });
+  readonly noteCircleSetupGuideLink: Locator = this.page.getByRole("link", {
+    name: /サークル開設ガイドを読む/,
+  });
   readonly noteOperatingGuideLink: Locator = this.page.getByRole("link", {
     name: /運営ガイド（操作チートシート）/,
   });
@@ -29,6 +32,7 @@ export class TopPage extends BasePage {
     await expect(this.groupsButton).toHaveCount(0);
     await expect(this.tournamentsButton).toHaveCount(0);
     await expect(this.noteIntroLink).toBeVisible();
+    await expect(this.noteCircleSetupGuideLink).toBeVisible();
     await expect(this.noteOperatingGuideLink).toBeVisible();
   }
 
@@ -38,6 +42,7 @@ export class TopPage extends BasePage {
     await expect(this.tournamentsButton).toBeVisible();
     await expect(this.loginRegisterButton).toHaveCount(0);
     await expect(this.noteIntroLink).toBeVisible();
+    await expect(this.noteCircleSetupGuideLink).toBeVisible();
     await expect(this.noteOperatingGuideLink).toBeVisible();
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, BookOpen, Sparkles, Wand2 } from "lucide-react";
+import { ArrowUpRight, BookOpen, Sparkles, Users, Wand2 } from "lucide-react";
 import Link from "next/link";
 
 import { IOsInstallHint } from "@/components/pwa/IOsInstallHint";
@@ -12,6 +12,7 @@ import { useAuthUser } from "@/lib/firebase/AuthProvider";
 // 未設定の場合は対応リンクを非表示にする（fork 直後のデフォルト挙動を安全に）。
 // security-env.md: NEXT_PUBLIC_* は client bundle に含まれる前提で公開可能な値のみ設定すること。
 const NOTE_INTRO_ARTICLE_URL = process.env.NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL ?? "";
+const NOTE_CIRCLE_SETUP_GUIDE_URL = process.env.NEXT_PUBLIC_NOTE_CIRCLE_SETUP_GUIDE_URL ?? "";
 const NOTE_OPERATING_GUIDE_URL = process.env.NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL ?? "";
 
 export default function Page() {
@@ -48,7 +49,7 @@ export default function Page() {
             </Link>
           )}
         </div>
-        {(NOTE_INTRO_ARTICLE_URL || NOTE_OPERATING_GUIDE_URL) && (
+        {(NOTE_INTRO_ARTICLE_URL || NOTE_CIRCLE_SETUP_GUIDE_URL || NOTE_OPERATING_GUIDE_URL) && (
           <section
             aria-labelledby="external-articles-heading"
             className="flex w-full flex-col items-center gap-3 border-t border-border pt-6"
@@ -83,6 +84,32 @@ export default function Page() {
                   </span>
                   <ArrowUpRight
                     className="size-5 shrink-0 text-sky-600 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 dark:text-sky-400"
+                    aria-hidden="true"
+                  />
+                </a>
+              )}
+              {NOTE_CIRCLE_SETUP_GUIDE_URL && (
+                <a
+                  href={NOTE_CIRCLE_SETUP_GUIDE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="サークル開設ガイドを読む（新しいタブで開く）"
+                  className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-100 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-cyan-950/40 dark:hover:border-emerald-700"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 text-white shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:rotate-[-4deg]"
+                  >
+                    <Users className="size-5" />
+                  </span>
+                  <span className="flex flex-1 flex-col">
+                    <span className="text-sm font-bold text-foreground">サークル開設ガイド</span>
+                    <span className="text-[11px] leading-snug text-muted-foreground">
+                      作成 → 招待 → 権限付与までの初日手順
+                    </span>
+                  </span>
+                  <ArrowUpRight
+                    className="size-5 shrink-0 text-emerald-600 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 dark:text-emerald-400"
                     aria-hidden="true"
                   />
                 </a>

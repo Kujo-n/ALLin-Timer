@@ -31,6 +31,7 @@ const emulatorEnv: Record<string, string> = {
   // 本番 URL に依存せず e2e が pass するよう、明らかにテスト用と分かる dummy を注入。
   // 実 note ユーザに偶然衝突しないよう note.com 配下にはしない。
   NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL: "https://example.test/note-intro",
+  NEXT_PUBLIC_NOTE_CIRCLE_SETUP_GUIDE_URL: "https://example.test/note-circle-setup-guide",
   NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL: "https://example.test/note-operating-guide",
 };
 

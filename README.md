@@ -459,6 +459,7 @@ tests/
 | `NEXT_PUBLIC_LOG_LEVEL`                    | No   | ログレベル。`debug` / `info`（既定） / `warn` / `error`                    |
 | `NEXT_PUBLIC_ENABLE_DEBUG`                 | No   | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定） |
 | `NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL`       | No   | トップ画面 `/` に表示するアプリ紹介記事の note URL（未設定なら非表示）     |
+| `NEXT_PUBLIC_NOTE_CIRCLE_SETUP_GUIDE_URL`  | No   | トップ画面 `/` に表示するサークル開設ガイド記事の note URL（未設定なら非表示） |
 | `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL`     | No   | トップ画面 `/` に表示する運営ガイド記事の note URL（未設定なら非表示）     |
 
 > `NEXT_PUBLIC_USE_FIREBASE_EMULATOR` は E2E テスト時に Playwright が自動で設定する変数で、`.env.local` には記載しない（`true` のとき Auth 9099 / Firestore 8080 の Emulator に接続）。
