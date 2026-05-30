@@ -15,6 +15,7 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useImplicitAudioUnlock } from "@/lib/hooks/useImplicitAudioUnlock";
 import { logger } from "@/lib/logger";
 import { resolveWinner } from "@/lib/services/timer";
+import { isFinished } from "@/lib/services/tournament-state";
 
 export type AudioRole = "owner" | "organizer" | "member" | null;
 
@@ -193,12 +194,17 @@ export function useAudioPlayer({
   ]);
 
   // winner 検知: null → PlayerDoc 遷移。同 winner の再 emit / 取消し→再確定の両方に対応。
+  // 要望③: finished トーナメントの運営ページを開いた瞬間、resolveWinner が winner を返し
+  // null → winner 遷移とみなして優勝音が誤発火するバグを防ぐ。finished のときは
+  // prevWinnerIdRef を更新する（再発火防止）が play() しない。進行中（running/paused）の
+  // 正常な優勝音は維持する。
   useEffect(() => {
     if (!tournament) return;
     const w = resolveWinner(tournament, players);
     const wid = w?.id ?? null;
     const prev = prevWinnerIdRef.current;
     prevWinnerIdRef.current = wid;
+    if (isFinished(tournament)) return;
     if (prev === null && wid !== null) {
       void play(group?.audioSettings.winnerSoundId ?? "default:victory-chime");
     }

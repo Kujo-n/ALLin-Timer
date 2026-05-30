@@ -439,6 +439,51 @@ describe("useAudioPlayer — winner detection", () => {
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("does not play winner sound when mounting a finished tournament", async () => {
+    const { result } = renderAudioPlayer({
+      tournament: makeTournament({ state: "finished", finishedAt: baseTimestamp }),
+      group: makeGroup(),
+      players: [
+        makePlayer({ id: "p1", uid: "u1" }),
+        makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
+      ],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not play winner sound on null → winner transition while finished", async () => {
+    const { result, rerender } = renderAudioPlayer({
+      // 全員 active のあいだ resolveWinner は null を返す。
+      tournament: makeTournament({ state: "finished", finishedAt: baseTimestamp }),
+      group: makeGroup(),
+      players: [
+        makePlayer({ id: "p1", uid: "u1" }),
+        makePlayer({ id: "p2", uid: "u2" }),
+      ],
+      role: "organizer",
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+
+    // finished 中に winner 確定（p2 脱落）→ finished ガードで鳴らない
+    rerender({
+      tournament: makeTournament({ state: "finished", finishedAt: baseTimestamp }),
+      group: makeGroup(),
+      players: [
+        makePlayer({ id: "p1", uid: "u1" }),
+        makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
+      ],
+      role: "organizer",
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
   it("does not play winner sound for member", async () => {
     const initialPlayers = [
       makePlayer({ id: "p1", uid: "u1" }),
