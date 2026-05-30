@@ -124,3 +124,81 @@ describe("LevelTable — 自動入力トグル", () => {
     ]);
   });
 });
+
+describe("LevelTable — 一括時間設定", () => {
+  function makeMixedLevels(): Level[] {
+    return [
+      { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
+      { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 1200, isBreak: false },
+      { level: 3, sb: 0, bb: 0, ante: 0, durationSec: 600, isBreak: true },
+    ];
+  }
+
+  it("既定は個別モード（individual が checked / 一括入力は非表示 / 行の分入力は enabled）", () => {
+    render(<LevelTable levels={makeLevels()} onChange={vi.fn()} />);
+    expect(
+      screen.getByLabelText<HTMLInputElement>("duration-mode-individual").checked,
+    ).toBe(true);
+    expect(screen.getByLabelText<HTMLInputElement>("duration-mode-bulk").checked).toBe(
+      false,
+    );
+    expect(screen.queryByLabelText("bulk-duration-min")).toBeNull();
+    expect(
+      screen.getByLabelText<HTMLInputElement>("level-1-duration-min").disabled,
+    ).toBe(false);
+  });
+
+  it("一括に切替えると一括入力が表示され、行ごとの分入力が disabled になる", () => {
+    render(<LevelTable levels={makeLevels()} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("duration-mode-bulk"));
+    expect(screen.getByLabelText("bulk-duration-min")).not.toBeNull();
+    expect(
+      screen.getByLabelText<HTMLInputElement>("level-1-duration-min").disabled,
+    ).toBe(true);
+    expect(
+      screen.getByLabelText<HTMLInputElement>("level-2-duration-min").disabled,
+    ).toBe(true);
+  });
+
+  it("一括分入力を 15 に変更すると onChange が全行（break 含む）durationSec=900 で呼ばれる", () => {
+    const onChange = vi.fn();
+    render(<LevelTable levels={makeMixedLevels()} onChange={onChange} />);
+    fireEvent.click(screen.getByLabelText("duration-mode-bulk"));
+    onChange.mockClear();
+
+    fireEvent.change(screen.getByLabelText("bulk-duration-min"), {
+      target: { value: "15" },
+    });
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ level: 1, durationSec: 900 }),
+      expect.objectContaining({ level: 2, durationSec: 900 }),
+      expect.objectContaining({ level: 3, durationSec: 900, isBreak: true }),
+    ]);
+  });
+
+  it("個別→一括の切替時、不揃いな duration が先頭行値で unify されて onChange が呼ばれる", () => {
+    const onChange = vi.fn();
+    render(<LevelTable levels={makeMixedLevels()} onChange={onChange} />);
+    // 先頭行 600 秒 = 10 分で全行 unify
+    fireEvent.click(screen.getByLabelText("duration-mode-bulk"));
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ level: 1, durationSec: 600 }),
+      expect.objectContaining({ level: 2, durationSec: 600 }),
+      expect.objectContaining({ level: 3, durationSec: 600, isBreak: true }),
+    ]);
+  });
+
+  it("一括→個別に戻すと行の分入力が再び enabled になる", () => {
+    render(<LevelTable levels={makeLevels()} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("duration-mode-bulk"));
+    expect(
+      screen.getByLabelText<HTMLInputElement>("level-1-duration-min").disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("duration-mode-individual"));
+    expect(
+      screen.getByLabelText<HTMLInputElement>("level-1-duration-min").disabled,
+    ).toBe(false);
+    expect(screen.queryByLabelText("bulk-duration-min")).toBeNull();
+  });
+});

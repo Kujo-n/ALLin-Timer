@@ -6,6 +6,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Level } from "@/lib/firebase/schemas/structure";
+import {
+  applyBulkDurationMin,
+  inferBulkDurationMin,
+} from "@/lib/services/structure-levels";
 
 interface Props {
   levels: Level[];
@@ -35,6 +39,23 @@ export function LevelTable({ levels, onChange }: Props) {
   const [autoSbHalf, setAutoSbHalf] = useState<boolean>(() =>
     inferAutoSbHalfFromLevels(levels),
   );
+  const [bulkMode, setBulkMode] = useState<boolean>(false); // 既定: 個別（永続化しない）
+  const [bulkMin, setBulkMin] = useState<number>(() => inferBulkDurationMin(levels));
+
+  function handleBulkModeToggle(enabled: boolean) {
+    setBulkMode(enabled);
+    if (!enabled) return;
+    // 個別→一括: 現在の推定分で全行を unify（autoSbHalf OFF→ON と同じ作法）。
+    const min = inferBulkDurationMin(levels);
+    setBulkMin(min);
+    onChange(applyBulkDurationMin(levels, min));
+  }
+
+  function handleBulkMinChange(value: string) {
+    const minutes = parseIntSafe(value);
+    setBulkMin(minutes);
+    onChange(applyBulkDurationMin(levels, minutes));
+  }
 
   function handleAutoSbHalfToggle(checked: boolean) {
     setAutoSbHalf(checked);
@@ -109,6 +130,45 @@ export function LevelTable({ levels, onChange }: Props) {
         />
         <span>SB を BB の半額で自動入力</span>
       </label>
+      <div
+        className="flex items-center gap-4 text-sm"
+        role="radiogroup"
+        aria-label="duration-mode"
+      >
+        <label className="flex items-center gap-1">
+          <input
+            type="radio"
+            name="duration-mode"
+            checked={!bulkMode}
+            onChange={() => handleBulkModeToggle(false)}
+            aria-label="duration-mode-individual"
+          />
+          <span>個別設定</span>
+        </label>
+        <label className="flex items-center gap-1">
+          <input
+            type="radio"
+            name="duration-mode"
+            checked={bulkMode}
+            onChange={() => handleBulkModeToggle(true)}
+            aria-label="duration-mode-bulk"
+          />
+          <span>一括設定</span>
+        </label>
+      </div>
+      {bulkMode ? (
+        <label className="flex items-center gap-2 text-sm">
+          <span>全レベルの時間（分）</span>
+          <Input
+            type="number"
+            min={1}
+            value={bulkMin}
+            onChange={(e) => handleBulkMinChange(e.target.value)}
+            aria-label="bulk-duration-min"
+            className="w-24"
+          />
+        </label>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -161,6 +221,7 @@ export function LevelTable({ levels, onChange }: Props) {
                     type="number"
                     min={1}
                     value={secToMin(l.durationSec)}
+                    disabled={bulkMode}
                     onChange={(e) => updateDurationMin(i, e.target.value)}
                     aria-label={`level-${l.level}-duration-min`}
                   />
