@@ -51,6 +51,8 @@ test.describe("サークル詳細画面のタブ", () => {
     await expect(
       page.getByRole("button", { name: /^シーズンを開始する$/ }),
     ).toBeVisible();
+    // Phase 2 (06): 戦績 0 件の素のサークルではインライン順位表は出ず、案内文が見える。
+    await detail.expectSeasonRankingEmpty();
     // 設定タブ配下のカードはこのタブでは見えない
     await expect(page.getByText("Table 名デフォルト")).toBeHidden();
   });

@@ -81,6 +81,36 @@ export class GroupDetailPage extends BasePage {
     await expect(this.page.locator(`#group-detail-panel-${key}`)).toBeVisible();
   }
 
+  // Phase 2 (06): 「シーズン」タブにインライン表示される順位表 panel
+  //（SeasonRankingPanel）。戦績 0 件のときは非表示（案内文のみ）。
+  readonly seasonRankingInline: Locator = this.page.locator(
+    '[data-testid="season-ranking-inline"]',
+  );
+  // panel 内の順位表 <table>。首位など特定行の表示確認に使う。
+  readonly seasonRankingInlineTable: Locator =
+    this.seasonRankingInline.locator("table");
+  // 戦績 0 件のときに表示される案内文。
+  readonly seasonRankingEmptyMessage: Locator = this.page.getByText(
+    /このシーズンの戦績はまだありません/,
+  );
+
+  /**
+   * インライン順位表が表示され、指定した表示名（首位など）が table 内に
+   * 見えるまで待つ。realtime 反映を待つため timeout を長めに取る。
+   */
+  async expectSeasonRankingInline(name: string): Promise<void> {
+    await expect(this.seasonRankingInlineTable).toBeVisible({ timeout: 15_000 });
+    await expect(
+      this.seasonRankingInlineTable.getByText(name, { exact: true }),
+    ).toBeVisible();
+  }
+
+  /** 戦績 0 件のとき、インライン順位表は描画されず案内文のみが見えることを確認する。 */
+  async expectSeasonRankingEmpty(): Promise<void> {
+    await expect(this.seasonRankingInline).toHaveCount(0);
+    await expect(this.seasonRankingEmptyMessage).toBeVisible({ timeout: 15_000 });
+  }
+
   // === サウンド設定 Card 内 locator（PRD 02 polish で旧 AudioSettingsPage.ts から移行）===
   // 「設定」タブ内の `<Card aria-label="audio-settings-card">` に scope を絞り、
   // 同タブ内の `defaultTableLabelsSaveButton` (`name=/^保存$/`) と衝突しないようにする。

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { buildSeasonShareInputs } from "@/app/api/og/_lib/og-payload";
+import { SeasonRankingTable } from "@/components/group/SeasonRankingTable";
 import { SeasonTopCardDownloadButton } from "@/components/group/SeasonTopCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
 import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
@@ -180,32 +181,16 @@ export function SeasonHistoryDetailClient({
               cardBackground={group.seasonCardBackground}
             />
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="py-2 text-left">順位</th>
-                <th className="py-2 text-left">表示名</th>
-                <th className="py-2 text-right">参加</th>
-                <th className="py-2 text-right">優勝</th>
-                <th className="py-2 text-right">FT</th>
-                <th className="py-2 text-right">累計ポイント</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedEntries.map((e, i) => (
-                <tr key={e.uid} className="border-b">
-                  <td className="py-2">{i + 1}</td>
-                  <td className="py-2">{e.displayName}</td>
-                  <td className="py-2 text-right">{e.participations}</td>
-                  <td className="py-2 text-right">{e.wins}</td>
-                  <td className="py-2 text-right">{e.finalTables}</td>
-                  <td className="py-2 text-right font-semibold">
-                    {e.totalPoints.toFixed(2)} pt
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SeasonRankingTable
+            rows={sortedEntries.map((e) => ({
+              id: e.uid,
+              displayName: e.displayName,
+              participations: e.participations,
+              wins: e.wins,
+              finalTables: e.finalTables,
+              totalPoints: e.totalPoints,
+            }))}
+          />
         </>
       )}
     </main>

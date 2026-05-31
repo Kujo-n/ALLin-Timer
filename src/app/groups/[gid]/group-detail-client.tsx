@@ -50,6 +50,7 @@ import { MemberRoleList, type MemberLine } from "./_components/MemberRoleList";
 import { SeasonCard } from "./_components/SeasonCard";
 import { SeasonCardBackgroundCard } from "./_components/SeasonCardBackgroundCard";
 import { SeasonPointsRuleCard } from "./_components/SeasonPointsRuleCard";
+import { SeasonRankingPanel } from "./_components/SeasonRankingPanel";
 import { StartSeasonDialog } from "./_components/StartSeasonDialog";
 import { WinnerCardBackgroundCard } from "./_components/WinnerCardBackgroundCard";
 
@@ -419,6 +420,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                 onRequestStartSeason={() => setConfirmStartSeasonOpen(true)}
                 working={working}
               />
+              <SeasonRankingPanel gid={gid} />
               <SeasonPointsRuleCard
                 rule={group.seasonPointsRule ?? null}
                 isOrganizer={isOrganizer}

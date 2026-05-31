@@ -152,7 +152,7 @@ test.describe("Phase D: シーズン履歴一覧と詳細ページ", () => {
 
   test(
     "シーズン切替後、過去シーズン一覧が 1 件表示され、『詳細を見る』で全員分のテーブルに遷移する",
-    async ({ page, tournamentDashboardPage }) => {
+    async ({ page, tournamentDashboardPage, groupDetailPage }) => {
       const organizer = randomOrganizer();
       const { gid, tid } = await seedOrganizerTournament(page, { organizer });
 
@@ -186,6 +186,11 @@ test.describe("Phase D: シーズン履歴一覧と詳細ページ", () => {
           name: /^シーズンを開始する$/,
         });
         await expect(startSeasonButton).toBeVisible({ timeout: 15_000 });
+
+        // Phase 2 (06): 「シーズン」タブを開いた時点で、別ページに遷移せずとも
+        // インライン順位表に首位 Bob（bust されなかった残り）が見えること（要望②の本質）。
+        await groupDetailPage(gid).expectSeasonRankingInline("Bob");
+
         await startSeasonButton.click();
 
         // 確認 Dialog

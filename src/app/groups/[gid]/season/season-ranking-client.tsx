@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { SeasonRankingTable } from "@/components/group/SeasonRankingTable";
 import { SeasonTopCardDownloadButton } from "@/components/group/SeasonTopCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
 import { formatSeasonShareText } from "@/components/share/_share-button/share-text";
@@ -140,32 +141,7 @@ export function SeasonRankingClient({ gid }: { gid: string }) {
               cardBackground={group.seasonCardBackground}
             />
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="py-2 text-left">順位</th>
-                <th className="py-2 text-left">表示名</th>
-                <th className="py-2 text-right">参加</th>
-                <th className="py-2 text-right">優勝</th>
-                <th className="py-2 text-right">FT</th>
-                <th className="py-2 text-right">累計ポイント</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.map((s, i) => (
-                <tr key={s.id} className="border-b">
-                  <td className="py-2">{i + 1}</td>
-                  <td className="py-2">{s.displayName}</td>
-                  <td className="py-2 text-right">{s.participations}</td>
-                  <td className="py-2 text-right">{s.wins}</td>
-                  <td className="py-2 text-right">{s.finalTables}</td>
-                  <td className="py-2 text-right font-semibold">
-                    {s.totalPoints.toFixed(2)} pt
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SeasonRankingTable rows={stats} />
           <SeasonHistoryList gid={gid} />
         </>
       )}
