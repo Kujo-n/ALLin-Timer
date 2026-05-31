@@ -48,7 +48,7 @@ import {
   type SeasonPointsRule,
 } from "@/lib/services/season-points";
 import { isOfflineFirestoreErrorCode } from "@/lib/services/firestore-offline";
-import { resolveRanking } from "@/lib/services/timer";
+import { computeAutoAdvanceLevelStartMs, resolveRanking } from "@/lib/services/timer";
 import {
   canAdvanceLevel,
   canAppendLevel,
@@ -401,8 +401,11 @@ export async function resumeTournament(
  *  - running から呼ばれた場合: state はそのまま、pausedAt=null
  *  - paused から呼ばれた場合: state="paused" を維持し、新 level の先頭で再 pause
  *    （pausedAt を新 serverTimestamp に。pausedAccumMs はリセット）
- *  - kind="auto" / "manual" を `lastLevelChangeKind` に記録し、useAudioPlayer が
- *    「手動遷移時は音を鳴らさない」分岐に使う。
+ *  - kind="auto" / "manual" を `lastLevelChangeKind` に記録する（診断用ラベル。
+ *    要望④以降、ブラインドアップ音のトリガは timer のローカル残り0検知に移行したため
+ *    音声判定には使われないが、schema 維持・既存 doc 互換のためフィールドは残す）。
+ *  - startOverrideMs を渡すと levelStartedAt をその決定論的 ms で stamp する（要望⑤）。
+ *    未指定なら serverTimestamp（commit 時刻）。auto-advance のみ override する。
  *
  * これがないと paused 中の手動 advance/revert で `state=paused && pausedAt=null` の
  * invariant 違反が発生し、再開時に `tournament/invalid-state` が出る。
@@ -411,11 +414,18 @@ function levelTransitionUpdates(
   prevState: TournamentDoc["state"],
   newCurrentLevel: number,
   kind: "auto" | "manual",
+  startOverrideMs?: number,
 ): Record<string, unknown> {
   const isPaused = prevState === "paused";
   return {
     currentLevel: newCurrentLevel,
-    levelStartedAt: serverTimestamp(),
+    // 要望⑤（2秒飛び緩和）: auto-advance ではレベル境界を構造定義に固定した決定論的値で
+    // stamp する（commit 時刻の serverTimestamp だと往復遅延ぶん新レベルが飛ぶ）。
+    // 手動 advance / revert は override 未指定 = 「今」開始が正しいので serverTimestamp。
+    levelStartedAt:
+      startOverrideMs !== undefined
+        ? Timestamp.fromMillis(startOverrideMs)
+        : serverTimestamp(),
     pausedAt: isPaused ? serverTimestamp() : null,
     pausedAccumMs: 0,
     lastLevelChangeKind: kind,
@@ -455,7 +465,18 @@ export async function advanceLevel(
               return;
             }
             if (t.currentLevel >= t.structureSnapshot.levels.length) return;
-            tx.update(ref, levelTransitionUpdates(t.state, t.currentLevel + 1, "auto"));
+            // 端末が長時間バックグラウンド後に発火すると startOverrideMs が過去になり、
+            // 新レベルが即残り 0 → 次 tick で連鎖 auto-advance しうるが、1 tick 1 レベルで
+            // 自己整合するため許容（将来 Cloud Functions 化で根本解決）。
+            tx.update(
+              ref,
+              levelTransitionUpdates(
+                t.state,
+                t.currentLevel + 1,
+                "auto",
+                computeAutoAdvanceLevelStartMs(t),
+              ),
+            );
           });
           return; // tx 成功
         } catch (e) {

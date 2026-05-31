@@ -548,8 +548,23 @@ describe("advanceLevel (auto with expectedLevel)", () => {
     await advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 });
     expect(captured).not.toBeNull();
     expect(captured!.currentLevel).toBe(2);
-    // auto-advance 経路は "auto" を記録（useAudioPlayer がブラインドアップ音を鳴らす判定に使う）
+    // auto-advance 経路を "auto" として記録（診断用ラベル。音声トリガは timer の
+    // ローカル残り0検知に移行済みで lastLevelChangeKind は音声判定に使われない）
     expect(captured!.lastLevelChangeKind).toBe("auto");
+  });
+
+  it("stamps levelStartedAt at deterministic level boundary (no 2s skip)", async () => {
+    // makeTournament: levelStartedAt=t0, level1 durationSec=600, pausedAccumMs=0 を前提。
+    // auto-advance は新レベルの levelStartedAt を「前レベル理想終了時刻」= t0 + 600s で固定し、
+    // commit 時刻（serverTimestamp）の往復遅延を吸収しない（要望⑤・2秒飛び緩和）。
+    let captured: Record<string, unknown> | null = null;
+    mockTransaction(makeTournament({ currentLevel: 1 }), (p) => {
+      captured = p as Record<string, unknown>;
+    });
+    await advanceLevel("t1", "u1", ["g1"], { expectedLevel: 1 });
+    const ls = captured!.levelStartedAt as Timestamp;
+    expect(ls).toBeInstanceOf(Timestamp);
+    expect(ls.toMillis()).toBe(t0.toMillis() + 600_000);
   });
 });
 
