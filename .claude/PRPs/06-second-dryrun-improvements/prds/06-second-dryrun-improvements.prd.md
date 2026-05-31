@@ -134,7 +134,7 @@ When **トーナメントを準備・進行・締めるとき**, I want to **最
 | 1   | ストラクチャ一括設定 | LevelTable に一括/個別トグル＋全レベル一律時間入力を追加（要望①） | complete | with 2, 3 | - | [structure-bulk-duration.plan.md](../plans/completed/structure-bulk-duration.plan.md) · [report](../reports/structure-bulk-duration-report.md) |
 | 2   | シーズンタブ順位インライン | シーズンタブ選択で順位表を即表示（要望②） | complete | with 1, 3 | - | [season-tab-inline-ranking.plan.md](../plans/completed/season-tab-inline-ranking.plan.md) · [report](../reports/season-tab-inline-ranking-report.md) |
 | 3   | 終了済み優勝音バグ修正 | finished で優勝音を鳴らさないガード（要望③） | complete | with 1, 2 | - | [finished-winner-sound-guard.plan.md](../plans/completed/finished-winner-sound-guard.plan.md) · [report](../reports/finished-winner-sound-guard-report.md) |
-| 4   | 音声タイミング＋2秒飛び | ローカル残り0検知で非同期再生＋タイマー2秒飛び原因調査・緩和（要望④⑤） | pending | -        | 3       | - |
+| 4   | 音声タイミング＋2秒飛び | ローカル残り0検知で非同期再生＋タイマー2秒飛び原因調査・緩和（要望④⑤） | complete | -        | 3       | [audio-level-end-trigger-and-timer-skip-fix.plan.md](../plans/completed/audio-level-end-trigger-and-timer-skip-fix.plan.md) · [report](../reports/audio-level-end-trigger-and-timer-skip-fix-report.md) |
 
 ### Phase Details
 
