@@ -185,6 +185,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     group: tournamentGroup,
     players,
     role: myRole,
+    remainingMs,
     onError: setError,
   });
 

@@ -107,6 +107,7 @@ export function LiveClient({ tid }: { tid: string }) {
     group: tournamentGroup,
     players,
     role: audioRole,
+    remainingMs,
     // 再生失敗時は dashboard と同等に画面上のエラー表示で見せる。/live は organizer が
     // 会場ディスプレイに投影しているケースを含むため、サイレント failure は避ける。
     onError: setAudioError,

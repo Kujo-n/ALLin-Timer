@@ -14,7 +14,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useImplicitAudioUnlock } from "@/lib/hooks/useImplicitAudioUnlock";
 import { logger } from "@/lib/logger";
-import { resolveWinner } from "@/lib/services/timer";
+import { resolveWinner, shouldPlayLevelEndSound } from "@/lib/services/timer";
 import { isFinished } from "@/lib/services/tournament-state";
 
 export type AudioRole = "owner" | "organizer" | "member" | null;
@@ -28,6 +28,12 @@ interface UseAudioPlayerArgs {
   players: readonly PlayerDoc[];
   /** view している user の current role */
   role: AudioRole;
+  /**
+   * 現在レベルのローカル残り時間（ms）。useTournamentTimer から渡す。
+   * 要望④: ブラインドアップ音を Firestore 往復を待たず、ローカルで残り 0 を検知した
+   * 瞬間に鳴らすトリガに使う。null は pending-write / levelStartedAt 未確定（無音）。
+   */
+  remainingMs: number | null;
   /**
    * 再生失敗時に親へ通知する callback。設定変更ページ / dashboard / live で UI に
    * エラーメッセージを出すために使う。logger.warn でも記録するため省略可。
@@ -47,15 +53,17 @@ interface UseAudioPlayerState {
 /**
  * Phase 4.9 — Audio Notifications.
  *
- * tournament の `currentLevel` 変化と resolveWinner の null → PlayerDoc 遷移を
+ * ローカルの残り 0 検知（要望④）と resolveWinner の null → PlayerDoc 遷移を
  * 観測し、運営者ロール（owner / organizer）かつ group.audioSettings.enabled の場合
- * のみ音を鳴らす。前回値 ref + early return で重複再生を抑止。
+ * のみ音を鳴らす。levelStartedAt / winnerId をキーにした ref + early return で
+ * 重複再生を抑止する。
  */
 export function useAudioPlayer({
   tournament,
   group,
   players,
   role,
+  remainingMs,
   onError,
 }: UseAudioPlayerArgs): UseAudioPlayerState {
   // onError は呼出毎に identity が変わる可能性があるため ref に逃がす。
@@ -84,8 +92,8 @@ export function useAudioPlayer({
   //                         hook 自体は unlocked=false のままで問題なし。
   const unlocked = ctxState === "running";
 
-  // 前回値を保持して transition を検知する。
-  const prevLevelRef = useRef<number | null>(null);
+  // levelStartedAt をキーに「このレベルの終了音は鳴らし済み」を記録し二重再生を抑止する。
+  const playedLevelEndKeyRef = useRef<number | null>(null);
   const prevWinnerIdRef = useRef<string | null>(null);
 
   // 共有 <audio> インスタンス（unmount 時に破棄）。
@@ -163,35 +171,22 @@ export function useAudioPlayer({
     [unlock, unlocked, isOrganizer, enabled, playInternal],
   );
 
-  // levelUp 検知: currentLevel の変化。初回 mount は ref のみセットして音は出さない。
-  // 手動 advance/revert（前レベル/次レベルボタン）では音を鳴らさない。
-  // auto-advance（タイマー満了による自動進行）のみ鳴らすことで、運営者の意図的な
-  // ナビゲーション操作を「ブラインドアップ」と誤認させない。
-  //
-  // `prev === 0` は seating → running 遷移（confirmSeating で currentLevel 0→1）に対応する。
-  // これは「トーナメント開始」であって level up ではないため鳴らさない。
-  // `confirmSeating` は schema コメントどおり `lastLevelChangeKind` を書かず undefined のまま
-  // 残すので、ここでガードしないと運営者にブラインドアップ音が誤発火する。
+  // 要望④: レベル終了（ローカル残り0）の瞬間にブラインドアップ音を鳴らす。
+  // currentLevel 変化（Firestore 往復後）を待たないため遅延ゼロ。
+  // levelStartedAt をキーに二重再生を抑止（残り0が複数 tick 続いても 1 回）。
+  // 手動遷移は残り0を経由しないため自然に無音、seating→running は残り full のため無音、
+  // finished / 最終レベルは shouldPlayLevelEndSound 側で除外。
   useEffect(() => {
-    const lv = tournament?.currentLevel ?? null;
-    if (lv === null) return;
-    const prev = prevLevelRef.current;
-    prevLevelRef.current = lv;
-    if (prev === null) return;
-    if (prev === lv) return;
-    if (prev === 0) return;
-    // 状態が "running" / "paused" のみ。setup / seating / finished は除外。
-    const st = tournament?.state;
-    if (st !== "running" && st !== "paused") return;
-    if (tournament?.lastLevelChangeKind === "manual") return;
+    if (!tournament) return;
+    if (!shouldPlayLevelEndSound(tournament, remainingMs)) return;
+    const key = tournament.levelStartedAt?.toMillis() ?? null;
+    if (key === null) return;
+    if (playedLevelEndKeyRef.current === key) return;
+    // play が gate（role / enabled / unlocked）で no-op でも key を消費する。
+    // 旧実装の prevLevelRef 更新と同じ挙動（unlock 遅れ時の取りこぼしは許容）。
+    playedLevelEndKeyRef.current = key;
     void play(group?.audioSettings.levelUpSoundId ?? "default:blind-up");
-  }, [
-    tournament?.currentLevel,
-    tournament?.state,
-    tournament?.lastLevelChangeKind,
-    group?.audioSettings.levelUpSoundId,
-    play,
-  ]);
+  }, [tournament, remainingMs, group?.audioSettings.levelUpSoundId, play]);
 
   // winner 検知: null → PlayerDoc 遷移。同 winner の再 emit / 取消し→再確定の両方に対応。
   // 要望③: finished トーナメントの運営ページを開いた瞬間、resolveWinner が winner を返し

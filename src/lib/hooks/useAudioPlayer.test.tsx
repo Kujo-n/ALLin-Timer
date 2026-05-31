@@ -1,5 +1,6 @@
 /**
- * Phase 4.9: useAudioPlayer のロール filter / level 変化検知 / winner 検知 / unlock state テスト。
+ * Phase 4.9 / 要望④: useAudioPlayer のロール filter / レベル終了検知（ローカル残り0）/
+ * winner 検知 / unlock state テスト。
  *
  * jsdom には HTMLMediaElement.play / canPlayType の実装がないため Object.defineProperty で stub する。
  */
@@ -38,6 +39,8 @@ import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { useAudioPlayer, type AudioRole } from "./useAudioPlayer";
 
 const baseTimestamp = Timestamp.fromDate(new Date("2026-04-20T10:00:00Z"));
+/** 二重再生 / 新レベル切替を区別するための別 levelStartedAt（キー差）。 */
+const nextLevelStartedAt = Timestamp.fromMillis(baseTimestamp.toMillis() + 600_000);
 
 const playSpy = vi.fn().mockResolvedValue(undefined);
 const pauseSpy = vi.fn();
@@ -106,9 +109,11 @@ function makeTournament(overrides: Partial<TournamentDoc> = {}): TournamentDoc {
       rebuyStack: null,
       addOnStack: null,
       lateEntryDeadlineLevel: 6,
+      // 3 レベル: currentLevel 2 を非最終、currentLevel 3 を最終として検証できるようにする。
       levels: [
         { level: 1, sb: 25, bb: 50, ante: 0, durationSec: 600, isBreak: false },
         { level: 2, sb: 50, bb: 100, ante: 0, durationSec: 600, isBreak: false },
+        { level: 3, sb: 75, bb: 150, ante: 25, durationSec: 600, isBreak: false },
       ],
     },
     state: "running",
@@ -146,28 +151,31 @@ interface RenderArgs {
   group: GroupDoc | null;
   players: readonly PlayerDoc[];
   role: AudioRole;
+  remainingMs: number | null;
 }
 
 function renderAudioPlayer(initial: RenderArgs) {
   return renderHook((args: RenderArgs) => useAudioPlayer(args), { initialProps: initial });
 }
 
-describe("useAudioPlayer — role filter", () => {
-  it("does not play for member role on level change", async () => {
+describe("useAudioPlayer — level end sound (local remaining 0)", () => {
+  it("does not play for member role when remaining reaches 0", async () => {
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "member",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "member",
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -178,57 +186,63 @@ describe("useAudioPlayer — role filter", () => {
       group: makeGroup(),
       players: [],
       role: null,
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: null,
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
 
-  it("plays for organizer on level change after unlock", async () => {
+  it("plays for organizer when remaining reaches 0 after unlock", async () => {
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     expect(result.current.unlocked).toBe(true);
-    // 初回 mount は鳴らない（前回値 ref 初期化のみ）
+    // 残りが正の値のあいだは鳴らない
     expect(playSpy).not.toHaveBeenCalled();
 
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("plays for owner on level change", async () => {
+  it("plays for owner when remaining reaches 0", async () => {
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "owner",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "owner",
+      remainingMs: 0,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
@@ -247,15 +261,17 @@ describe("useAudioPlayer — role filter", () => {
       group: disabled,
       players: [],
       role: "owner",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: disabled,
       players: [],
       role: "owner",
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -266,62 +282,49 @@ describe("useAudioPlayer — role filter", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
 
-  it("does not play on level change when lastLevelChangeKind is 'manual'", async () => {
-    // 「前レベル / 次レベル」ボタン経由（手動）のときは音を鳴らさない仕様。
-    // auto-advance（タイマー満了）のみ鳴らす。
+  it("does not play on a transition that never reaches remaining 0 (manual advance)", async () => {
+    // 「前レベル / 次レベル」ボタン経由（手動）の遷移は残り 0 を経由しない。
+    // currentLevel が 1→2 に変わっても remaining が正のままなら鳴らさない（旧 lastLevelChangeKind
+    // == "manual" 抑止の置換テスト。手動遷移は自然に無音になる）。
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 4000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2, lastLevelChangeKind: "manual" }),
+      tournament: makeTournament({ currentLevel: 2, levelStartedAt: nextLevelStartedAt }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 4000,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
 
-  it("plays on level change when lastLevelChangeKind is 'auto'", async () => {
-    const { result, rerender } = renderAudioPlayer({
-      tournament: makeTournament({ currentLevel: 1 }),
-      group: makeGroup(),
-      players: [],
-      role: "organizer",
-    });
-    await act(async () => {
-      await result.current.unlock();
-    });
-    rerender({
-      tournament: makeTournament({ currentLevel: 2, lastLevelChangeKind: "auto" }),
-      group: makeGroup(),
-      players: [],
-      role: "organizer",
-    });
-    expect(playSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not play on initial mount with currentLevel === 1", async () => {
+  it("does not play on initial mount while remaining > 0", async () => {
     const { result } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
@@ -329,60 +332,118 @@ describe("useAudioPlayer — role filter", () => {
     expect(playSpy).not.toHaveBeenCalled();
   });
 
-  it("does not re-play if currentLevel emits same value", async () => {
+  it("does not re-play while remaining stays 0 across ticks (same levelStartedAt)", async () => {
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
+    // 同じ levelStartedAt のまま次 tick でも remaining 0 → 二重再生しない
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("does not play on level change when state is setup", async () => {
+  it("plays again for the next level (different levelStartedAt) when remaining reaches 0", async () => {
     const { result, rerender } = renderAudioPlayer({
-      tournament: makeTournament({ state: "setup", currentLevel: 0 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ state: "setup", currentLevel: 1 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
+    });
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    // 次レベルへ（levelStartedAt が変わる）→ 再び残り 0 で 1 回鳴る
+    rerender({
+      tournament: makeTournament({ currentLevel: 2, levelStartedAt: nextLevelStartedAt }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+      remainingMs: 0,
+    });
+    expect(playSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not play on the final level even when remaining reaches 0", async () => {
+    // currentLevel 3 === levels.length（最終）。次レベルが無いため「ブラインドアップ」ではない。
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ currentLevel: 3, levelStartedAt: nextLevelStartedAt }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+      remainingMs: 5000,
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    rerender({
+      tournament: makeTournament({ currentLevel: 3, levelStartedAt: nextLevelStartedAt }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
 
-  it("does not play on seating → running transition (currentLevel 0 → 1 is tournament start)", async () => {
-    // confirmSeating は schema コメントどおり lastLevelChangeKind を undefined のまま残すため、
-    // hook 側で prev === 0 をトーナメント開始として無視しないと
-    // 運営者にブラインドアップ音が誤発火する（M2 回帰テスト）。
+  it("does not play when state is setup even if remaining is 0", async () => {
     const { result, rerender } = renderAudioPlayer({
-      tournament: makeTournament({ state: "seating", currentLevel: 0 }),
+      tournament: makeTournament({ state: "setup", currentLevel: 0, levelStartedAt: null }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: null,
+    });
+    await act(async () => {
+      await result.current.unlock();
+    });
+    rerender({
+      tournament: makeTournament({ state: "setup", currentLevel: 0, levelStartedAt: null }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+      remainingMs: 0,
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not play on seating → running transition (remaining full > 0 at start)", async () => {
+    // seating → running（confirmSeating で currentLevel 0→1）は「トーナメント開始」であり、
+    // 開始直後は残り full（> 0）のため shouldPlayLevelEndSound が false を返し自然に無音になる。
+    const { result, rerender } = renderAudioPlayer({
+      tournament: makeTournament({ state: "seating", currentLevel: 0, levelStartedAt: null }),
+      group: makeGroup(),
+      players: [],
+      role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.unlock();
@@ -392,6 +453,7 @@ describe("useAudioPlayer — role filter", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 600_000,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -408,6 +470,7 @@ describe("useAudioPlayer — winner detection", () => {
       group: makeGroup(),
       players: initialPlayers,
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.unlock();
@@ -423,6 +486,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
       ],
       role: "organizer",
+      remainingMs: null,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
 
@@ -435,6 +499,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
       ],
       role: "organizer",
+      remainingMs: null,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
@@ -448,6 +513,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
       ],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.unlock();
@@ -465,6 +531,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2" }),
       ],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.unlock();
@@ -480,6 +547,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
       ],
       role: "organizer",
+      remainingMs: null,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -494,6 +562,7 @@ describe("useAudioPlayer — winner detection", () => {
       group: makeGroup(),
       players: initialPlayers,
       role: "member",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.unlock();
@@ -506,6 +575,7 @@ describe("useAudioPlayer — winner detection", () => {
         makePlayer({ id: "p2", uid: "u2", isBusted: true, bustedAt: baseTimestamp }),
       ],
       role: "member",
+      remainingMs: null,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -518,6 +588,7 @@ describe("useAudioPlayer — unlock state", () => {
       group: makeGroup(),
       players: [],
       role: "owner",
+      remainingMs: null,
     });
     expect(result.current.unlocked).toBe(false);
     await act(async () => {
@@ -535,6 +606,7 @@ describe("useAudioPlayer — unlock state", () => {
       group: makeGroup(),
       players: [],
       role: "owner",
+      remainingMs: null,
     });
     expect(result.current.unlocked).toBe(true);
   });
@@ -546,6 +618,7 @@ describe("useAudioPlayer — unlock state", () => {
       group: makeGroup(),
       players: [],
       role: "owner",
+      remainingMs: null,
     });
     expect(result.current.unlocked).toBe(false);
   });
@@ -558,6 +631,7 @@ describe("useAudioPlayer — preview()", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("default:blind-up");
@@ -572,6 +646,7 @@ describe("useAudioPlayer — preview()", () => {
       group: makeGroup(),
       players: [],
       role: "member",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("default:blind-up");
@@ -593,6 +668,7 @@ describe("useAudioPlayer — preview()", () => {
       group: disabled,
       players: [],
       role: "owner",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("default:blind-up");
@@ -610,6 +686,7 @@ describe("useAudioPlayer — preview()", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("default:blind-up");
@@ -624,6 +701,7 @@ describe("useAudioPlayer — preview()", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("default:blind-up");
@@ -639,6 +717,7 @@ describe("useAudioPlayer — preview()", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: null,
     });
     await act(async () => {
       await result.current.preview("custom:nonexistent");
@@ -649,28 +728,30 @@ describe("useAudioPlayer — preview()", () => {
 });
 
 describe("useAudioPlayer — play() error path", () => {
-  it("swallows play() rejection on level change without throwing", async () => {
+  it("swallows play() rejection on level end without throwing", async () => {
     const { result, rerender } = renderAudioPlayer({
       tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     playSpy.mockRejectedValueOnce(new Error("AbortError"));
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     // play は呼ばれるが reject — hook 側で warn されて throw しない
     expect(playSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("does not invoke play when canPlayType returns empty for all sources on level change", async () => {
+  it("does not invoke play when canPlayType returns empty for all sources on level end", async () => {
     Object.defineProperty(HTMLMediaElement.prototype, "canPlayType", {
       configurable: true,
       value: vi.fn(() => ""),
@@ -680,15 +761,17 @@ describe("useAudioPlayer — play() error path", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).not.toHaveBeenCalled();
   });
@@ -706,16 +789,18 @@ describe("useAudioPlayer — pause on enabled flip", () => {
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     await act(async () => {
       await result.current.unlock();
     });
-    // レベルアップで再生開始（<audio> 要素生成 + play()）
+    // レベル終了で再生開始（<audio> 要素生成 + play()）
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: makeGroup(),
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     expect(playSpy).toHaveBeenCalledTimes(1);
     pauseSpy.mockClear();
@@ -730,10 +815,11 @@ describe("useAudioPlayer — pause on enabled flip", () => {
       },
     });
     rerender({
-      tournament: makeTournament({ currentLevel: 2 }),
+      tournament: makeTournament({ currentLevel: 1 }),
       group: disabled,
       players: [],
       role: "organizer",
+      remainingMs: 0,
     });
     // 既に再生中の <audio> は明示的に pause されること
     expect(pauseSpy).toHaveBeenCalled();
@@ -754,6 +840,7 @@ describe("useAudioPlayer — pause on enabled flip", () => {
       group: disabled,
       players: [],
       role: "organizer",
+      remainingMs: 5000,
     });
     // <audio> 要素自体生成されていないため pause は呼ばれない（audioElRef.current === null）
     expect(pauseSpy).not.toHaveBeenCalled();

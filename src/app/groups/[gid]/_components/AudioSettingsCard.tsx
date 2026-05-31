@@ -85,6 +85,8 @@ export function AudioSettingsCard({
     group,
     players: [],
     role,
+    // 設定ページは試聴専用で、レベル終了トリガは使わない（tournament=null）。
+    remainingMs: null,
     // 試聴ボタン押下時の play 失敗を Card 上のエラー領域へ伝える。
     onError: onError,
   });
