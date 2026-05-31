@@ -200,3 +200,37 @@ export function shouldAutoAdvance(tournament: TournamentDoc, nowMs: number): boo
   if (remaining > 0) return false;
   return tournament.currentLevel < tournament.structureSnapshot.levels.length;
 }
+
+/**
+ * ブラインドアップ音をローカルで鳴らすべきか（要望④）。
+ * 条件は shouldAutoAdvance と同一: running + levelStartedAt 確定 + 残り <= 0 + 次レベルあり。
+ * 「auto-advance が妥当な瞬間 = レベル終了の瞬間」と意味的に一致させる。
+ * 最終レベルの終了（次がない）は「ブラインドアップ」ではないため鳴らさない。
+ *
+ * shouldAutoAdvance と条件が同型だが、入力が異なる（nowMs vs remainingMs）。
+ * hook 側は既に useTournamentTimer から remainingMs を持つため、ここでは remainingMs を引数に取る。
+ */
+export function shouldPlayLevelEndSound(
+  tournament: TournamentDoc,
+  remainingMs: number | null,
+): boolean {
+  if (!isRunning(tournament)) return false;
+  if (tournament.levelStartedAt === null) return false;
+  if (remainingMs === null) return false;
+  if (remainingMs > 0) return false;
+  return tournament.currentLevel < tournament.structureSnapshot.levels.length;
+}
+
+/**
+ * auto-advance 時、新レベルの決定論的な開始時刻 ms（要望⑤・2秒飛び緩和）。
+ * = 現レベルの理想終了時刻 = levelStartedAt + 現レベル durationMs + pausedAccumMs。
+ * commit 時刻（serverTimestamp）で stamp すると往復遅延ぶん新レベルが飛ぶため、
+ * 構造定義に固定したこの値を Timestamp.fromMillis で書く。
+ */
+export function computeAutoAdvanceLevelStartMs(tournament: TournamentDoc): number {
+  const info = getLevelInfo(tournament);
+  const durationMs = (info?.current.durationSec ?? 0) * 1000;
+  const startMs = tournament.levelStartedAt?.toMillis() ?? 0;
+  const accum = tournament.pausedAccumMs ?? 0;
+  return startMs + durationMs + accum;
+}

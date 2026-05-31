@@ -5,11 +5,13 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
 import {
+  computeAutoAdvanceLevelStartMs,
   getLevelInfo,
   getNextBreakInfo,
   getRemainingMs,
   resolveRanking,
   shouldAutoAdvance,
+  shouldPlayLevelEndSound,
 } from "./timer";
 
 const baseCreatedAt = Timestamp.fromDate(new Date("2026-04-19T00:00:00Z"));
@@ -315,6 +317,71 @@ describe("shouldAutoAdvance", () => {
   it("returns false when levelStartedAt is null", () => {
     const t = makeTournament({ levelStartedAt: null });
     expect(shouldAutoAdvance(t, t0Ms + 700_000)).toBe(false);
+  });
+});
+
+describe("shouldPlayLevelEndSound", () => {
+  it("returns true when running, remaining is 0 and not on final level", () => {
+    const t = makeTournament({ currentLevel: 1 });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(true);
+  });
+
+  it("returns true when remaining is negative (overshoot)", () => {
+    const t = makeTournament({ currentLevel: 1 });
+    expect(shouldPlayLevelEndSound(t, -500)).toBe(true);
+  });
+
+  it("returns false when remaining > 0", () => {
+    const t = makeTournament({ currentLevel: 1 });
+    expect(shouldPlayLevelEndSound(t, 1)).toBe(false);
+  });
+
+  it("returns false when remaining is null (pending write)", () => {
+    const t = makeTournament({ currentLevel: 1 });
+    expect(shouldPlayLevelEndSound(t, null)).toBe(false);
+  });
+
+  it("returns false on final level even if remaining is 0", () => {
+    const t = makeTournament({ currentLevel: 3 });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+
+  it("returns false when paused even if remaining is 0", () => {
+    const t = makeTournament({ state: "paused", pausedAt: t0 });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+
+  it("returns false when finished even if remaining is 0", () => {
+    const t = makeTournament({ state: "finished" });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+
+  it("returns false when setup even if remaining is 0", () => {
+    const t = makeTournament({ state: "setup", currentLevel: 0, levelStartedAt: null });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+
+  it("returns false when seating even if remaining is 0", () => {
+    const t = makeTournament({ state: "seating", currentLevel: 0, levelStartedAt: null });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+
+  it("returns false when levelStartedAt is null", () => {
+    const t = makeTournament({ levelStartedAt: null });
+    expect(shouldPlayLevelEndSound(t, 0)).toBe(false);
+  });
+});
+
+describe("computeAutoAdvanceLevelStartMs", () => {
+  it("returns levelStartedAt + durationMs when accum is 0", () => {
+    const t = makeTournament({ currentLevel: 1 });
+    // level1 durationSec=600 → 600_000ms
+    expect(computeAutoAdvanceLevelStartMs(t)).toBe(t0Ms + 600_000);
+  });
+
+  it("adds pausedAccumMs to the boundary", () => {
+    const t = makeTournament({ currentLevel: 1, pausedAccumMs: 30_000 });
+    expect(computeAutoAdvanceLevelStartMs(t)).toBe(t0Ms + 600_000 + 30_000);
   });
 });
 
