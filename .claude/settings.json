@@ -241,7 +241,9 @@
       "Bash(firebase firestore:indexes*)",
       "Bash(npx shadcn*)",
 
-      "Bash(npx playwright test tests/e2e/*)"
+      "Bash(npx playwright test tests/e2e/*)",
+
+      "Bash(./node_modules/.bin/*)"
     ],
     "ask": [
       "WebSearch",
@@ -405,7 +407,11 @@
       "Bash(cat ~/.aws/*)",
       "Bash(cat ~/.netrc)",
       "Bash(printenv*)",
-      "Bash(env)"
+      "Bash(env)",
+
+      "Bash(./node_modules/.bin/firebase*)",
+      "Bash(./node_modules/.bin/vercel*)",
+      "Bash(./node_modules/.bin/playwright*)"
     ]
   }
 }
