@@ -202,7 +202,7 @@ export function canClone(t: TournamentDoc): boolean {
  *   state を増減する場合は rule 側 4 リテラルと本述語の両方を同時更新する。
  *
  * membership / role の判定は呼出側（service の `assertOrganizer`）で別途行う。
- * late entry deadline 超過の扱いは service 側（proxy-receipt の `assertAcceptingProxyEntry`）。
+ * late entry deadline 超過の扱いは service 側（entry-guards の `assertAcceptingEntries`）。
  */
 export function isAcceptingProxyEntry(t: TournamentDoc): boolean {
   return isSetup(t) || isSeating(t) || isInProgress(t);
