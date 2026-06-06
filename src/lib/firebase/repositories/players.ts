@@ -28,6 +28,30 @@ function playersRef(tid: string) {
 }
 
 /**
+ * 新規 player doc 本体の単一真実源。
+ *
+ * self-create（`upsertPlayer`）/ name-only（`createNamedOnlyPlayer`）/ clone
+ * （`clonePlayersFromTournament`）の 3 経路が同形の fresh-doc を書くため、初期値
+ * （未配席・未バスト・PD off・`entryAt=serverTimestamp()`）をここに集約する。
+ * `firebase-patterns.md` の DRIFT WARNING「players schema に新フィールドを追加する
+ * 場合は 3 ブランチすべてに同じ invariant を反映」を、この factory 経由で機械的に満たす。
+ * 差分は `displayName` と `uid`（self/clone は string、name-only は null）のみ。
+ */
+function newPlayerBody({ displayName, uid }: { displayName: string; uid: string | null }) {
+  return {
+    displayName,
+    uid,
+    entryAt: serverTimestamp(),
+    isBusted: false,
+    bustedAt: null,
+    tableNum: null,
+    seatNum: null,
+    lastMovedAt: null,
+    isPlayingDealer: false,
+  };
+}
+
+/**
  * Phase A: tournament の参加者一覧を 1 回 read で取得する（subscribe ではなく）。
  *
  *  - `finishTournament` の seasonStats 拡張で「tx 起動前に順位確定」のために使う
@@ -103,17 +127,7 @@ export async function upsertPlayer(
         logger.info("player merge ok", { tid, uid });
         return;
       }
-      await setDoc(doc(playersRef(tid), uid), {
-        displayName: input.displayName,
-        uid,
-        entryAt: serverTimestamp(),
-        isBusted: false,
-        bustedAt: null,
-        tableNum: null,
-        seatNum: null,
-        lastMovedAt: null,
-        isPlayingDealer: false,
-      });
+      await setDoc(doc(playersRef(tid), uid), newPlayerBody({ displayName: input.displayName, uid }));
       logger.info("player create ok", { tid, uid });
     },
     { tid, uid },
@@ -142,17 +156,7 @@ export async function createNamedOnlyPlayer(
     "firestore/write_failed",
     "名前のみ参加者の登録に失敗しました",
     async () => {
-      await setDoc(doc(playersRef(tid), pid), {
-        displayName,
-        uid: null,
-        entryAt: serverTimestamp(),
-        isBusted: false,
-        bustedAt: null,
-        tableNum: null,
-        seatNum: null,
-        lastMovedAt: null,
-        isPlayingDealer: false,
-      });
+      await setDoc(doc(playersRef(tid), pid), newPlayerBody({ displayName, uid: null }));
     },
     { tid, pid },
   );
@@ -350,17 +354,10 @@ export async function clonePlayersFromTournament(
         if (!selected.has(d.id)) continue;
         const body = d.data();
         if (body.uid === null) continue;
-        batch.set(doc(playersRef(destTid), body.uid), {
-          displayName: body.displayName,
-          uid: body.uid,
-          entryAt: serverTimestamp(),
-          isBusted: false,
-          bustedAt: null,
-          tableNum: null,
-          seatNum: null,
-          lastMovedAt: null,
-          isPlayingDealer: false,
-        });
+        batch.set(
+          doc(playersRef(destTid), body.uid),
+          newPlayerBody({ displayName: body.displayName, uid: body.uid }),
+        );
         n++;
       }
       if (n === 0) {
