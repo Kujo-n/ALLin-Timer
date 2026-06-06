@@ -22,6 +22,7 @@ import {
   canPause,
   canResume,
   canRevertLevel,
+  isAcceptingProxyEntry,
   isBeforeStart,
   isFinished,
   isInProgress,
@@ -114,6 +115,16 @@ describe("tournament-state — state predicates", () => {
       expect(isBeforeStart(tournament({ state }))).toBe(
         state === "setup" || state === "seating",
       );
+    },
+  );
+
+  // ⚠ DRIFT WARNING: 許可 state（setup/seating/running/paused）は firestore.rules の
+  //   players organizer-proxy / name-only create ブランチの
+  //   `state in ["setup", "seating", "running", "paused"]` リテラルと一致させること。
+  it.each(ALL_STATES)(
+    "isAcceptingProxyEntry is true for all states except finished (state=%s)",
+    (state) => {
+      expect(isAcceptingProxyEntry(tournament({ state }))).toBe(state !== "finished");
     },
   );
 });

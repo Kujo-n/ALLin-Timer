@@ -188,3 +188,22 @@ export function canAppendLevel(t: TournamentDoc): boolean {
 export function canClone(t: TournamentDoc): boolean {
   return isFinished(t);
 }
+
+/**
+ * Phase 1 (07-third-dryrun-improvements): 運営者による代理受付（proxy receipt）が
+ * 可能な state かを判定する。
+ *  - setup / seating / running / paused（= !finished）で true、finished で false。
+ *  - 可読性のため 4 述語の OR で明示する（実質 `!isFinished(t)` と等価）。
+ *
+ * ⚠ DRIFT WARNING: 本述語の許可 state 集合は `firestore.rules` の
+ *   `match /players/{pid}` `allow create` organizer-proxy / name-only ブランチの
+ *   `get(...).data.state in ["setup", "seating", "running", "paused"]` リテラルと
+ *   **手動同期**すること（Cloud Firestore Rules に const 機構がないためハードコード）。
+ *   state を増減する場合は rule 側 4 リテラルと本述語の両方を同時更新する。
+ *
+ * membership / role の判定は呼出側（service の `assertOrganizer`）で別途行う。
+ * late entry deadline 超過の扱いは service 側（proxy-receipt の `assertAcceptingProxyEntry`）。
+ */
+export function isAcceptingProxyEntry(t: TournamentDoc): boolean {
+  return isSetup(t) || isSeating(t) || isInProgress(t);
+}
