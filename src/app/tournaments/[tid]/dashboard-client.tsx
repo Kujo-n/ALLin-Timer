@@ -65,6 +65,7 @@ import {
   canClone,
   canDelete as canDeleteTournament,
   canEdit as canEditTournament,
+  isAcceptingProxyEntry,
   isInProgress,
   isRunning,
   isSetup,
@@ -521,6 +522,9 @@ export function DashboardClient({ tid }: { tid: string }) {
         canManage={isMember}
         tournamentState={data.state}
         onTogglePd={handleTogglePd}
+        group={tournamentGroup}
+        organizerUid={user.uid}
+        canAddParticipant={isAcceptingProxyEntry(data)}
       />
 
       <StructureSnapshotCard
