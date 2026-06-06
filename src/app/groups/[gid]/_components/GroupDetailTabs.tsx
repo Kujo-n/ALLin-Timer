@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export type TabKey = "members" | "season" | "settings";
 
-export const GROUP_DETAIL_TAB_KEYS = ["members", "season", "settings"] as const;
+const GROUP_DETAIL_TAB_KEYS = ["members", "season", "settings"] as const;
 
 export function isTabKey(value: string | null | undefined): value is TabKey {
   return (

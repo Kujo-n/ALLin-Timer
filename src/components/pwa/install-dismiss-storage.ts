@@ -16,9 +16,9 @@ import { logger } from "@/lib/logger";
  *   - storage 例外は logger.warn のみで silent。ユーザに見せない
  */
 
-export const PWA_INSTALL_DISMISS_STORAGE_KEY = "allinpt.pwaInstallDismissedAt";
+const PWA_INSTALL_DISMISS_STORAGE_KEY = "allinpt.pwaInstallDismissedAt";
 
-export const PWA_INSTALL_DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PWA_INSTALL_DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function readPwaInstallDismissedAt(): number | null {
   if (typeof window === "undefined") return null;

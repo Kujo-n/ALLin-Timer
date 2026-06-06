@@ -25,7 +25,7 @@ import { AppError } from "@/lib/errors";
  * Firebase Storage の download URL は `firebasestorage.googleapis.com` 形式が現行（v0 API）、
  * `storage.googleapis.com` 形式が新形式（GCS 直）。同一バケットに対する両形式を受容する。
  */
-export const BG_IMAGE_URL_HOST_ALLOWLIST: ReadonlySet<string> = new Set([
+const BG_IMAGE_URL_HOST_ALLOWLIST: ReadonlySet<string> = new Set([
   "firebasestorage.googleapis.com",
   "storage.googleapis.com",
 ]);
