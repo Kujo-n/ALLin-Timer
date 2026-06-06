@@ -161,6 +161,31 @@ export async function createNamedOnlyPlayer(
 }
 
 /**
+ * Phase 2 (07-third-dryrun-improvements): 運営者が player の表示名のみを更新する。
+ *  - 名前のみ（uid=null・合成 pid）player の入力ミス救済に使う。
+ *  - `upsertPlayer` は doc id に uid を使うため合成 pid の player には流用不可。
+ *  - displayName の trim / ≤15 検証、および **対象が uid=null player であることの検証**は
+ *    service 層（`updatePlayerDisplayNameByOrganizer`）の責務（この repository 関数は
+ *    呼出側を信頼し、任意 pid の displayName を書き換える低レベル op）。
+ *  - 権限の最終防衛は Firestore Rules（organizer-update 経路。displayName は無制約）。
+ */
+export async function updatePlayerDisplayName(
+  tid: string,
+  pid: string,
+  displayName: string,
+): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "参加者表示名の更新に失敗しました",
+    async () => {
+      await updateDoc(doc(playersRef(tid), pid), { displayName });
+    },
+    { tid, pid },
+  );
+  logger.info("player displayName update ok", { tid, pid });
+}
+
+/**
  * プレイヤードキュメントを削除する。
  * Firestore rules で自己削除（`pid == auth.uid`）と運営者削除の両方を許可する前提。
  */

@@ -53,6 +53,7 @@ import {
   clonePlayersFromTournament,
   createNamedOnlyPlayer,
   unbustPlayer,
+  updatePlayerDisplayName,
   upsertPlayer,
 } from "./players";
 
@@ -137,6 +138,24 @@ describe("createNamedOnlyPlayer", () => {
     vi.stubGlobal("crypto", { randomUUID: () => "synthetic-pid-3" });
     vi.mocked(setDoc).mockRejectedValueOnce(new Error("perm") as never);
     await expect(createNamedOnlyPlayer("t1", "Guest")).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
+
+describe("updatePlayerDisplayName", () => {
+  it("calls updateDoc with { displayName } only", async () => {
+    await updatePlayerDisplayName("t1", "pid-1", "新名");
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload).toEqual({ displayName: "新名" });
+    // doc(ref, pid) で対象 pid が使われていること
+    const docCallIds = vi.mocked(doc).mock.calls.map((c) => c[1]);
+    expect(docCallIds).toContain("pid-1");
+  });
+
+  it("wraps errors as firestore/write_failed", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    await expect(updatePlayerDisplayName("t1", "pid-1", "新名")).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
   });
