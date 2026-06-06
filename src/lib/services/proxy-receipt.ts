@@ -2,6 +2,8 @@ import { AppError, assertNonEmptyString } from "@/lib/errors";
 import { getGroup } from "@/lib/firebase/repositories/groups";
 import {
   createNamedOnlyPlayer,
+  getPlayer,
+  updatePlayerDisplayName,
   upsertPlayer,
 } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
@@ -99,4 +101,45 @@ export async function addNamedOnlyPlayerByOrganizer({
     gid: t.groupId,
   });
   return pid;
+}
+
+/**
+ * Phase 2: 運営者が代理受付した「名前のみ（uid=null）」player の表示名を修正する（入力ミス救済）。
+ * role 再評価 + displayName 検証は他経路と共有のガードを使う。
+ *
+ * **対象を uid=null player に限定する**: 対象 player を read し、`uid !== null`（実在メンバー
+ * 紐づけ）の場合は reject する。member の displayName は本人の self-update が真の所有者であり、
+ * 運営者がこの経路で上書きするのは UI 上も非対応のため、service でも防ぐ（rule の
+ * organizer-update は任意 player の displayName 変更を許すため、ここが service 側の唯一の防御）。
+ *
+ * `assertAcceptingEntries` は**呼ばない**。表示名修正は finished 後でも許してよい
+ * （履歴上の名前訂正）。create とはガードが異なる点に注意。
+ */
+export async function updatePlayerDisplayNameByOrganizer({
+  tid,
+  organizerUid,
+  pid,
+  displayName,
+}: {
+  tid: string;
+  organizerUid: string;
+  pid: string;
+  displayName: string;
+}): Promise<void> {
+  assertNonEmptyString(tid, "tid");
+  assertNonEmptyString(organizerUid, "organizerUid");
+  assertNonEmptyString(pid, "pid");
+  const name = parseDisplayName(displayName, { maxLength: DISPLAY_NAME_MAX_LENGTH });
+  const t = await getTournament(tid);
+  const group = await getGroup(t.groupId);
+  assertOrganizer(group, organizerUid);
+  const player = await getPlayer(tid, pid);
+  if (!player || player.uid !== null) {
+    throw new AppError(
+      "名前のみの参加者ではないため表示名を変更できません",
+      "validation/not-named-only-player",
+    );
+  }
+  await updatePlayerDisplayName(tid, pid, name);
+  logger.info("proxy update displayName ok", { tid, organizerUid, pid, gid: t.groupId });
 }

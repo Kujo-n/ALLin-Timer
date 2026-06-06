@@ -2,6 +2,7 @@ import { Timestamp } from "firebase/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentDoc, TournamentState } from "@/lib/firebase/schemas/tournament";
 
 vi.mock("@/lib/firebase/repositories/tournaments", () => ({
@@ -13,15 +14,23 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
 vi.mock("@/lib/firebase/repositories/players", () => ({
   upsertPlayer: vi.fn(),
   createNamedOnlyPlayer: vi.fn().mockResolvedValue("pid-x"),
+  updatePlayerDisplayName: vi.fn(),
+  getPlayer: vi.fn(),
 }));
 
 import { getGroup } from "@/lib/firebase/repositories/groups";
-import { createNamedOnlyPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
+import {
+  createNamedOnlyPlayer,
+  getPlayer,
+  updatePlayerDisplayName,
+  upsertPlayer,
+} from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 
 import {
   addMemberPlayerByOrganizer,
   addNamedOnlyPlayerByOrganizer,
+  updatePlayerDisplayNameByOrganizer,
 } from "./proxy-receipt";
 
 const ORG = "org-uid";
@@ -69,11 +78,17 @@ function fakeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
   } as GroupDoc;
 }
 
+function namedOnlyPlayer(overrides: Partial<PlayerDoc> = {}): PlayerDoc {
+  return { id: "pid-1", uid: null, displayName: "Dave", ...overrides } as unknown as PlayerDoc;
+}
+
 beforeEach(() => {
   vi.mocked(getTournament).mockReset();
   vi.mocked(getGroup).mockReset();
   vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
   vi.mocked(createNamedOnlyPlayer).mockReset().mockResolvedValue("pid-x");
+  vi.mocked(updatePlayerDisplayName).mockReset().mockResolvedValue(undefined);
+  vi.mocked(getPlayer).mockReset().mockResolvedValue(namedOnlyPlayer());
 });
 
 describe("addMemberPlayerByOrganizer", () => {
@@ -256,5 +271,103 @@ describe("addNamedOnlyPlayerByOrganizer", () => {
       }),
     ).rejects.toMatchObject({ code: "tournament/late-entry-closed" });
     expect(createNamedOnlyPlayer).not.toHaveBeenCalled();
+  });
+});
+
+describe("updatePlayerDisplayNameByOrganizer", () => {
+  it("organizer → updatePlayerDisplayName(tid, pid, trimmedName) 呼出", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament({ state: "setup" }));
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    await updatePlayerDisplayNameByOrganizer({
+      tid: "t-1",
+      organizerUid: ORG,
+      pid: "pid-1",
+      displayName: "  Dave  ",
+    });
+    expect(updatePlayerDisplayName).toHaveBeenCalledWith("t-1", "pid-1", "Dave");
+  });
+
+  it("非 organizer → group/not-organizer throw、repository 未呼出", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament());
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup({ organizerUids: ["owner-uid"] }));
+    await expect(
+      updatePlayerDisplayNameByOrganizer({
+        tid: "t-1",
+        organizerUid: ORG,
+        pid: "pid-1",
+        displayName: "Dave",
+      }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(updatePlayerDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("displayName 空 → validation/display-name-required throw、repository 未呼出", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament());
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    await expect(
+      updatePlayerDisplayNameByOrganizer({
+        tid: "t-1",
+        organizerUid: ORG,
+        pid: "pid-1",
+        displayName: "   ",
+      }),
+    ).rejects.toMatchObject({ code: "validation/display-name-required" });
+    expect(updatePlayerDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("displayName 16 文字 → validation/display-name-too-long throw", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament());
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    await expect(
+      updatePlayerDisplayNameByOrganizer({
+        tid: "t-1",
+        organizerUid: ORG,
+        pid: "pid-1",
+        displayName: "x".repeat(16),
+      }),
+    ).rejects.toMatchObject({ code: "validation/display-name-too-long" });
+    expect(updatePlayerDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("finished tournament でも成功する（assertAcceptingEntries を呼ばない）", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament({ state: "finished" }));
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    await updatePlayerDisplayNameByOrganizer({
+      tid: "t-1",
+      organizerUid: ORG,
+      pid: "pid-1",
+      displayName: "Dave",
+    });
+    expect(updatePlayerDisplayName).toHaveBeenCalledWith("t-1", "pid-1", "Dave");
+  });
+
+  it("uid!==null（メンバー紐づけ）player → validation/not-named-only-player throw、repository 未呼出", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament());
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    vi.mocked(getPlayer).mockResolvedValueOnce(namedOnlyPlayer({ uid: MEMBER }));
+    await expect(
+      updatePlayerDisplayNameByOrganizer({
+        tid: "t-1",
+        organizerUid: ORG,
+        pid: MEMBER,
+        displayName: "Dave",
+      }),
+    ).rejects.toMatchObject({ code: "validation/not-named-only-player" });
+    expect(updatePlayerDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("player 不在 → validation/not-named-only-player throw、repository 未呼出", async () => {
+    vi.mocked(getTournament).mockResolvedValueOnce(fakeTournament());
+    vi.mocked(getGroup).mockResolvedValueOnce(fakeGroup());
+    vi.mocked(getPlayer).mockResolvedValueOnce(null);
+    await expect(
+      updatePlayerDisplayNameByOrganizer({
+        tid: "t-1",
+        organizerUid: ORG,
+        pid: "missing-pid",
+        displayName: "Dave",
+      }),
+    ).rejects.toMatchObject({ code: "validation/not-named-only-player" });
+    expect(updatePlayerDisplayName).not.toHaveBeenCalled();
   });
 });
