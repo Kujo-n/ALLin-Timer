@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Timestamp } from "firebase/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AppError } from "@/lib/errors";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 
@@ -140,5 +141,30 @@ describe("PlayerList — 受付代理 UI", () => {
         displayName: "Dave2",
       }),
     );
+  });
+
+  it("編集 submit が service エラー時に role=alert を表示し、ダイアログを閉じない", async () => {
+    vi.mocked(updatePlayerDisplayNameByOrganizer).mockRejectedValueOnce(
+      new AppError("表示名は 15 文字以内で入力してください", "validation/display-name-too-long"),
+    );
+    render(
+      <PlayerList
+        tid="t-1"
+        players={[makePlayer("guest-1", { uid: null, displayName: "Dave" })]}
+        canManage
+        tournamentState="setup"
+        organizerUid="org"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Dave の表示名を編集"));
+    const input = screen.getByLabelText("表示名") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Dave2" } });
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!);
+    });
+    // catch 経路: editError が role=alert で表示され、ダイアログ（入力 form）は開いたまま。
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("validation/display-name-too-long");
+    expect(screen.getByLabelText("表示名")).toBeInTheDocument();
   });
 });
