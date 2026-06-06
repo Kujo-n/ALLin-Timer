@@ -538,8 +538,21 @@ service cloud.firestore {
         //   - groupId の組織者のみ
         //   - pid == uid invariant・isBusted=false / no seat / no PD は self ブランチと同じ invariant
         //   - 件数上限（writeBatch サイズ）は rule で表現できないため client/repository 側 (MAX_CLONE_PLAYERS) で enforce
-        // ⚠ DRIFT WARNING: 本ブランチの invariant は self-create / self-update と同期更新すること。
-        //   players schema (`schemas/player.ts`) に新フィールドを追加する場合は両ブランチに反映する。
+        //
+        // Phase 1 (07-third-dryrun-improvements): organizer による受付代理 (proxy receipt) のため拡張。
+        //   - **member-proxy ブランチ**（旧 organizer-clone ブランチ）: state 条件を "setup" 単独から
+        //     受付可能 4 state `in ["setup", "seating", "running", "paused"]` へ拡張。これにより
+        //     organizer は開催中（seating/running/paused）でも member（pid==uid, uid is string）を
+        //     代理 create できる。clone（Phase 5.4）の用途は常に新規 setup tournament 対象のため
+        //     拡張後ブランチのサブセットとして動作継続。
+        //   - **name-only ブランチ**（新規 OR 追加）: 本人アカウント不在の参加者を「名前だけ」で登録する。
+        //     `uid == null`・pid は合成 id（pid==uid を要求しない。discriminator は uid==null）。
+        //     isBusted=false / no seat / no PD invariant は self/member-proxy と同期。
+        //   - 受付可能 4 state リテラルは src/lib/services/tournament-state.ts の `isAcceptingProxyEntry`
+        //     と手動同期する（Cloud Rules に const 機構なし）。
+        // ⚠ DRIFT WARNING: 本ブランチ群の invariant は self-create / self-update と同期更新すること。
+        //   players schema (`schemas/player.ts`) に新フィールドを追加する場合は全ブランチに反映する。
+        //   `match /{...=**}` wildcard は絶対に追加しない（firebase-patterns.md の subcollection 設計原則）。
         allow create: if isSignedIn()
                       && (
                         (
@@ -554,9 +567,20 @@ service cloud.firestore {
                         (
                           exists(/databases/$(database)/documents/tournaments/$(tid))
                           && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
-                          && get(/databases/$(database)/documents/tournaments/$(tid)).data.state == "setup"
+                          && get(/databases/$(database)/documents/tournaments/$(tid)).data.state in ["setup", "seating", "running", "paused"]
                           && pid == request.resource.data.uid
                           && request.resource.data.uid is string
+                          && request.resource.data.isBusted == false
+                          && request.resource.data.tableNum == null
+                          && request.resource.data.seatNum == null
+                          && request.resource.data.get('isPlayingDealer', false) == false
+                        )
+                        ||
+                        (
+                          exists(/databases/$(database)/documents/tournaments/$(tid))
+                          && isOrganizer(get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId)
+                          && get(/databases/$(database)/documents/tournaments/$(tid)).data.state in ["setup", "seating", "running", "paused"]
+                          && request.resource.data.uid == null
                           && request.resource.data.isBusted == false
                           && request.resource.data.tableNum == null
                           && request.resource.data.seatNum == null

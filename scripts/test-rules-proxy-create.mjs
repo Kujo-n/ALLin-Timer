@@ -1,23 +1,27 @@
 /**
- * Phase 5.4 Firestore Rules emulator validation for organizer-clone create branch.
+ * Phase 1 (07-third-dryrun-improvements) Firestore Rules emulator validation for
+ * organizer-proxy receipt create branches（member-proxy / name-only）。
  *
  * 起動方法（cwd = repo root）:
  *   firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \
- *     "node scripts/test-rules-clone-players.mjs"
+ *     "node scripts/test-rules-proxy-create.mjs"
  *   # または npm script
- *   npm run test:rules-clone-players
+ *   npm run test:rules-proxy-create
  *
  * 検証ケース:
- *   1. organizer が dest=setup 状態の tournament に他人の uid で player を create → allow
- *   2. 一般 member（同 group の non-organizer）が同様に create → deny
- *   3. dest tournament の state が "seating" のとき organizer が create → allow
- *      （Phase 1 (07-third-dryrun-improvements) で受付代理が seating を許可。旧: setup 限定 deny）
- *   4. organizer が pid != uid の不整合な player を create → deny（pid==uid invariant）
- *   5. organizer が isBusted=true を埋めて create → deny（invariant）
- *   6. organizer が tableNum=1, seatNum=1 を埋めて create → deny（no seat invariant）
- *   7. self（自分の uid）による setup tournament create は引き続き allow（既存 self ブランチ非 regression）
+ *   1. organizer が setup tournament に member.uid で create → allow（member-proxy）
+ *   2. organizer が running tournament に member.uid で create → allow（state 拡張）
+ *   3. organizer が setup tournament に name-only（uid=null, 合成 pid）で create → allow
+ *   4. organizer が running tournament に name-only で create → allow（state 拡張）
+ *   5. 一般 member（non-organizer）が name-only で create → deny
+ *   6. 一般 member が member.uid で create → deny
+ *   7. organizer が name-only で isBusted=true を埋めて create → deny（invariant）
+ *   8. organizer が name-only で tableNum=1/seatNum=1 を埋めて create → deny（no seat invariant）
+ *   9. organizer が name-only で isPlayingDealer=true を埋めて create → deny（PD invariant）
+ *  10. organizer が finished tournament に name-only で create → deny（state 外）
+ *  11. self-create 非 regression: stranger が自分の uid で setup tournament に create → allow
  *
- * 実装方針: test-rules-pd.mjs と同じく Firestore / Auth エミュレータを REST API で叩く。
+ * 実装方針: test-rules-clone-players.mjs と同じく Firestore / Auth エミュレータを REST API で叩く。
  */
 
 const PROJECT_ID = "allin-pokertimer-e2e";
@@ -146,7 +150,7 @@ function tournamentSeed(state, gid, ownerUid) {
   return {
     groupId: gid,
     createdByUid: ownerUid,
-    name: "Clone Test Tournament",
+    name: "Proxy Receipt Test Tournament",
     structureSnapshot: {
       name: "Default",
       initialStack: 10000,
@@ -161,7 +165,9 @@ function tournamentSeed(state, gid, ownerUid) {
     pausedAt: null,
     pausedAccumMs: 0,
     finishedAt: null,
-    currentLevel: 0,
+    // running/finished でも late entry 締切は rule では参照しない（state のみ）。
+    // currentLevel は deadline 以下に置き、service 側の deadline 判定とは無関係に rule allow を検証。
+    currentLevel: state === "setup" || state === "seating" ? 0 : 1,
     lateEntryDeadlineLevel: 6,
     seatsPerTable: 9,
     createdAt: new Date(),
@@ -169,19 +175,25 @@ function tournamentSeed(state, gid, ownerUid) {
   };
 }
 
+let synthSeq = 0;
+function synthPid() {
+  synthSeq += 1;
+  return `named-${Date.now()}-${synthSeq}`;
+}
+
 async function main() {
-  const owner = await signUpOrIn("owner-clone@test.local", "passw0rd");
-  const org = await signUpOrIn("organizer-clone@test.local", "passw0rd");
-  const member = await signUpOrIn("member-clone@test.local", "passw0rd");
-  const stranger = await signUpOrIn("stranger-clone@test.local", "passw0rd");
+  const owner = await signUpOrIn("owner-proxy@test.local", "passw0rd");
+  const org = await signUpOrIn("organizer-proxy@test.local", "passw0rd");
+  const member = await signUpOrIn("member-proxy@test.local", "passw0rd");
+  const stranger = await signUpOrIn("stranger-proxy@test.local", "passw0rd");
 
   console.log(
     `uids:  owner=${owner.uid.slice(0, 6)}  org=${org.uid.slice(0, 6)}  member=${member.uid.slice(0, 6)}  stranger=${stranger.uid.slice(0, 6)}`,
   );
 
-  const gid = `g-clone-${Date.now()}`;
+  const gid = `g-proxy-${Date.now()}`;
   const seedG = await createDoc(owner.idToken, "groups", gid, {
-    name: "Clone Test Group",
+    name: "Proxy Receipt Test Group",
     ownerUids: [owner.uid],
     organizerUids: [owner.uid],
     memberUids: [owner.uid],
@@ -215,36 +227,33 @@ async function main() {
     throw new Error(`group expand failed: ${expandG.status} ${body}`);
   }
 
-  // dest tournament (setup) — clone 先
-  const tidSetup = `t-clone-setup-${Date.now()}`;
-  const seedSetup = await createDoc(
-    owner.idToken,
-    "tournaments",
-    tidSetup,
-    tournamentSeed("setup", gid, owner.uid),
-  );
-  if (!seedSetup.ok) {
-    const body = await seedSetup.text();
-    throw new Error(`setup tournament seed failed: ${seedSetup.status} ${body}`);
-  }
-
-  // dest tournament (seating) — setup 限定 deny 検証用
-  const tidSeating = `t-clone-seating-${Date.now()}`;
-  const seedSeating = await createDoc(
-    owner.idToken,
-    "tournaments",
-    tidSeating,
-    tournamentSeed("seating", gid, owner.uid),
-  );
-  if (!seedSeating.ok) {
-    const body = await seedSeating.text();
-    throw new Error(`seating tournament seed failed: ${seedSeating.status} ${body}`);
+  // tournament seeds（複数 state）
+  const tidSetup = `t-proxy-setup-${Date.now()}`;
+  const tidRunning = `t-proxy-running-${Date.now()}`;
+  const tidFinished = `t-proxy-finished-${Date.now()}`;
+  const tidSelf = `t-proxy-self-${Date.now()}`;
+  for (const [tid, state] of [
+    [tidSetup, "setup"],
+    [tidRunning, "running"],
+    [tidFinished, "finished"],
+    [tidSelf, "setup"],
+  ]) {
+    const seed = await createDoc(
+      owner.idToken,
+      "tournaments",
+      tid,
+      tournamentSeed(state, gid, owner.uid),
+    );
+    if (!seed.ok) {
+      const body = await seed.text();
+      throw new Error(`tournament seed (${state}) failed: ${seed.status} ${body}`);
+    }
   }
 
   // ────────────────────────────────────────────────
-  // 1. organizer が dest=setup の tournament に他人 (member) の uid で player を create → allow
+  // 1. organizer が setup tournament に member.uid で create → allow（member-proxy）
   await expectAllow(
-    "(1) organizer creates player with member.uid into setup tournament",
+    "(1) organizer proxy-creates member into setup tournament",
     () =>
       createDoc(
         org.idToken,
@@ -254,98 +263,128 @@ async function main() {
       ),
   );
 
-  // 2. 一般 member（non-organizer）が他人 (org) の uid で create → deny
+  // 2. organizer が running tournament に member.uid で create → allow（state 拡張）
+  await expectAllow(
+    "(2) organizer proxy-creates member into running tournament (state widened)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidRunning}/players`,
+        member.uid,
+        basePlayer(member.uid, "Member"),
+      ),
+  );
+
+  // 3. organizer が setup tournament に name-only（uid=null, 合成 pid）で create → allow
+  await expectAllow(
+    "(3) organizer creates name-only (uid=null) into setup tournament",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidSetup}/players`,
+        synthPid(),
+        basePlayer(null, "Charge-Dead Guest"),
+      ),
+  );
+
+  // 4. organizer が running tournament に name-only で create → allow（state 拡張）
+  await expectAllow(
+    "(4) organizer creates name-only into running tournament (state widened)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidRunning}/players`,
+        synthPid(),
+        basePlayer(null, "Charge-Dead Guest"),
+      ),
+  );
+
+  // 5. 一般 member（non-organizer）が name-only で create → deny
   await expectDeny(
-    "(2) general member tries clone-create with another uid (deny)",
+    "(5) general member tries name-only create (deny)",
     () =>
       createDoc(
         member.idToken,
         `tournaments/${tidSetup}/players`,
-        org.uid,
-        basePlayer(org.uid, "Org"),
+        synthPid(),
+        basePlayer(null, "Charge-Dead Guest"),
       ),
   );
 
-  // 3. dest tournament の state="seating" → organizer の create allow
-  //    Phase 1 (07-third-dryrun-improvements) で受付代理が seating を許可するため allow に変更
-  //    （旧: setup 限定 deny）。rule 拡張に伴う期待値更新。clone 用途は引き続き setup 固定で
-  //    動作するが、ブランチ共有のため seating-state の create も allow になる。
+  // 6. 一般 member が member.uid で create → deny
+  await expectDeny(
+    "(6) general member tries member-proxy create with another uid (deny)",
+    () =>
+      createDoc(
+        member.idToken,
+        `tournaments/${tidSetup}/players`,
+        stranger.uid,
+        basePlayer(stranger.uid, "Stranger"),
+      ),
+  );
+
+  // 7. organizer が name-only で isBusted=true を埋めて create → deny（invariant）
+  await expectDeny(
+    "(7) organizer name-only create with isBusted=true (deny)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidSetup}/players`,
+        synthPid(),
+        basePlayer(null, "Guest", { isBusted: true }),
+      ),
+  );
+
+  // 8. organizer が name-only で tableNum=1/seatNum=1 を埋めて create → deny（no seat invariant）
+  await expectDeny(
+    "(8) organizer name-only create with seat filled (deny)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidSetup}/players`,
+        synthPid(),
+        basePlayer(null, "Guest", { tableNum: 1, seatNum: 1 }),
+      ),
+  );
+
+  // 9. organizer が name-only で isPlayingDealer=true を埋めて create → deny（PD invariant）
+  await expectDeny(
+    "(9) organizer name-only create with isPlayingDealer=true (deny)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidSetup}/players`,
+        synthPid(),
+        basePlayer(null, "Guest", { isPlayingDealer: true }),
+      ),
+  );
+
+  // 10. organizer が finished tournament に name-only で create → deny（state 外）
+  await expectDeny(
+    "(10) organizer name-only create into finished tournament (deny — state out of range)",
+    () =>
+      createDoc(
+        org.idToken,
+        `tournaments/${tidFinished}/players`,
+        synthPid(),
+        basePlayer(null, "Guest"),
+      ),
+  );
+
+  // 11. self-create 非 regression: stranger が自分の uid で setup tournament に create → allow
   await expectAllow(
-    "(3) organizer create on seating-state tournament (allow — proxy receipt widened in Phase 07)",
+    "(11) self-create on setup tournament still works (no regression)",
     () =>
       createDoc(
-        org.idToken,
-        `tournaments/${tidSeating}/players`,
-        member.uid,
-        basePlayer(member.uid, "Member"),
-      ),
-  );
-
-  // 4. organizer が pid != uid の不整合な create → deny
-  await expectDeny(
-    "(4) organizer create with pid != uid (deny)",
-    () =>
-      createDoc(
-        org.idToken,
-        `tournaments/${tidSetup}/players`,
-        "fake-pid-not-matching",
-        basePlayer(stranger.uid, "Mismatch"),
-      ),
-  );
-
-  // 5. organizer が isBusted=true を埋めて create → deny
-  await expectDeny(
-    "(5) organizer create with isBusted=true (deny)",
-    () =>
-      createDoc(
-        org.idToken,
-        `tournaments/${tidSetup}/players`,
+        stranger.idToken,
+        `tournaments/${tidSelf}/players`,
         stranger.uid,
-        basePlayer(stranger.uid, "Stranger", { isBusted: true }),
+        basePlayer(stranger.uid, "Stranger"),
       ),
   );
-
-  // 6. organizer が tableNum/seatNum を埋めて create → deny（no seat invariant）
-  await expectDeny(
-    "(6) organizer create with tableNum=1/seatNum=1 (deny)",
-    () =>
-      createDoc(
-        org.idToken,
-        `tournaments/${tidSetup}/players`,
-        stranger.uid,
-        basePlayer(stranger.uid, "Stranger", { tableNum: 1, seatNum: 1 }),
-      ),
-  );
-
-  // 7. self ブランチ非 regression: stranger が自分の uid で setup tournament に create → allow
-  //    （新規 setup tournament を別途用意。tidSetup は既に member.uid が存在するため衝突回避）
-  const tidSelf = `t-clone-self-${Date.now()}`;
-  const seedSelf = await createDoc(
-    owner.idToken,
-    "tournaments",
-    tidSelf,
-    tournamentSeed("setup", gid, owner.uid),
-  );
-  if (seedSelf.ok) {
-    await expectAllow(
-      "(7) self-create on setup tournament still works (no regression)",
-      () =>
-        createDoc(
-          stranger.idToken,
-          `tournaments/${tidSelf}/players`,
-          stranger.uid,
-          basePlayer(stranger.uid, "Stranger"),
-        ),
-    );
-  } else {
-    results.push({
-      label: "(7) self tournament seed",
-      status: `SKIP (seed failed): ${seedSelf.status}`,
-    });
-  }
 
   // ────────────────────────────────────────────────
-  console.log("\n=== Firestore Rules: players organizer-clone create validation ===");
+  console.log("\n=== Firestore Rules: players organizer-proxy create validation ===");
   for (const r of results) {
     const ok = r.status.startsWith("PASS");
     console.log(`  ${ok ? "[OK]  " : r.status.startsWith("SKIP") ? "[SKIP]" : "[FAIL]"} ${r.label} — ${r.status}`);
