@@ -341,6 +341,25 @@ Phase 5.4 「同じ参加者で次のトーナメントを作成」のため、`
 
 ⚠ DRIFT WARNING: `players` schema に新フィールドを追加する場合は、self-create / organizer-clone 両ブランチに同じ invariant を反映すること。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs) を `npm run test:rules-clone-players` で起動。
 
+### Phase 1 (07-third-dryrun-improvements) で追加: organizer による受付代理 create（member-proxy / name-only・受付可能 state）
+
+Phase 1 受付代理（本人スマホ依存を回避し、運営者の手元操作だけで参加者を登録する）のため、`tournaments/{tid}/players/{pid}` の `allow create` を拡張した（[firestore.rules](../../firestore.rules) の `match /players/{pid}` 内 `allow create`）:
+
+- **member-proxy**（旧 organizer-clone ブランチを拡張）: state 条件を `"setup"` 単独から受付可能 4 state `in ["setup", "seating", "running", "paused"]` へ拡張。organizer が開催中でもメンバーを `pid==uid` で代理 create できる。clone（Phase 5.4）は新規 setup tournament 対象のためサブセットとして動作継続。
+- **name-only**（新規ブランチ）: `uid == null`・合成 pid（pid==uid を要求しない）で「名前だけ」の運営者管理専用 player を create。`isBusted=false` / no seat / `isPlayingDealer=false` invariant は self/member-proxy と同期。
+
+経路の影響範囲:
+
+- **トリガ**: Phase 2 UI（「参加者を追加」ダイアログ）から `addMemberPlayerByOrganizer` / `addNamedOnlyPlayerByOrganizer`（[services/proxy-receipt.ts](../../src/lib/services/proxy-receipt.ts)）を呼ぶ。Phase 1 はデータ層のみ（UI は Phase 2）
+- **書込内容**: member-proxy は `upsertPlayer` 再利用（pid==uid create/merge）、name-only は `createNamedOnlyPlayer`（合成 pid・uid=null）。displayName は service で trim + ≤15 文字検証（rule では size 未強制のため service が唯一の防御）。member-proxy は加えて `memberUid ∈ group.memberUids` を service で検証する（rule は membership 未強制のため、不参加メンバー / サークル外 uid への誤作成と `finishTournament` でのシーズン戦績誤加算を service が防ぐ）
+- **scope**: 受付可能 4 state 限定（finished は deny）。`isOrganizer(parent.groupId)` 必須（一般 member は不可）。late entry deadline 超過は service の受付ガードが拒否。受付可能 state / displayName / late-entry 締切の判定は通常受付（`receipt.ts`）と共有の [`services/entry-guards.ts`](../../src/lib/services/entry-guards.ts)（`assertAcceptingEntries` / `parseDisplayName`）を経由し、両経路の semantics drift を防ぐ
+
+**潜在リスク**: service を経由せず Firestore を直接叩く organizer は、rule が membership を問わないため任意 uid string で「参加していない player doc」を作る（member-proxy）／任意名で「実在しないゲスト player」を作る（name-only）攻撃が依然成立する（通常経路は上記 service ガードで防ぐ）。被害は「参加者画面に表示される」のみで、`isPlayingDealer=false` / no seat invariant が rule で強制されるため PD ポジショニング DoS や席奪取は不可能。`uid=null` player は `finishTournament` の season 集計・`resolveRanking` で skip 済み（下流耐性あり）。
+
+**緩和**: organizer は元々サークル内の structures / tournaments 全 CRUD を持つ信頼ロール（[権限マトリクス](#権限マトリクス) 参照）のため、信頼境界を超えた緩和ではない。`organizer-clone` と同方針で Cloud Functions 化（client から直接 `players/{pid}` create を deny に戻す）は将来課題。
+
+⚠ DRIFT WARNING: `players` schema に新フィールドを追加する場合は、self-create / member-proxy / name-only の **3 ブランチすべて**に同じ invariant を反映すること。受付可能 4 state リテラルは `isAcceptingProxyEntry`（tournament-state.ts）と手動同期。emulator validation: [scripts/test-rules-proxy-create.mjs](../../scripts/test-rules-proxy-create.mjs) を `npm run test:rules-proxy-create` で起動。
+
 ## 招待コード設計原則（Phase 2.5 以降）
 
 `groupJoinCodes/{code}` による group 加入フローで遵守すること（旧 `security.md` から移管）:

@@ -168,28 +168,35 @@ rule: `players/{pid}` update branches に additive 拡張のみ:
 
 ⚠ DRIFT WARNING: `players` への新フィールド追加は schema (`schemas/player.ts`) / rule (`firestore.rules` players update branches) / service (`orchestrator.ts` setIsPlayingDealer 等) / UI (SeatingBoard / PlayerList の PD checkbox) の 4 点同時更新が必要。emulator validation script は [scripts/test-rules-pd.mjs](../../scripts/test-rules-pd.mjs)。
 
-### `players/{pid}` の create rule 経路（Phase 5.4 以降）
+### `players/{pid}` の create rule 経路（Phase 5.4 以降・Phase 1 (07-third-dryrun-improvements) で 3 系統に拡張）
 
-`tournaments/{tid}/players/{pid}` の `allow create` は **2 系統の OR で分岐**する:
+`tournaments/{tid}/players/{pid}` の `allow create` は **3 系統の OR で分岐**する:
 
 | ブランチ | 条件 | 用途 |
 | --- | --- | --- |
 | **self-create** | `pid == auth.uid` かつ `request.resource.data.uid == auth.uid` | 通常の受付フロー（`/join/[tid]` で参加者本人が登録） |
-| **organizer-clone** | 親 tournament が `exists` かつ `isOrganizer(parent.groupId)` かつ `parent.state == "setup"` かつ `pid == request.resource.data.uid` | Phase 5.4 「同じ参加者で次のトーナメントを作成」（運営者が代理 create） |
+| **member-proxy**（旧 organizer-clone） | 親 tournament が `exists` かつ `isOrganizer(parent.groupId)` かつ `parent.state in ["setup", "seating", "running", "paused"]` かつ `pid == request.resource.data.uid` かつ `uid is string` | Phase 5.4 clone「同じ参加者で次のトーナメントを作成」＋ Phase 1 受付代理（運営者がメンバーを uid 紐づけで代理 create）。clone は setup 固定で動くサブセット |
+| **name-only**（Phase 1 追加） | 親 tournament が `exists` かつ `isOrganizer(parent.groupId)` かつ `parent.state in ["setup", "seating", "running", "paused"]` かつ `request.resource.data.uid == null` | Phase 1 受付代理（本人アカウント不在を「名前だけ」で登録。pid は合成 id、pid==uid を要求しない。discriminator は `uid == null`） |
 
-両ブランチで共通の invariant:
+全ブランチで共通の invariant:
 
-- `pid == request.resource.data.uid`（pid==uid invariant — `assignSeat` / `bustPlayer` 等の self-key 比較を多用する update rule の前提）
 - `isBusted == false`
 - `tableNum == null` / `seatNum == null`（no seat invariant — 配席は別 update 経路）
 - `isPlayingDealer == false`（`.get('isPlayingDealer', false) == false`）
+- **pid==uid invariant** は self-create / member-proxy のみ（name-only は `pid` が合成 id・`uid == null` のため要求しない）
+
+受付可能 4 state リテラル（`["setup", "seating", "running", "paused"]`）は
+[src/lib/services/tournament-state.ts](../../src/lib/services/tournament-state.ts) の `isAcceptingProxyEntry`
+と**手動同期**する（Cloud Rules に const 機構なし）。
 
 書込経路:
 
 - self-create — `upsertPlayer(tid, uid, { displayName })`（[repositories/players.ts](../../src/lib/firebase/repositories/players.ts)）
-- organizer-clone — `clonePlayersFromTournament(srcTid, destTid, selectedPlayerIds)`（同 file）の `writeBatch + setDoc`。1 回の clone で `MAX_CLONE_PLAYERS = 50` 件まで。orchestrator は [`tournament-clone.ts`](../../src/lib/services/tournament-clone.ts) の `cloneTournamentWithPlayers`
+- member-proxy（clone） — `clonePlayersFromTournament(srcTid, destTid, selectedPlayerIds)`（同 file）の `writeBatch + setDoc`。1 回の clone で `MAX_CLONE_PLAYERS = 50` 件まで。orchestrator は [`tournament-clone.ts`](../../src/lib/services/tournament-clone.ts) の `cloneTournamentWithPlayers`
+- member-proxy（受付代理） — `addMemberPlayerByOrganizer(...)`（[services/proxy-receipt.ts](../../src/lib/services/proxy-receipt.ts)）→ `upsertPlayer` 再利用。organizer + state guard（共有 [`entry-guards.ts`](../../src/lib/services/entry-guards.ts)）+ `memberUid ∈ memberUids` 検証 + displayName ≤15 検証
+- name-only（受付代理） — `addNamedOnlyPlayerByOrganizer(...)`（同 file）→ `createNamedOnlyPlayer(tid, displayName)`（repositories/players.ts）。合成 pid (`crypto.randomUUID()`) を返す
 
-⚠ DRIFT WARNING: `players` schema への新フィールド追加時は **両ブランチの invariant** に同時反映すること。片方だけ追加すると、organizer-clone 経路で「self では弾かれる値が clone 経由で混入する」抜け道が成立する。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs) を `npm run test:rules-clone-players` で起動（`firebase emulators:exec` 同梱）。
+⚠ DRIFT WARNING: `players` schema への新フィールド追加時は **3 ブランチすべての invariant** に同時反映すること。1 つでも漏らすと、proxy / clone 経路で「self では弾かれる値が混入する」抜け道が成立する。emulator validation: [scripts/test-rules-clone-players.mjs](../../scripts/test-rules-clone-players.mjs)（`npm run test:rules-clone-players`）＋ [scripts/test-rules-proxy-create.mjs](../../scripts/test-rules-proxy-create.mjs)（`npm run test:rules-proxy-create`）の両方を起動（`firebase emulators:exec` 同梱）。受付代理の potential リスクは [group-membership.md](group-membership.md) の「既知のセキュリティリスク」参照。
 
 ### `tournaments/{tid}` / `groups/{gid}` 配下 subcollection の rule 設計原則（Phase 5.4 以降・重要、Phase A で `groups/{gid}` 配下にも適用拡大）
 
