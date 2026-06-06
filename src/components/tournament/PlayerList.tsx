@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { AddParticipantDialog } from "@/components/tournament/AddParticipantDialog";
 import { BustButton } from "@/components/tournament/BustButton";
+import { EditPlayerNameDialog } from "@/components/tournament/EditPlayerNameDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,15 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
-import { DISPLAY_NAME_MAX_LENGTH, type GroupDoc } from "@/lib/firebase/schemas/group";
+import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentState } from "@/lib/firebase/schemas/tournament";
-import {
-  updatePlayerDisplayNameByOrganizer,
-} from "@/lib/services/proxy-receipt";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
 import { getSameTableActivePdOtherIds } from "@/lib/services/seating/same-table";
 
@@ -72,9 +68,6 @@ export function PlayerList({
   const [cancelling, setCancelling] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PlayerDoc | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
   const error = subscribeError ?? localError;
 
   async function onConfirmCancel() {
@@ -89,34 +82,6 @@ export function PlayerList({
       setLocalError(formatErrorForDisplay(wrapped));
     } finally {
       setCancelling(false);
-    }
-  }
-
-  function openEdit(p: PlayerDoc) {
-    setEditTarget(p);
-    setEditName(p.displayName);
-    setEditError(null);
-  }
-
-  async function onConfirmEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editTarget || !organizerUid) return;
-    setEditSaving(true);
-    setEditError(null);
-    try {
-      await updatePlayerDisplayNameByOrganizer({
-        tid,
-        organizerUid,
-        pid: editTarget.id,
-        displayName: editName,
-      });
-      setEditTarget(null);
-    } catch (e) {
-      // service 側で warn 済み — UI catch は表示用 message 抽出のみ
-      const wrapped = unwrapOrFrom(e, "firestore/write_failed", "表示名の更新に失敗しました");
-      setEditError(formatErrorForDisplay(wrapped));
-    } finally {
-      setEditSaving(false);
     }
   }
 
@@ -211,7 +176,7 @@ export function PlayerList({
                       variant="ghost"
                       size="icon"
                       aria-label={`${p.displayName} の表示名を編集`}
-                      onClick={() => openEdit(p)}
+                      onClick={() => setEditTarget(p)}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -276,52 +241,17 @@ export function PlayerList({
         />
       ) : null}
 
-      <Dialog
-        open={editTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditTarget(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>表示名を変更</DialogTitle>
-            <DialogDescription>
-              名前のみの参加者の表示名を修正します。
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={onConfirmEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-player-name">表示名</Label>
-              <Input
-                id="edit-player-name"
-                aria-label="表示名"
-                required
-                maxLength={DISPLAY_NAME_MAX_LENGTH}
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
-            </div>
-            {editError ? (
-              <p className="text-sm text-destructive" role="alert">
-                {editError}
-              </p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditTarget(null)}
-                disabled={editSaving}
-              >
-                キャンセル
-              </Button>
-              <Button type="submit" disabled={editSaving}>
-                {editSaving ? "保存中…" : "保存"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {organizerUid ? (
+        <EditPlayerNameDialog
+          open={editTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditTarget(null);
+          }}
+          tid={tid}
+          organizerUid={organizerUid}
+          target={editTarget}
+        />
+      ) : null}
     </Card>
   );
 }
