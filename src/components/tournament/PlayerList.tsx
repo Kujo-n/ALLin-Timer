@@ -1,8 +1,9 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
+import { AddParticipantDialog } from "@/components/tournament/AddParticipantDialog";
 import { BustButton } from "@/components/tournament/BustButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +15,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatErrorForDisplay, unwrapOrFrom } from "@/lib/errors";
+import { DISPLAY_NAME_MAX_LENGTH, type GroupDoc } from "@/lib/firebase/schemas/group";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TournamentState } from "@/lib/firebase/schemas/tournament";
+import {
+  updatePlayerDisplayNameByOrganizer,
+} from "@/lib/services/proxy-receipt";
 import { cancelPlayerEntry } from "@/lib/services/receipt";
 import { getSameTableActivePdOtherIds } from "@/lib/services/seating/same-table";
 
@@ -36,6 +43,15 @@ interface Props {
    * 値変化時にトグル処理を呼ぶ。
    */
   onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
+  /**
+   * Phase 2 (07-third-dryrun-improvements): 受付代理ダイアログ用。
+   * canManage かつ canAddParticipant かつ group / organizerUid が揃うとき
+   * 「参加者を追加」ボタンと名前のみ player の表示名編集を出す。
+   */
+  group?: GroupDoc | null;
+  organizerUid?: string | null;
+  /** 受付可能 state か（dashboard が isAcceptingProxyEntry(data) を渡す）。 */
+  canAddParticipant?: boolean;
 }
 
 export function PlayerList({
@@ -45,12 +61,20 @@ export function PlayerList({
   canManage = false,
   tournamentState,
   onTogglePd,
+  group,
+  organizerUid,
+  canAddParticipant = false,
 }: Props) {
   // M3 fix: subscribeError を useEffect 経由で local state にコピーしない。
   // 取消エラーのみ local state で持ち、subscribe error は render 時に合成。
   const [localError, setLocalError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PlayerDoc | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<PlayerDoc | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
   const error = subscribeError ?? localError;
 
   async function onConfirmCancel() {
@@ -68,6 +92,38 @@ export function PlayerList({
     }
   }
 
+  function openEdit(p: PlayerDoc) {
+    setEditTarget(p);
+    setEditName(p.displayName);
+    setEditError(null);
+  }
+
+  async function onConfirmEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget || !organizerUid) return;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await updatePlayerDisplayNameByOrganizer({
+        tid,
+        organizerUid,
+        pid: editTarget.id,
+        displayName: editName,
+      });
+      setEditTarget(null);
+    } catch (e) {
+      // service 側で warn 済み — UI catch は表示用 message 抽出のみ
+      const wrapped = unwrapOrFrom(e, "firestore/write_failed", "表示名の更新に失敗しました");
+      setEditError(formatErrorForDisplay(wrapped));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  // 代理受付ダイアログを出せるか（受付可能 state + organizer 文脈が揃う）。
+  const showAddParticipant =
+    canManage && canAddParticipant && !!group && !!organizerUid;
+
   const showBustButton =
     canManage && (tournamentState === "running" || tournamentState === "paused");
   // Phase 5.1: setup 中のみ PD チェックボックスを PlayerList に表示。
@@ -78,8 +134,17 @@ export function PlayerList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>参加者 ({players.length})</CardTitle>
-        <CardDescription>リアルタイム同期中。</CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1.5">
+            <CardTitle>参加者 ({players.length})</CardTitle>
+            <CardDescription>リアルタイム同期中。</CardDescription>
+          </div>
+          {showAddParticipant ? (
+            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+              参加者を追加
+            </Button>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent>
         {error ? (
@@ -95,6 +160,11 @@ export function PlayerList({
             {players.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-2 py-2">
                 <span className="flex-1 truncate">{p.displayName}</span>
+                {p.uid === null ? (
+                  <span className="ml-1 inline-flex flex-shrink-0 items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    管理専用
+                  </span>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {p.isBusted
@@ -135,6 +205,16 @@ export function PlayerList({
                       sameTablePlayerIds={getSameTableActivePdOtherIds(p, players)}
                       onError={setLocalError}
                     />
+                  ) : null}
+                  {canManage && p.uid === null && organizerUid ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${p.displayName} の表示名を編集`}
+                      onClick={() => openEdit(p)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   ) : null}
                   {canManage ? (
                     <Button
@@ -180,6 +260,66 @@ export function PlayerList({
               {cancelling ? "処理中…" : "取消"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {showAddParticipant ? (
+        <AddParticipantDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          tid={tid}
+          organizerUid={organizerUid}
+          group={group}
+          existingPlayerUids={players
+            .filter((p) => p.uid !== null)
+            .map((p) => p.uid as string)}
+        />
+      ) : null}
+
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>表示名を変更</DialogTitle>
+            <DialogDescription>
+              名前のみの参加者の表示名を修正します。
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={onConfirmEdit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-player-name">表示名</Label>
+              <Input
+                id="edit-player-name"
+                aria-label="表示名"
+                required
+                maxLength={DISPLAY_NAME_MAX_LENGTH}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            {editError ? (
+              <p className="text-sm text-destructive" role="alert">
+                {editError}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditTarget(null)}
+                disabled={editSaving}
+              >
+                キャンセル
+              </Button>
+              <Button type="submit" disabled={editSaving}>
+                {editSaving ? "保存中…" : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </Card>
