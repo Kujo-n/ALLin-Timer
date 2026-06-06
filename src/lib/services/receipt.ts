@@ -5,7 +5,6 @@ import { firebaseAuth } from "@/lib/firebase/client";
 import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import { getUserProfile, upsertUserProfile } from "@/lib/firebase/repositories/users";
-import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import {
   attemptAnonymousSelfDelete,
@@ -13,31 +12,9 @@ import {
   signInAsGuest,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
-import { isFinished, isInProgress } from "@/lib/services/tournament-state";
+import { assertAcceptingEntries, parseDisplayName } from "@/lib/services/entry-guards";
 
 export type ReceiptResult = "created" | "already-joined";
-
-function assertAcceptingEntries(t: TournamentDoc): void {
-  if (isFinished(t)) {
-    throw new AppError("このトーナメントは終了しています", "tournament/late-entry-closed");
-  }
-  // Phase 4: late entry 締切超過は client 側で警告（rules では弾かない）。
-  // 締切超過後に join しても自動配席されず /live で「締切超過」表示になるため事前に防ぐ。
-  if (isInProgress(t) && t.currentLevel > t.lateEntryDeadlineLevel) {
-    throw new AppError(
-      `レイトエントリー締切（Lv ${t.lateEntryDeadlineLevel}）を超過しています`,
-      "tournament/late-entry-closed",
-    );
-  }
-}
-
-function requireDisplayName(name: string | null | undefined): string {
-  const trimmed = (name ?? "").trim();
-  if (!trimmed) {
-    throw new AppError("表示名を入力してください", "validation/display-name-required");
-  }
-  return trimmed;
-}
 
 /**
  * displayName の解決優先順位:
@@ -114,7 +91,7 @@ export async function joinAsGuest({
   tid: string;
   displayName: string;
 }): Promise<ReceiptResult> {
-  const name = requireDisplayName(displayName);
+  const name = parseDisplayName(displayName);
   const user = await signInAsGuest(name);
   const result = await ensurePlayerCreated(tid, user, name);
   logger.info("join as guest ok", { tid, uid: user.uid, result });
