@@ -7,7 +7,12 @@ import {
   upsertPlayer,
 } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
-import { assertOrganizer, DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
+import {
+  assertOrganizer,
+  DISPLAY_NAME_MAX_LENGTH,
+  type GroupDoc,
+} from "@/lib/firebase/schemas/group";
+import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { assertAcceptingEntries, parseDisplayName } from "@/lib/services/entry-guards";
 
@@ -29,6 +34,24 @@ import { assertAcceptingEntries, parseDisplayName } from "@/lib/services/entry-g
  *
  * UI（「参加者を追加」ダイアログ）は Phase 2 で本 service を消費する。
  */
+
+/**
+ * ゼロトラスト由来の「organizer 再認可」の単一真実源。
+ *
+ * 3 つの代理経路が共通で必要とする「UI から渡された gid を信頼せず、tournament 自身の
+ * `groupId` 経由で group を引き直し organizer を再評価する」手順をここに集約する。
+ * 再認可の起点を tournament.groupId に固定することで、経路ごとに別 gid 源へ分岐する
+ * 非対称な認可の混入を防ぐ。read 順序（getTournament → getGroup）も単一化する。
+ */
+async function resolveOrganizerContext(
+  tid: string,
+  organizerUid: string,
+): Promise<{ tournament: TournamentDoc; group: GroupDoc }> {
+  const tournament = await getTournament(tid);
+  const group = await getGroup(tournament.groupId);
+  assertOrganizer(group, organizerUid);
+  return { tournament, group };
+}
 
 /**
  * メンバー代理（uid 指定）。`upsertPlayer(tid, memberUid, { displayName })` で
@@ -54,9 +77,7 @@ export async function addMemberPlayerByOrganizer({
   assertNonEmptyString(organizerUid, "organizerUid");
   assertNonEmptyString(memberUid, "memberUid");
   const name = parseDisplayName(displayName, { maxLength: DISPLAY_NAME_MAX_LENGTH });
-  const t = await getTournament(tid);
-  const group = await getGroup(t.groupId);
-  assertOrganizer(group, organizerUid);
+  const { tournament: t, group } = await resolveOrganizerContext(tid, organizerUid);
   if (!group.memberUids.includes(memberUid)) {
     throw new AppError(
       "対象はサークルのメンバーではありません",
@@ -89,9 +110,7 @@ export async function addNamedOnlyPlayerByOrganizer({
   assertNonEmptyString(tid, "tid");
   assertNonEmptyString(organizerUid, "organizerUid");
   const name = parseDisplayName(displayName, { maxLength: DISPLAY_NAME_MAX_LENGTH });
-  const t = await getTournament(tid);
-  const group = await getGroup(t.groupId);
-  assertOrganizer(group, organizerUid);
+  const { tournament: t } = await resolveOrganizerContext(tid, organizerUid);
   assertAcceptingEntries(t);
   const pid = await createNamedOnlyPlayer(tid, name);
   logger.info("proxy add named-only ok", {
@@ -130,9 +149,7 @@ export async function updatePlayerDisplayNameByOrganizer({
   assertNonEmptyString(organizerUid, "organizerUid");
   assertNonEmptyString(pid, "pid");
   const name = parseDisplayName(displayName, { maxLength: DISPLAY_NAME_MAX_LENGTH });
-  const t = await getTournament(tid);
-  const group = await getGroup(t.groupId);
-  assertOrganizer(group, organizerUid);
+  const { tournament: t } = await resolveOrganizerContext(tid, organizerUid);
   const player = await getPlayer(tid, pid);
   if (!player || player.uid !== null) {
     throw new AppError(
