@@ -14,7 +14,6 @@ export const seasonHistoryEntrySchema = z.object({
   finalTables: z.number().int().nonnegative(),
   totalPoints: z.number().nonnegative(),
 });
-export type SeasonHistoryEntry = z.infer<typeof seasonHistoryEntrySchema>;
 
 /**
  * Phase A: `groups/{gid}/seasonHistory/{seasonId}` のスキーマ。

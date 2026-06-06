@@ -79,7 +79,6 @@ export const seasonPointsRuleSchema = z
   })
   .nullable()
   .default(null);
-export type SeasonPointsRuleSchema = z.infer<typeof seasonPointsRuleSchema>;
 
 /**
  * Phase A.1 (05-post-launch-polish Track A): 結果カード背景のテキストテーマ。
