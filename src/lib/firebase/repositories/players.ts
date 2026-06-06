@@ -121,6 +121,46 @@ export async function upsertPlayer(
 }
 
 /**
+ * Phase 1 (07-third-dryrun-improvements): 運営者が「名前のみ」の参加者を代理 create する。
+ *  - `uid: null`（本人アカウント不在の運営者管理専用 player）。
+ *  - pid は `crypto.randomUUID()` の合成 id（pid==uid invariant は持たない）。
+ *  - 席フィールド null / `isBusted=false` / `isPlayingDealer=false` で初期化（self/clone と同期）。
+ *  - displayName の trim / ≤15 文字検証は service 層（proxy-receipt）の責務。repository は
+ *    upsertPlayer と同様に受け取った値をそのまま書く。
+ *
+ * 戻り値は発行した合成 pid（Phase 2 UI が表示名修正等で参照する）。
+ *
+ * 権限の最終防衛は Firestore Rules（Phase 1 で追加した name-only create ブランチ）。
+ * client 側の organizer チェックは呼出側 service が行う前提。
+ */
+export async function createNamedOnlyPlayer(
+  tid: string,
+  displayName: string,
+): Promise<string> {
+  const pid = crypto.randomUUID();
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "名前のみ参加者の登録に失敗しました",
+    async () => {
+      await setDoc(doc(playersRef(tid), pid), {
+        displayName,
+        uid: null,
+        entryAt: serverTimestamp(),
+        isBusted: false,
+        bustedAt: null,
+        tableNum: null,
+        seatNum: null,
+        lastMovedAt: null,
+        isPlayingDealer: false,
+      });
+    },
+    { tid, pid },
+  );
+  logger.info("named-only player create ok", { tid, pid });
+  return pid;
+}
+
+/**
  * プレイヤードキュメントを削除する。
  * Firestore rules で自己削除（`pid == auth.uid`）と運営者削除の両方を許可する前提。
  */

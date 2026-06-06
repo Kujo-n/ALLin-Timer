@@ -1,5 +1,5 @@
 import { Timestamp } from "firebase/firestore";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/firebase/client", () => ({
   firestore: {},
@@ -36,6 +36,7 @@ vi.mock("@/lib/firebase/converters", () => ({
 }));
 
 import {
+  doc,
   getDoc,
   getDocs,
   setDoc,
@@ -50,6 +51,7 @@ import {
   bustPlayer,
   clearSeat,
   clonePlayersFromTournament,
+  createNamedOnlyPlayer,
   unbustPlayer,
   upsertPlayer,
 } from "./players";
@@ -97,6 +99,46 @@ describe("upsertPlayer", () => {
     await upsertPlayer("t1", "u1", { displayName: "new" });
     const payload = vi.mocked(setDoc).mock.calls[0][1] as Record<string, unknown>;
     expect(payload).toEqual({ displayName: "new" });
+  });
+});
+
+describe("createNamedOnlyPlayer", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("creates a uid=null player with synthetic pid and initialized invariants", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "synthetic-pid-1" });
+    const pid = await createNamedOnlyPlayer("t1", "Guest");
+    expect(pid).toBe("synthetic-pid-1");
+    const payload = vi.mocked(setDoc).mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.displayName).toBe("Guest");
+    expect(payload.uid).toBeNull();
+    expect(payload.isBusted).toBe(false);
+    expect(payload.tableNum).toBeNull();
+    expect(payload.seatNum).toBeNull();
+    expect(payload.lastMovedAt).toBeNull();
+    expect(payload.bustedAt).toBeNull();
+    expect(payload.isPlayingDealer).toBe(false);
+    expect(payload.entryAt).toEqual({ __op: "serverTimestamp" });
+  });
+
+  it("writes the doc under the synthetic pid", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "synthetic-pid-2" });
+    await createNamedOnlyPlayer("t1", "Guest");
+    const docRef = vi.mocked(setDoc).mock.calls[0][0] as { id?: string };
+    expect(docRef.id).toBe("synthetic-pid-2");
+    // doc(ref, id) が合成 pid で呼ばれていること
+    const docCallIds = vi.mocked(doc).mock.calls.map((c) => c[1]);
+    expect(docCallIds).toContain("synthetic-pid-2");
+  });
+
+  it("wraps errors as firestore/write_failed", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "synthetic-pid-3" });
+    vi.mocked(setDoc).mockRejectedValueOnce(new Error("perm") as never);
+    await expect(createNamedOnlyPlayer("t1", "Guest")).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
   });
 });
 
