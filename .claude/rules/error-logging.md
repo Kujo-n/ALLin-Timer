@@ -30,13 +30,13 @@ Phase 1 で確立。Phase 4 architect-refactor で helper を 3 種類に拡張�
   - `auth/*` — 認証起因
   - `tournament/*` — ドメインロジック起因
   - `validation/*` — 入力検証起因
-  - `seating/*` — 席決め起因
+  - `seating/*` — 席決め起因（Phase 3 (07-third-dryrun-improvements) で手動卓閉鎖の `seating/table-close-overflow`（残卓が定員 ≤10 で収容不能なため閉鎖をブロック）/ `seating/table-close-last`（最後の 1 卓は閉鎖不可）を追加）
   - `group/*` — group 操作起因
   - `season/*` — シーズン管理起因（Phase A 追加。`startNewSeason` の tx 失敗 / pre-check 違反等）
   - `pwa/*` — PWA インストール / Service Worker / ブラウザストレージ起因（Phase D 追加。`pwa/storage-failed` / `pwa/install-prompt-failed` 等）
   - `spectate/*` — 観戦モード起因（04-spectate-mode Phase 1 追加。書込 service / `/spectate/[tid]` ページは Phase 2/3 で具体 code が増える予定。`spectate/permission-denied` 等）
   - `theme/*` — テーマ切替（個人 preference）起因（05-post-launch-polish Track D / Phase D.1 追加。`theme/storage-failed`（localStorage write/read 例外）/ `theme/invalid-value`（既存 stored 値が `"light" | "dark" | "system"` でない場合）等）
-  - 例: `firestore/permission-denied`, `auth/email-already-in-use`, `tournament/seat-conflict`, `season/start-failed`, `season/in-progress-tournament`, `pwa/storage-failed`, `spectate/permission-denied`, `theme/storage-failed`
+  - 例: `firestore/permission-denied`, `auth/email-already-in-use`, `tournament/seat-conflict`, `seating/table-close-overflow`, `seating/table-close-last`, `season/start-failed`, `season/in-progress-tournament`, `pwa/storage-failed`, `spectate/permission-denied`, `theme/storage-failed`
 - `throw new Error(...)` の直接使用は禁止（`AppError` でラップ）
 
 ## エラー helper の使い分け（Phase 4 architect-refactor 以降）

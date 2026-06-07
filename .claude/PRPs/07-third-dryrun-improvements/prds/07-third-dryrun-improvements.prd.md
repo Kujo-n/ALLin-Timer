@@ -143,7 +143,7 @@ When **当日の現場で本人が受付できない、または卓数を運営�
 | --- | ------------------------------ | ----------------------------------------------------------------------- | ------- | -------- | ------- | -------- |
 | 1   | 受付代理 データ層              | rule 第3ブランチ＋clone 拡張、service/repository、emulator validator     | complete | with 3   | -       | [completed/phase-1-proxy-receipt-data-layer.plan.md](../plans/completed/phase-1-proxy-receipt-data-layer.plan.md) ／ [report](../reports/phase-1-proxy-receipt-data-layer-report.md) |
 | 2   | 受付代理 UI                    | ダッシュボードの「参加者を追加」（メンバー選択 / 名前入力）、視覚バッジ   | complete | with 3   | 1       | [completed/phase-2-proxy-receipt-ui.plan.md](../plans/completed/phase-2-proxy-receipt-ui.plan.md) ／ [report](../reports/phase-2-proxy-receipt-ui-report.md) |
-| 3   | 卓を空けて閉じる               | engine 定員引き上げ＋手動閉鎖 service/rule、自動再配置＋D&D 微調整 UI     | pending | with 1   | -       | -        |
+| 3   | 卓を空けて閉じる               | engine 定員引き上げ＋手動閉鎖 service/rule、自動再配置＋D&D 微調整 UI     | complete | with 1   | -       | [completed/phase-3-close-table.plan.md](../plans/completed/phase-3-close-table.plan.md) ／ [report](../reports/phase-3-close-table-report.md) |
 | 4   | 卓を増やす／再開               | reopen / 卓追加 repository・service・UI、autoSeatLateEntry との責務整理   | pending | -        | 3       | -        |
 
 ### Phase Details
