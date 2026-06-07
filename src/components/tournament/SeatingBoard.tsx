@@ -62,6 +62,13 @@ interface Props {
     tableNum: number,
     patch: { label: string | null; color: string | null },
   ) => Promise<void>;
+  /**
+   * Phase 3: 卓を閉じる権限（organizer + canManage + 進行系 state）。`onCloseTable` と組で渡す。
+   * `canManage`（PD / D&D）とは別軸の独立 prop。
+   */
+  canCloseTable?: boolean;
+  /** Phase 3: 「閉じる」ボタン handler。dashboard の useTableClose.requestClose を渡す。 */
+  onCloseTable?: (tableNum: number) => void;
 }
 
 /**
@@ -94,6 +101,8 @@ export function SeatingBoard({
   dndBusy = false,
   canEditTableLabel = false,
   onSaveTableLabel,
+  canCloseTable = false,
+  onCloseTable,
 }: Props) {
   const seatedByTable = useMemo(() => {
     const map = new Map<number, PlayerDoc[]>();
@@ -109,6 +118,14 @@ export function SeatingBoard({
 
   const sortedTables = useMemo(
     () => [...tables].sort((a, b) => a.tableNum - b.tableNum),
+    [tables],
+  );
+
+  // Phase 3: 生存卓（isBroken=false）が 2 つ以上のときのみ「閉じる」ボタンを出す
+  // （engine の only-one-table 保護と二重防御）。engine も同じ tables 由来の生存卓集合で
+  // 判定するため UI のボタン表示と engine の plan 判定は一致する。
+  const liveTableCount = useMemo(
+    () => tables.filter((t) => !t.isBroken).length,
     [tables],
   );
 
@@ -181,6 +198,13 @@ export function SeatingBoard({
           if (p.seatNum !== null) seatMap.set(p.seatNum, p);
         }
         const tablePd = tableSeated.find((p) => p.isPlayingDealer);
+        // Phase 3: 手動卓閉鎖で残卓が seatsPerTable を一時的に超える（最大 MAX_SEATS_PER_TABLE）。
+        // 描画行数を「seatsPerTable と実在最大席番号の大きい方」に広げ、定員引き上げ後も全員を可視化する。
+        const maxOccupiedSeat = tableSeated.reduce(
+          (max, p) => (p.seatNum !== null && p.seatNum > max ? p.seatNum : max),
+          0,
+        );
+        const renderSeatCount = Math.max(seatsPerTable, maxOccupiedSeat);
         return (
           <Card
             key={table.id}
@@ -228,12 +252,27 @@ export function SeatingBoard({
                       onError={onError}
                     />
                   ) : null}
+                  {/* Phase 3: 任意卓を閉じる。生存卓 2 つ以上・非閉鎖卓のときのみ表示。 */}
+                  {canCloseTable &&
+                  onCloseTable &&
+                  !table.isBroken &&
+                  liveTableCount > 1 ? (
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                      onClick={() => onCloseTable(table.tableNum)}
+                      data-testid={`close-table-${table.tableNum}`}
+                      aria-label={`${formatTableLabel(table)} を閉じる`}
+                    >
+                      閉じる
+                    </button>
+                  ) : null}
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-1 text-xs font-mono">
-                {Array.from({ length: seatsPerTable }, (_, i) => i + 1).map(
+                {Array.from({ length: renderSeatCount }, (_, i) => i + 1).map(
                   (seatNum) => (
                     <SeatRow
                       key={seatNum}
