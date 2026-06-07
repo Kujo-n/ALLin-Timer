@@ -149,6 +149,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | シーズンポイント計算ルール（`seasonPointsRule`）の更新 | ○ | ○ | × |
 | 卓 label / color（`tables/{n}.label` / `.color`）の参照 | ○ | ○ | ○ |
 | 卓 label / color の更新 | ○ | ○ | × |
+| 卓の追加（`tables/{n}` create、Phase 4） | ○ | ○ | × |
+| 卓の再開（`tables/{n}.isBroken=false`、Phase 4） | ○ | ○ | × |
 | 観戦モード（`tournaments/{tid}.spectateEnabled`）の toggle | ○ | ○ | × |
 | 観戦モード ON 中 tournament の **anon read**（`/spectate/[tid]` 経由） | -（anon でも可） | -（同上） | -（同上） |
 | アカウント自己削除（`/settings`） | ○（sole-owner サークルがあれば block） | ○ | ○ |

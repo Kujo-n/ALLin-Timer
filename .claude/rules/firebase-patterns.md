@@ -220,7 +220,7 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | Path | 許可 |
 | --- | --- |
 | `match /players/{pid}` | explicit、4 ブランチ（self-create / organizer-clone / self-update / organizer-update）。Phase 1 (04-spectate-mode) で **read 経路に親 tournament の `spectateEnabled == true` 分岐を OR 追加**（write 経路は据え置き、観戦は read-only） |
-| `match /tables/{tableId}` | explicit、organizer のみ書込可。Phase C で `allow write` を `allow create / update / delete` に分割し、update は「label / color に触れない経路」と「`affectedKeys.hasOnly(['label', 'color'])` で `label.size() <= TABLE_LABEL_MAX_LENGTH` / `color matches /^#[0-9a-fA-F]{6}$/` を強制する経路」の OR で構成。Phase 1 (04-spectate-mode) で **read 経路に同じ `spectateEnabled == true` 分岐を OR 追加** |
+| `match /tables/{tableId}` | explicit、organizer のみ書込可。Phase C で `allow write` を `allow create / update / delete` に分割し、update は「label / color に触れない経路」と「`affectedKeys.hasOnly(['label', 'color'])` で `label.size() <= TABLE_LABEL_MAX_LENGTH` / `color matches /^#[0-9a-fA-F]{6}$/` を強制する経路」の OR で構成。Phase 1 (04-spectate-mode) で **read 経路に同じ `spectateEnabled == true` 分岐を OR 追加**。Phase 4 (07-third-dryrun-improvements) の「卓を増やす／再開」は **rule 変更なし**で成立 — 卓追加は既存 `allow create`（organizer のみ・`tableNum` 値域制約なし）、卓再開（`isBroken=false` 単独書換）は既存 update 経路 A（label/color に触れない update）でカバー済み。**MAX_TABLES(6) 超過は rule では弾かず service + UI で deny**（既存 players rule の `seatNum`/`tableNum <= 6` が seating を防御し、organizer は信頼ロールのため empty な上限超過卓 doc の直接作成は無害＝席に誰も置けない）。Cloud Functions 化時に create rule への `tableNum <= 6` 追加を再検討する（[group-membership.md](group-membership.md) の「既知のセキュリティリスク」準拠） |
 
 加えて `match /tournaments/{tid}` 自体（subcollection ではなくドキュメント本体）も Phase 1 (04-spectate-mode) で
 拡張済み:
