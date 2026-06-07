@@ -348,33 +348,8 @@ export function planTableBreak(
   const toBreak = sorted[0][0];
 
   const survivingTables = liveTableNums.filter((n) => n !== toBreak);
-  const brokenPlayers = active
-    .filter((p) => p.tableNum === toBreak)
-    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0));
-  const occupiedBySurvivor = new Map<number, Set<number>>();
-  for (const t of survivingTables) occupiedBySurvivor.set(t, new Set());
-  for (const p of active) {
-    if (p.tableNum !== toBreak && p.seatNum !== null) {
-      occupiedBySurvivor.get(p.tableNum as number)?.add(p.seatNum);
-    }
-  }
-  const moves: BalancingMove[] = [];
-  for (const p of brokenPlayers) {
-    const candidates = survivingTables
-      .map((t) => ({ t, count: occupiedBySurvivor.get(t)?.size ?? 0 }))
-      .filter((c) => c.count < seatsPerTable)
-      .sort((a, b) => (a.count !== b.count ? a.count - b.count : a.t - b.t));
-    if (candidates.length === 0) return null;
-    const target = candidates[0];
-    let seat = 1;
-    while (occupiedBySurvivor.get(target.t)?.has(seat)) seat++;
-    moves.push({
-      playerId: p.id,
-      from: { tableNum: toBreak, seatNum: p.seatNum as number },
-      to: { tableNum: target.t, seatNum: seat },
-    });
-    occupiedBySurvivor.get(target.t)?.add(seat);
-  }
+  const moves = packIntoSurvivingTables(active, toBreak, survivingTables, seatsPerTable);
+  if (moves === null) return null;
   return { brokenTableNum: toBreak, moves };
 }
 
@@ -433,9 +408,6 @@ export function planManualTableClose(
   const survivingTables = liveTableNums
     .filter((n) => n !== targetTableNum)
     .sort((a, b) => a - b);
-  const brokenPlayers = active
-    .filter((p) => p.tableNum === targetTableNum)
-    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0));
 
   // 収容可能性の必要十分条件: 全 active プレイヤー <= 生存卓数 × maxSeatsPerTable。
   // 閉鎖卓 player は移動・残卓 player は据置で、合計が生存卓に収まればよい。
@@ -446,32 +418,15 @@ export function planManualTableClose(
     return { ok: false, reason: "overflow", capacity, needed };
   }
 
-  const occupiedBySurvivor = new Map<number, Set<number>>();
-  for (const t of survivingTables) occupiedBySurvivor.set(t, new Set());
-  for (const p of active) {
-    if (p.tableNum !== targetTableNum && p.seatNum !== null) {
-      occupiedBySurvivor.get(p.tableNum as number)?.add(p.seatNum);
-    }
-  }
-  const moves: BalancingMove[] = [];
-  for (const p of brokenPlayers) {
-    const candidates = survivingTables
-      .map((t) => ({ t, count: occupiedBySurvivor.get(t)?.size ?? 0 }))
-      .filter((c) => c.count < maxSeatsPerTable)
-      .sort((a, b) => (a.count !== b.count ? a.count - b.count : a.t - b.t));
-    // capacity チェック済みのため candidates が空になることはないが防御的に。
-    if (candidates.length === 0) {
-      return { ok: false, reason: "overflow", capacity, needed };
-    }
-    const target = candidates[0];
-    let seat = 1;
-    while (occupiedBySurvivor.get(target.t)?.has(seat)) seat++;
-    moves.push({
-      playerId: p.id,
-      from: { tableNum: targetTableNum, seatNum: p.seatNum as number },
-      to: { tableNum: target.t, seatNum: seat },
-    });
-    occupiedBySurvivor.get(target.t)?.add(seat);
+  // capacity チェック済みのため null にはならないが、防御的に overflow 扱い。
+  const moves = packIntoSurvivingTables(
+    active,
+    targetTableNum,
+    survivingTables,
+    maxSeatsPerTable,
+  );
+  if (moves === null) {
+    return { ok: false, reason: "overflow", capacity, needed };
   }
   return { ok: true, plan: { brokenTableNum: targetTableNum, moves } };
 }
@@ -581,6 +536,56 @@ export function planManualSeatCascade(
     from: { tableNum, seatNum: sourceSeat },
     to: { tableNum, seatNum: targetSeatNum },
   });
+  return moves;
+}
+
+/**
+ * 卓閉鎖共通の greedy 詰め込み。閉鎖卓 `brokenTableNum` の active player を seatNum 昇順で
+ * 取り出し、生存卓 `survivingTables` の占有最少（同数なら tableNum 昇順）へ・各卓 seat 1 から
+ * 最初の空席へ詰める。各卓の定員は `capacity`（planTableBreak=seatsPerTable /
+ * planManualTableClose=maxSeatsPerTable）。
+ *
+ * 自動閉鎖（planTableBreak）と手動閉鎖（planManualTableClose）で詰め込み規則
+ * （tie-break・空席探索順）を単一真実源化する。両者が同一規則であることは TDA 仕様上の要請で、
+ * 差分は定員のみ。
+ *
+ * `from.tableNum` は brokenTableNum 固定（brokenPlayers は当該卓で filter 済みのため
+ * `p.tableNum` と等価）。capacity 不足で詰め切れない場合は null（呼出側で overflow /
+ * not-applicable として扱う）。
+ */
+function packIntoSurvivingTables(
+  active: PlayerDoc[],
+  brokenTableNum: number,
+  survivingTables: number[],
+  capacity: number,
+): BalancingMove[] | null {
+  const brokenPlayers = active
+    .filter((p) => p.tableNum === brokenTableNum)
+    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0));
+  const occupiedBySurvivor = new Map<number, Set<number>>();
+  for (const t of survivingTables) occupiedBySurvivor.set(t, new Set());
+  for (const p of active) {
+    if (p.tableNum !== brokenTableNum && p.seatNum !== null) {
+      occupiedBySurvivor.get(p.tableNum as number)?.add(p.seatNum);
+    }
+  }
+  const moves: BalancingMove[] = [];
+  for (const p of brokenPlayers) {
+    const candidates = survivingTables
+      .map((t) => ({ t, count: occupiedBySurvivor.get(t)?.size ?? 0 }))
+      .filter((c) => c.count < capacity)
+      .sort((a, b) => (a.count !== b.count ? a.count - b.count : a.t - b.t));
+    if (candidates.length === 0) return null;
+    const target = candidates[0];
+    let seat = 1;
+    while (occupiedBySurvivor.get(target.t)?.has(seat)) seat++;
+    moves.push({
+      playerId: p.id,
+      from: { tableNum: brokenTableNum, seatNum: p.seatNum as number },
+      to: { tableNum: target.t, seatNum: seat },
+    });
+    occupiedBySurvivor.get(target.t)?.add(seat);
+  }
   return moves;
 }
 
