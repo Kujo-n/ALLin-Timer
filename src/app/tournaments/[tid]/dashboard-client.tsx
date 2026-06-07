@@ -19,6 +19,7 @@ import { SpectateModeCard } from "@/components/tournament/SpectateModeCard";
 import { StructureSnapshotCard } from "@/components/tournament/StructureSnapshotCard";
 import { TimerControls } from "@/components/tournament/TimerControls";
 import { TimerDisplay } from "@/components/tournament/TimerDisplay";
+import { UnseatedPlayersGuide } from "@/components/tournament/UnseatedPlayersGuide";
 import { WinnerBanner } from "@/components/tournament/WinnerBanner";
 import { WinnerCardDownloadButton } from "@/components/tournament/WinnerCardDownloadButton";
 import { ShareCardButton } from "@/components/share/_share-button/ShareCardButton";
@@ -55,6 +56,7 @@ import { useManualSeatChange } from "@/lib/hooks/useManualSeatChange";
 import { useOrientationLock } from "@/lib/hooks/useOrientationLock";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
 import { useTableClose } from "@/lib/hooks/useTableClose";
+import { useTableLifecycle } from "@/lib/hooks/useTableLifecycle";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { useWakeLock } from "@/lib/hooks/useWakeLock";
 import { logger } from "@/lib/logger";
@@ -262,6 +264,21 @@ export function DashboardClient({ tid }: { tid: string }) {
     uid: user?.uid ?? null,
     groupIds,
     players,
+    tables,
+    onError: setError,
+  });
+
+  // Phase 4 (07): 卓の追加 / 再開。reopen は確認ダイアログ無しの即時実行のため、
+  // 書込 in-flight 中は reopenBusy で「再開」ボタンを disabled にして二度押しを抑止する。
+  const {
+    nextTableNum,
+    addBusy: addTableBusy,
+    reopenBusy: reopenTableBusy,
+    addTable,
+    reopenTable: reopenTableHandler,
+  } = useTableLifecycle({
+    tid,
+    uid: user?.uid ?? null,
     tables,
     onError: setError,
   });
@@ -510,10 +527,24 @@ export function DashboardClient({ tid }: { tid: string }) {
 
       {showSeatingBoard ? (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Table List</CardTitle>
+            {/* Phase 4 (07): 卓を追加。MAX_TABLES 到達（nextTableNum===null）で disabled。 */}
+            {isMember ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void addTable()}
+                disabled={addTableBusy || nextTableNum === null}
+                data-testid="add-table"
+              >
+                卓を追加
+              </Button>
+            ) : null}
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {/* Phase 4 (07): 未配席者がいれば「卓を増やす／再開して D&D 配置」を促す。 */}
+            <UnseatedPlayersGuide players={players} />
             <SeatingBoard
               players={players}
               tables={tables}
@@ -533,6 +564,9 @@ export function DashboardClient({ tid }: { tid: string }) {
               // Phase 3 (07): 任意卓を閉じる。SeatingBoard が出る = seating 以降のため isMember で十分。
               canCloseTable={isMember}
               onCloseTable={requestClose}
+              // Phase 4 (07): 閉鎖卓を再開。canCloseTable と同じ卓管理権限軸で表示される。
+              onReopenTable={reopenTableHandler}
+              reopenBusy={reopenTableBusy}
             />
           </CardContent>
         </Card>
