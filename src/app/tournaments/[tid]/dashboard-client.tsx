@@ -8,6 +8,7 @@ import { usePageTitle } from "@/components/nav/page-title";
 import { QrPanel } from "@/components/qr/QrPanel";
 import { AverageStackCard } from "@/components/tournament/AverageStackCard";
 import { BalancingInstructionCard } from "@/components/tournament/BalancingInstructionCard";
+import { CloseTableConfirmDialog } from "@/components/tournament/CloseTableConfirmDialog";
 import { DeviceFallbackHints } from "@/components/tournament/DeviceFallbackHints";
 import { NextBreakCard } from "@/components/tournament/NextBreakCard";
 import { OfflineBanner } from "@/components/tournament/OfflineBanner";
@@ -53,6 +54,7 @@ import { useGroupRole } from "@/lib/hooks/useGroupRole";
 import { useManualSeatChange } from "@/lib/hooks/useManualSeatChange";
 import { useOrientationLock } from "@/lib/hooks/useOrientationLock";
 import { useSeatingAutoOrchestrator } from "@/lib/hooks/useSeatingAutoOrchestrator";
+import { useTableClose } from "@/lib/hooks/useTableClose";
 import { useTournamentTimer } from "@/lib/hooks/useTournamentTimer";
 import { useWakeLock } from "@/lib/hooks/useWakeLock";
 import { logger } from "@/lib/logger";
@@ -243,6 +245,24 @@ export function DashboardClient({ tid }: { tid: string }) {
     uid: user?.uid ?? null,
     groupIds,
     players,
+    onError: setError,
+  });
+
+  // Phase 3 (07): 運営者による手動卓閉鎖の state / busy / orchestrator 呼出は
+  // useTableClose hook に集約。dashboard は SeatingBoard の「閉じる」ボタンと
+  // CloseTableConfirmDialog に handler / state を渡すだけ。
+  const {
+    pendingTableNum: closeTableNum,
+    busy: closeTableBusy,
+    requestClose,
+    cancelClose,
+    confirmClose,
+  } = useTableClose({
+    tid,
+    uid: user?.uid ?? null,
+    groupIds,
+    players,
+    tables,
     onError: setError,
   });
 
@@ -510,10 +530,22 @@ export function DashboardClient({ tid }: { tid: string }) {
                 await updateTableLabel(tid, tableNum, patch);
               }}
               onTogglePd={handleTogglePd}
+              // Phase 3 (07): 任意卓を閉じる。SeatingBoard が出る = seating 以降のため isMember で十分。
+              canCloseTable={isMember}
+              onCloseTable={requestClose}
             />
           </CardContent>
         </Card>
       ) : null}
+
+      <CloseTableConfirmDialog
+        tableNum={closeTableNum}
+        players={players}
+        tables={tables}
+        busy={closeTableBusy}
+        onConfirm={() => void confirmClose()}
+        onCancel={cancelClose}
+      />
 
       <PlayerList
         tid={tid}
