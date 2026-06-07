@@ -52,6 +52,8 @@ interface UseManualSeatChangeResult {
   ) => Promise<void>;
   /** undo banner の「元に戻す」ボタンに渡す handler。 */
   handleUndoSeatChange: () => Promise<void>;
+  /** undo banner の「閉じる」ボタンに渡す handler。auto-hide を待たず手動で消す。 */
+  dismissUndoBanner: () => void;
 }
 
 const DEFAULT_UNDO_TIMEOUT_MS = 30_000;
@@ -181,5 +183,21 @@ export function useManualSeatChange({
     }
   }, [uid, undoBanner, busy, tid, groupIds, players, onError]);
 
-  return { busy, undoBanner, handleMoveSeat, handleUndoSeatChange };
+  // 手動で undo banner を閉じる（auto-hide の 30 秒を待たない）。pending timer も
+  // 解放し、banner を即座に消す。undo 自体は行わない（席はそのまま）。
+  const dismissUndoBanner = useCallback(() => {
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    setUndoBanner(null);
+  }, []);
+
+  return {
+    busy,
+    undoBanner,
+    handleMoveSeat,
+    handleUndoSeatChange,
+    dismissUndoBanner,
+  };
 }

@@ -242,6 +242,7 @@ export function DashboardClient({ tid }: { tid: string }) {
     undoBanner: seatChangeUndo,
     handleMoveSeat,
     handleUndoSeatChange,
+    dismissUndoBanner,
   } = useManualSeatChange({
     tid,
     uid: user?.uid ?? null,
@@ -513,14 +514,25 @@ export function DashboardClient({ tid }: { tid: string }) {
         <Card className="border-blue-500/60 bg-blue-50/60 dark:bg-blue-950/20">
           <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm">{seatChangeUndo.summary}</p>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={seatChangeBusy}
-              onClick={() => void handleUndoSeatChange()}
-            >
-              元に戻す
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={seatChangeBusy}
+                onClick={() => void handleUndoSeatChange()}
+              >
+                元に戻す
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="通知を閉じる"
+                disabled={seatChangeBusy}
+                onClick={() => dismissUndoBanner()}
+              >
+                閉じる
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}

@@ -276,6 +276,39 @@ describe("useManualSeatChange", () => {
     expect(result.current.busy).toBe(false);
   });
 
+  it("dismissUndoBanner clears the banner without calling undo, and cancels the auto-hide timer", async () => {
+    vi.mocked(applyManualSeatChange).mockResolvedValueOnce({
+      applied: true,
+      description: "ok",
+      moves: [
+        {
+          playerId: "alice",
+          from: { tableNum: 1, seatNum: 2 },
+          to: { tableNum: 2, seatNum: 3 },
+        },
+      ],
+    });
+    const player = p({ id: "alice", tableNum: 1, seatNum: 2 });
+    const { result } = setup({ players: [player], undoTimeoutMs: 5_000 });
+    await act(async () => {
+      await result.current.handleMoveSeat(player, { tableNum: 2, seatNum: 3 });
+    });
+    expect(result.current.undoBanner).not.toBeNull();
+
+    // 手動 dismiss で banner が即座に消える。undo（席を戻す）は呼ばれない。
+    act(() => {
+      result.current.dismissUndoBanner();
+    });
+    expect(result.current.undoBanner).toBeNull();
+    expect(applyManualSeatUndo).not.toHaveBeenCalled();
+
+    // dismiss 後に timer を advance しても二重で setState されない（timer 解放済み）。
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(result.current.undoBanner).toBeNull();
+  });
+
   it("handleUndoSeatChange is a noop when there is no banner / no uid / busy", async () => {
     const { result } = setup();
     // No banner yet → noop
