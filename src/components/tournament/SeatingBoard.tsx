@@ -19,6 +19,7 @@ import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { logger } from "@/lib/logger";
 import { formatTableLabel } from "@/lib/services/format-table-label";
+import { liveTableNums } from "@/lib/services/seating/engine";
 import { cn } from "@/lib/utils";
 
 import { TableLabelEditPopover } from "./_table-label-edit/TableLabelEditPopover";
@@ -135,12 +136,9 @@ export function SeatingBoard({
   );
 
   // Phase 3: 生存卓（isBroken=false）が 2 つ以上のときのみ「閉じる」ボタンを出す
-  // （engine の only-one-table 保護と二重防御）。engine も同じ tables 由来の生存卓集合で
-  // 判定するため UI のボタン表示と engine の plan 判定は一致する。
-  const liveTableCount = useMemo(
-    () => tables.filter((t) => !t.isBroken).length,
-    [tables],
-  );
+  // （engine の only-one-table 保護と二重防御）。engine も同じ liveTableNums selector 由来の
+  // 生存卓集合で判定するため UI のボタン表示と engine の plan 判定は一致する。
+  const liveTableCount = useMemo(() => liveTableNums(tables).length, [tables]);
 
   // PointerSensor: マウス + 一般 pen device。activationConstraint で 8px 以上の
   // 動きを drag start とみなす（PD checkbox の click 等が誤って drag に化けないよう）。

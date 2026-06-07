@@ -27,6 +27,7 @@ import {
   TooManyTablesError,
   diagnoseBalancingNeed,
   formatTableCloseOverflow,
+  liveTableNums,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
@@ -412,10 +413,10 @@ export async function applyManualTableClose(
 ): Promise<ApplyBalancingResult> {
   // 生存卓（実在・未閉鎖）を tables から導出して engine に渡す。空卓（active 0 だが未閉鎖）も
   // 再配置先候補に含めることで、空卓があるのに収まらないと誤る偽 overflow を防ぐ。
-  const liveTableNums = tables.filter((t) => !t.isBroken).map((t) => t.tableNum);
+  // preview(dialog) と同一の liveTableNums selector を経由し drift を防ぐ。
   const result = planManualTableClose(
     players,
-    liveTableNums,
+    liveTableNums(tables),
     targetTableNum,
     MAX_SEATS_PER_TABLE,
   );

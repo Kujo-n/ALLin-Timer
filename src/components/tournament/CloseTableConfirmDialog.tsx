@@ -17,6 +17,7 @@ import { MAX_SEATS_PER_TABLE } from "@/lib/limits";
 import { formatTableLabel } from "@/lib/services/format-table-label";
 import {
   formatTableCloseOverflow,
+  liveTableNums,
   planManualTableClose,
 } from "@/lib/services/seating/engine";
 
@@ -54,8 +55,13 @@ export function CloseTableConfirmDialog({
   const preview = useMemo(() => {
     if (tableNum === null) return null;
     // 生存卓（実在・未閉鎖）を tables から導出。空卓も再配置先に含め偽 overflow を防ぐ。
-    const liveTableNums = tables.filter((t) => !t.isBroken).map((t) => t.tableNum);
-    return planManualTableClose(players, liveTableNums, tableNum, MAX_SEATS_PER_TABLE);
+    // commit(orchestrator) と同一の liveTableNums selector で preview/commit drift を防ぐ。
+    return planManualTableClose(
+      players,
+      liveTableNums(tables),
+      tableNum,
+      MAX_SEATS_PER_TABLE,
+    );
   }, [tableNum, players, tables]);
 
   const table = tables.find((t) => t.tableNum === tableNum) ?? null;

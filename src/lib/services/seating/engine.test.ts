@@ -2,11 +2,13 @@ import { Timestamp } from "firebase/firestore";
 import { describe, expect, it } from "vitest";
 
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
 
 import {
   MAX_TABLES,
   TooManyPlayingDealersError,
   diagnoseBalancingNeed,
+  liveTableNums,
   planAddTable,
   planBalancingMove,
   planInitialSeating,
@@ -35,6 +37,17 @@ function p(overrides: Partial<PlayerDoc> & { id: string }): PlayerDoc {
 
 function manyPlayers(n: number): PlayerDoc[] {
   return Array.from({ length: n }, (_, i) => p({ id: `p${i + 1}` }));
+}
+
+function tbl(overrides: Partial<TableDoc> & { tableNum: number }): TableDoc {
+  return {
+    id: overrides.id ?? String(overrides.tableNum),
+    tableNum: overrides.tableNum,
+    isBroken: overrides.isBroken ?? false,
+    createdAt: overrides.createdAt ?? ts,
+    label: overrides.label ?? null,
+    color: overrides.color ?? null,
+  };
 }
 
 describe("planInitialSeating", () => {
@@ -274,6 +287,29 @@ describe("planAddTable", () => {
 
   it("maxTables を引数で渡せる（[1,2], 2 → null）", () => {
     expect(planAddTable([1, 2], 2)).toBeNull();
+  });
+});
+
+describe("liveTableNums", () => {
+  it("未閉鎖の卓のみ tableNum を入力順で返す", () => {
+    const tables = [
+      tbl({ tableNum: 1 }),
+      tbl({ tableNum: 2, isBroken: true }),
+      tbl({ tableNum: 3 }),
+    ];
+    expect(liveTableNums(tables)).toEqual([1, 3]);
+  });
+
+  it("全卓 broken なら空配列", () => {
+    const tables = [
+      tbl({ tableNum: 1, isBroken: true }),
+      tbl({ tableNum: 2, isBroken: true }),
+    ];
+    expect(liveTableNums(tables)).toEqual([]);
+  });
+
+  it("空入力なら空配列", () => {
+    expect(liveTableNums([])).toEqual([]);
   });
 });
 

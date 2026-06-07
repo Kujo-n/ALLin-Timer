@@ -7,6 +7,7 @@
 
 import { MAX_SEATS_PER_TABLE, MAX_TABLES } from "@/lib/limits";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
 
 import { shuffle } from "./prng";
 
@@ -450,6 +451,21 @@ export function planAddTable(
     if (!used.has(n)) return n;
   }
   return null;
+}
+
+/**
+ * 未閉鎖（生存）卓の tableNum を返す pure selector。
+ *
+ * 手動卓閉鎖の overflow preview（CloseTableConfirmDialog）と commit（orchestrator の
+ * applyManualTableClose）は、同一の生存卓集合を planManualTableClose に渡すことで
+ * 「プレビュー表示と実際の閉鎖可否が一致する」ことを暗黙の不変条件としている。
+ * 導出を本 selector に単一真実源化し、preview と commit の drift を防ぐ
+ * （SeatingBoard の「閉じる」ボタン表示閾値（生存卓 2 以上）も同じ集合を参照する）。
+ *
+ * 順序は tables 入力順を保持する（呼出側の orderBy("tableNum") に依存）。
+ */
+export function liveTableNums(tables: TableDoc[]): number[] {
+  return tables.filter((t) => !t.isBroken).map((t) => t.tableNum);
 }
 
 /**
