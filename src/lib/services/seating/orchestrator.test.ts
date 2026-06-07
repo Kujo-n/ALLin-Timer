@@ -53,6 +53,7 @@ import {
   applyManualBalancingMove,
   applyManualSeatChange,
   applyManualSeatUndo,
+  applyManualTableClose,
   autoSeatLateEntry,
   bustPlayer,
   commitInitialSeating,
@@ -743,6 +744,128 @@ describe("applyBalancingOnce → applyTableBreak (TG2)", () => {
 
     const result = await applyBalancingOnce("t1", "u1", ["g1"], seated, tables, 9);
     expect(result.applied).toBe(false);
+  });
+});
+
+// Phase 3 (07): applyManualTableClose は engine.planManualTableClose で plan を作り
+// 既存 applyTableBreak を再利用する。overflow / only-one-table は engine が早期に弾くため
+// tx 未発行で throw する（= rule deny でトーナメントを止めない）ことを assert する。
+describe("applyManualTableClose (Phase 3)", () => {
+  function tables3() {
+    return [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "3", tableNum: 3, isBroken: false, createdAt: ts, label: null, color: null },
+    ];
+  }
+
+  it("commits move + isBroken in same tx (target=2, running)", async () => {
+    // 卓1:1(a1), 卓2:1(b1), 卓3:2(c1,c2)、target=2 → b1 を卓1 seat2 へ、卓2 を閉鎖。
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1 }),
+      player({ id: "b1", tableNum: 2, seatNum: 1 }),
+      player({ id: "c1", tableNum: 3, seatNum: 1 }),
+      player({ id: "c2", tableNum: 3, seatNum: 2 }),
+    ];
+    const tables = tables3();
+    const t = makeTournament({ state: "running", currentLevel: 1 });
+    const captured: Array<Record<string, unknown>> = [];
+    // tx.get 順: 1) tournament, 2) move 対象 b1, 3) survivors 卓1 の既存 a1
+    mockTransaction(
+      [
+        () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+        () => ({
+          exists: () => true,
+          id: "b1",
+          data: () => stripId(player({ id: "b1", tableNum: 2, seatNum: 1 })),
+        }),
+        () => ({
+          exists: () => true,
+          id: "a1",
+          data: () => stripId(player({ id: "a1", tableNum: 1, seatNum: 1 })),
+        }),
+      ],
+      (_ref, patch) => captured.push(patch as Record<string, unknown>),
+    );
+
+    const result = await applyManualTableClose("t1", "u1", ["g1"], 2, seated, tables);
+
+    expect(result.applied).toBe(true);
+    expect(result.break).toBe(true);
+    expect(result.description).toContain("Table 2 を閉鎖");
+    // 1 player update + 1 markTableBroken = 2 updates
+    expect(captured).toHaveLength(2);
+    const playerPatch = captured[0];
+    expect(playerPatch.tableNum).toBe(1);
+    expect(playerPatch.seatNum).toBe(2);
+    // 移動 player は PD reset される（applyTableBreak の挙動を継承）。
+    expect(playerPatch.isPlayingDealer).toBe(false);
+    expect(captured[captured.length - 1].isBroken).toBe(true);
+  });
+
+  it("throws table-close-overflow without issuing tx", async () => {
+    // 卓1:10, 卓2:10, 卓3:2、target=3 → capacity=20 < needed=22 → overflow。
+    const seated = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        player({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 10 }, (_, i) =>
+        player({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+      player({ id: "c1", tableNum: 3, seatNum: 1 }),
+      player({ id: "c2", tableNum: 3, seatNum: 2 }),
+    ];
+    await expect(
+      applyManualTableClose("t1", "u1", ["g1"], 3, seated, tables3()),
+    ).rejects.toMatchObject({ code: "seating/table-close-overflow" });
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws table-close-last without issuing tx", async () => {
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1 }),
+      player({ id: "a2", tableNum: 1, seatNum: 2 }),
+      player({ id: "a3", tableNum: 1, seatNum: 3 }),
+    ];
+    const tables = [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+    ];
+    await expect(
+      applyManualTableClose("t1", "u1", ["g1"], 1, seated, tables),
+    ).rejects.toMatchObject({ code: "seating/table-close-last" });
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("returns applied=false (no tx) for already-broken target (not-found)", async () => {
+    // 卓3 は既に isBroken。target=3 → not-found → 静かに applied=false。
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1 }),
+      player({ id: "b1", tableNum: 2, seatNum: 1 }),
+    ];
+    const tables = [
+      { id: "1", tableNum: 1, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "2", tableNum: 2, isBroken: false, createdAt: ts, label: null, color: null },
+      { id: "3", tableNum: 3, isBroken: true, createdAt: ts, label: null, color: null },
+    ];
+    const result = await applyManualTableClose("t1", "u1", ["g1"], 3, seated, tables);
+    expect(result.applied).toBe(false);
+    expect(runTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-member at tx boundary", async () => {
+    const seated = [
+      player({ id: "a1", tableNum: 1, seatNum: 1 }),
+      player({ id: "b1", tableNum: 2, seatNum: 1 }),
+      player({ id: "c1", tableNum: 3, seatNum: 1 }),
+      player({ id: "c2", tableNum: 3, seatNum: 2 }),
+    ];
+    const t = makeTournament({ state: "running", currentLevel: 1, groupId: "g1" });
+    mockTransaction([
+      () => ({ exists: () => true, id: t.id, data: () => stripId(t) }),
+    ]);
+    await expect(
+      applyManualTableClose("t1", "u1", ["g-other"], 2, seated, tables3()),
+    ).rejects.toMatchObject({ code: "firestore/permission-denied" });
   });
 });
 

@@ -18,6 +18,7 @@ import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
 import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
 import { loadTournamentInTx, playerFromSnap } from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
+import { MAX_SEATS_PER_TABLE } from "@/lib/limits";
 import { logger } from "@/lib/logger";
 
 import {
@@ -25,10 +26,12 @@ import {
   TooManyPlayingDealersError,
   TooManyTablesError,
   diagnoseBalancingNeed,
+  formatTableCloseOverflow,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
   planManualSeatCascade,
+  planManualTableClose,
   planTableBreak,
   type BalancingMove,
 } from "./engine";
@@ -384,6 +387,60 @@ export async function applyBalancingOnce(
     return { applied: false, description: null };
   }
   return await applySingleMove(tid, uid, userGroupIds, move, players);
+}
+
+/**
+ * Phase 3 (07): 運営者が指定卓を手動で閉じる。
+ *
+ * engine.planManualTableClose で「指定卓を閉じ、残卓へ定員 ≤MAX_SEATS_PER_TABLE で再配置」する
+ * plan を算出し、成立すれば既存 private applyTableBreak（moves + isBroken=true を同一 tx で commit、
+ * 移動 player の PD reset、seat-taken race guard）を**そのまま再利用**する。
+ *
+ * 収容不能（overflow）/ 最後の 1 卓（only-one-table）は AppError を throw して UI に警告させる
+ * （tx を発行しない = rule deny でトーナメントを止めない）。not-found は applied=false で静かに返す。
+ *
+ * シグネチャは `seatsPerTable` を取らない: plan は MAX_SEATS_PER_TABLE を内部固定で使うため
+ * （rule の seatNum<=10 と drift させない）。
+ */
+export async function applyManualTableClose(
+  tid: string,
+  uid: string,
+  userGroupIds: string[],
+  targetTableNum: number,
+  players: PlayerDoc[],
+  tables: TableDoc[],
+): Promise<ApplyBalancingResult> {
+  // 生存卓（実在・未閉鎖）を tables から導出して engine に渡す。空卓（active 0 だが未閉鎖）も
+  // 再配置先候補に含めることで、空卓があるのに収まらないと誤る偽 overflow を防ぐ。
+  const liveTableNums = tables.filter((t) => !t.isBroken).map((t) => t.tableNum);
+  const result = planManualTableClose(
+    players,
+    liveTableNums,
+    targetTableNum,
+    MAX_SEATS_PER_TABLE,
+  );
+  if (!result.ok) {
+    if (result.reason === "overflow") {
+      const wrapped = new AppError(
+        formatTableCloseOverflow(result.capacity ?? 0, result.needed ?? 0),
+        "seating/table-close-overflow",
+      );
+      logger.warn(wrapped.message, { code: wrapped.code, tid, targetTableNum });
+      throw wrapped;
+    }
+    if (result.reason === "only-one-table") {
+      const wrapped = new AppError(
+        "最後の 1 卓は閉鎖できません",
+        "seating/table-close-last",
+      );
+      logger.warn(wrapped.message, { code: wrapped.code, tid, targetTableNum });
+      throw wrapped;
+    }
+    // not-found（既閉鎖 / 不正値）: 静かに no-op。次の subscribe で UI 整合。
+    logger.info("manual table close skipped (not found)", { tid, targetTableNum });
+    return { applied: false, description: null };
+  }
+  return await applyTableBreak(tid, uid, userGroupIds, result.plan, players);
 }
 
 /**
