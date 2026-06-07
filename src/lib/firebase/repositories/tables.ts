@@ -100,8 +100,25 @@ export async function markTableBroken(tid: string, tableNum: number): Promise<vo
 }
 
 /**
- * 単発 upsert（initial seating 以外で 1 卓だけ追加するケース用、現状は未使用）。
- * 将来「席が足りなくなったら卓を増やす」運用が出た場合の足場。
+ * Phase 4 (07): 閉鎖済み卓を再開する（`isBroken=false` 単独書換）。`markTableBroken` の対称。
+ * プレイヤー移動は伴わない（再開卓へは運営者が手動 D&D で配置する）。
+ * rule: tables update 経路 A（label/color に触れない update）でカバー済み（rule 変更不要）。
+ */
+export async function reopenTable(tid: string, tableNum: number): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "テーブル再開に失敗しました",
+    async () => {
+      await updateDoc(doc(tablesRef(tid), String(tableNum)), { isBroken: false });
+    },
+    { tid, tableNum },
+  );
+  logger.info("table reopen ok", { tid, tableNum });
+}
+
+/**
+ * 単発 upsert（initial seating 以外で 1 卓だけ追加するケース用）。
+ * Phase 4 (07): 「卓を増やす」運用（useTableLifecycle.addTable）から呼ばれる。
  */
 export async function upsertTable(tid: string, tableNum: number): Promise<void> {
   await wrapFirestoreWrite(

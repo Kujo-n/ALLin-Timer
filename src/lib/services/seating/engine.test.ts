@@ -7,6 +7,7 @@ import {
   MAX_TABLES,
   TooManyPlayingDealersError,
   diagnoseBalancingNeed,
+  planAddTable,
   planBalancingMove,
   planInitialSeating,
   planLateEntrySeat,
@@ -234,6 +235,45 @@ describe("planLateEntrySeat", () => {
     ];
     const seat = planLateEntrySeat(seated, [1], 9, 0);
     expect(seat?.tableNum).toBe(2);
+  });
+
+  // Phase 4 (07): engine 改修ではなく既存挙動の lock-in。planLateEntrySeat は
+  // seatedPlayers の tableNum 集合からしか生存卓を導出しないため、着席プレイヤーのいない
+  // 空卓（= 追加 / 再開した卓）は構造的に候補から外れる。これにより「追加 / 再開卓には
+  // 自動配席せず手動 D&D を正規とする」という Phase 4 の核心要件が engine 変更なしで成立する。
+  it("着席プレイヤーのいない空卓は自動配席対象にならない（Phase 4: 追加/再開卓は手動配置）", () => {
+    const seated = [
+      p({ id: "a", tableNum: 1, seatNum: 1 }),
+      p({ id: "b", tableNum: 1, seatNum: 2 }),
+    ]; // 卓2 は tables には在るが seated に player 0 → liveTables に出ない
+    const seat = planLateEntrySeat(seated, [], 2, 0);
+    expect(seat).toBeNull();
+  });
+});
+
+describe("planAddTable", () => {
+  it("連番 [1,2] の次は 3", () => {
+    expect(planAddTable([1, 2])).toBe(3);
+  });
+
+  it("broken 込みの連番 [1,2,3] の次は 4（broken も doc が残るため占有扱い）", () => {
+    expect(planAddTable([1, 2, 3])).toBe(4);
+  });
+
+  it("gap がある [1,3] は最小空き 2 を返す", () => {
+    expect(planAddTable([1, 3])).toBe(2);
+  });
+
+  it("MAX_TABLES まで埋まっていれば null", () => {
+    expect(planAddTable([1, 2, 3, 4, 5, 6])).toBeNull();
+  });
+
+  it("空配列なら 1", () => {
+    expect(planAddTable([])).toBe(1);
+  });
+
+  it("maxTables を引数で渡せる（[1,2], 2 → null）", () => {
+    expect(planAddTable([1, 2], 2)).toBeNull();
   });
 });
 

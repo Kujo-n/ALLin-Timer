@@ -42,6 +42,7 @@ import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import {
   listTables,
   markTableBroken,
+  reopenTable,
   subscribeTables,
   updateTableLabel,
   upsertTable,
@@ -124,6 +125,21 @@ describe("markTableBroken", () => {
   it("wraps errors", async () => {
     vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
     await expect(markTableBroken("t1", 2)).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+  });
+});
+
+describe("reopenTable", () => {
+  it("updates with isBroken: false", async () => {
+    await reopenTable("t1", 3);
+    const payload = vi.mocked(updateDoc).mock.calls[0][1] as unknown as Record<string, unknown>;
+    expect(payload.isBroken).toBe(false);
+  });
+
+  it("wraps errors", async () => {
+    vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm"));
+    await expect(reopenTable("t1", 3)).rejects.toMatchObject({
       code: "firestore/write_failed",
     });
   });

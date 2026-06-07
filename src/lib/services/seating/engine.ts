@@ -477,6 +477,27 @@ export function planManualTableClose(
 }
 
 /**
+ * Phase 4 (07-third-dryrun-improvements): 「卓を増やす」で作成する次の tableNum を算出する純関数。
+ *
+ * 既存 table doc（broken 含む）が占有していない最小の正整数を 1..maxTables で探す。
+ * 全て埋まっている（= maxTables 卓が既に存在）場合は null を返し、呼出側で追加を deny する。
+ *
+ * broken 卓は doc が残るため existingTableNums に含まれ、add では再利用しない
+ * （broken 卓を戻すのは reopenTable 経路）。gap fill 方式にしているのは将来 doc 削除を
+ * 導入しても破綻しない防御で、通常運用（tables は 1..N 連番）では max+1 と等価。
+ */
+export function planAddTable(
+  existingTableNums: number[],
+  maxTables: number = MAX_TABLES,
+): number | null {
+  const used = new Set(existingTableNums);
+  for (let n = 1; n <= maxTables; n += 1) {
+    if (!used.has(n)) return n;
+  }
+  return null;
+}
+
+/**
  * 手動卓閉鎖 overflow の警告メッセージ。`CloseTableConfirmDialog` の確認文と
  * `applyManualTableClose` の throw message で文言を共有するための単一定義
  * （DRY: 文言 drift を防ぐ）。`capacity` / `needed` は `planManualTableClose` の
