@@ -65,10 +65,21 @@ interface Props {
   /**
    * Phase 3: 卓を閉じる権限（organizer + canManage + 進行系 state）。`onCloseTable` と組で渡す。
    * `canManage`（PD / D&D）とは別軸の独立 prop。
+   *
+   * Phase 4: 意味的には「卓管理（close / reopen）権限の共通軸」へ実質拡張される。
+   * close は live 卓・reopen は broken 卓で排他のため、prop 増殖を避けて同一軸を再利用する
+   * （prop 名は churn 最小化で据え置き）。
    */
   canCloseTable?: boolean;
   /** Phase 3: 「閉じる」ボタン handler。dashboard の useTableClose.requestClose を渡す。 */
   onCloseTable?: (tableNum: number) => void;
+  /** Phase 4: 閉鎖済み卓を再開する handler。`canCloseTable`（= 卓管理権限）と組で渡す。 */
+  onReopenTable?: (tableNum: number) => void;
+  /**
+   * Phase 4: 再開書込が in-flight の間「再開」ボタンを disabled にして二度押しを抑止する。
+   * 書込自体は idempotent（`isBroken=false` 単独書換）だが、close ボタンと UX を揃えるため。
+   */
+  reopenBusy?: boolean;
 }
 
 /**
@@ -103,6 +114,8 @@ export function SeatingBoard({
   onSaveTableLabel,
   canCloseTable = false,
   onCloseTable,
+  onReopenTable,
+  reopenBusy = false,
 }: Props) {
   const seatedByTable = useMemo(() => {
     const map = new Map<number, PlayerDoc[]>();
@@ -265,6 +278,20 @@ export function SeatingBoard({
                       aria-label={`${formatTableLabel(table)} を閉じる`}
                     >
                       閉じる
+                    </button>
+                  ) : null}
+                  {/* Phase 4: 閉鎖卓を再開。canCloseTable（卓管理権限）+ isBroken のときのみ表示。
+                      close ボタン（!isBroken）と排他で、同じ卓に両方は出ない。 */}
+                  {canCloseTable && onReopenTable && table.isBroken ? (
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                      onClick={() => onReopenTable(table.tableNum)}
+                      disabled={reopenBusy}
+                      data-testid={`reopen-table-${table.tableNum}`}
+                      aria-label={`${formatTableLabel(table)} を再開`}
+                    >
+                      再開
                     </button>
                   ) : null}
                 </span>

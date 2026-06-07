@@ -124,3 +124,116 @@ describe("SeatingBoard — Phase 3 close button", () => {
     expect(screen.getByTestId("close-table-1")).toBeInTheDocument();
   });
 });
+
+describe("SeatingBoard — Phase 4 reopen button", () => {
+  it("renders the reopen button for a broken table and not the close button (exclusive)", () => {
+    render(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: true })]}
+        seatsPerTable={6}
+        canCloseTable
+        onCloseTable={vi.fn()}
+        onReopenTable={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("reopen-table-3")).toBeInTheDocument();
+    // broken 卓には「閉じる」ボタンが出ない（排他）。
+    expect(screen.queryByTestId("close-table-3")).toBeNull();
+  });
+
+  it("does not render a reopen button for a live (non-broken) table", () => {
+    render(
+      <SeatingBoard
+        players={[
+          fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 }),
+          fakePlayer({ id: "b1", tableNum: 2, seatNum: 1 }),
+        ]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "2" })]}
+        seatsPerTable={6}
+        canCloseTable
+        onCloseTable={vi.fn()}
+        onReopenTable={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("reopen-table-1")).toBeNull();
+    expect(screen.queryByTestId("reopen-table-2")).toBeNull();
+  });
+
+  it("hides the reopen button when canCloseTable is false", () => {
+    render(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: true })]}
+        seatsPerTable={6}
+        canCloseTable={false}
+        onReopenTable={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("reopen-table-3")).toBeNull();
+  });
+
+  it("fires onReopenTable with the tableNum on click", () => {
+    const onReopenTable = vi.fn();
+    render(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: true })]}
+        seatsPerTable={6}
+        canCloseTable
+        onCloseTable={vi.fn()}
+        onReopenTable={onReopenTable}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("reopen-table-3"));
+    expect(onReopenTable).toHaveBeenCalledWith(3);
+  });
+
+  it("disables the reopen button (and suppresses clicks) while reopenBusy", () => {
+    const onReopenTable = vi.fn();
+    render(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: true })]}
+        seatsPerTable={6}
+        canCloseTable
+        onCloseTable={vi.fn()}
+        onReopenTable={onReopenTable}
+        reopenBusy
+      />,
+    );
+    const btn = screen.getByTestId("reopen-table-3");
+    expect(btn).toBeDisabled();
+    // disabled button のクリックは handler を発火しない（二度押し抑止）。
+    fireEvent.click(btn);
+    expect(onReopenTable).not.toHaveBeenCalled();
+  });
+
+  it("reopened (non-broken) empty seats become droppable, broken ones do not", () => {
+    // 再開後（isBroken=false）の空席は既存 drop target 条件で droppable になることの lock-in。
+    // canManage=true + onMoveSeat 渡しで D&D が有効化される。
+    const { rerender } = render(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: true })]}
+        seatsPerTable={2}
+        canManage
+        onMoveSeat={vi.fn()}
+      />,
+    );
+    // broken の卓3 の空席は droppable でない。
+    expect(screen.queryByLabelText("droppable-3-1")).toBeNull();
+
+    // 再開（isBroken=false）すると卓3 の空席が droppable になる。
+    rerender(
+      <SeatingBoard
+        players={[fakePlayer({ id: "a1", tableNum: 1, seatNum: 1 })]}
+        tables={[fakeTable({ id: "1" }), fakeTable({ id: "3", isBroken: false })]}
+        seatsPerTable={2}
+        canManage
+        onMoveSeat={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("droppable-3-1")).toBeInTheDocument();
+  });
+});
