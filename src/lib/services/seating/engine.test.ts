@@ -11,6 +11,7 @@ import {
   planInitialSeating,
   planLateEntrySeat,
   planManualSeatCascade,
+  planManualTableClose,
   planTableBreak,
 } from "./engine";
 
@@ -520,6 +521,164 @@ describe("planTableBreak", () => {
     // a1 を卓 3（少ない卓）へ
     expect(plan?.moves[0].to.tableNum).toBe(3);
     expect(plan?.moves[0].to.seatNum).toBe(3);
+  });
+});
+
+describe("planManualTableClose", () => {
+  it("指定卓を閉じて残卓へ集約（定員内）", () => {
+    // 卓1:3, 卓2:3, 卓3:3 / target=3 → 卓3 の 3 名を卓1/2 へ。
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "b1", tableNum: 2, seatNum: 1 }),
+      p({ id: "b2", tableNum: 2, seatNum: 2 }),
+      p({ id: "b3", tableNum: 2, seatNum: 3 }),
+      p({ id: "c1", tableNum: 3, seatNum: 1 }),
+      p({ id: "c2", tableNum: 3, seatNum: 2 }),
+      p({ id: "c3", tableNum: 3, seatNum: 3 }),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.plan.brokenTableNum).toBe(3);
+    expect(result.plan.moves).toHaveLength(3);
+    // 移動先は卓1/2 のいずれか（閉鎖卓 3 へは戻さない）。
+    for (const m of result.plan.moves) {
+      expect([1, 2]).toContain(m.to.tableNum);
+    }
+  });
+
+  it("定員引き上げ（seatsPerTable 超）で残卓が 8 名まで膨らむ", () => {
+    // 卓1:6, 卓2:6, 卓3:4（席は 1..6 / 1..4）。maxSeatsPerTable=10（既定）で target=3。
+    // 卓1/2 が 8 名まで膨らむ → 少なくとも 1 つの move の to.seatNum が 6 超。
+    const seated = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        p({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 6 }, (_, i) =>
+        p({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        p({ id: `c${i + 1}`, tableNum: 3, seatNum: i + 1 }),
+      ),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.plan.moves).toHaveLength(4);
+    expect(result.plan.moves.some((m) => m.to.seatNum > 6)).toBe(true);
+    // seatNum は maxSeatsPerTable(10) を超えない。
+    for (const m of result.plan.moves) {
+      expect(m.to.seatNum).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it("残卓に収まらなければ overflow でブロック", () => {
+    // 卓1:10, 卓2:10, 卓3:2 / target=3 → capacity=20, needed=22 → overflow。
+    const seated = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        p({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 10 }, (_, i) =>
+        p({ id: `b${i + 1}`, tableNum: 2, seatNum: i + 1 }),
+      ),
+      p({ id: "c1", tableNum: 3, seatNum: 1 }),
+      p({ id: "c2", tableNum: 3, seatNum: 2 }),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected overflow");
+    expect(result.reason).toBe("overflow");
+    expect(result.capacity).toBe(20);
+    expect(result.needed).toBe(22);
+  });
+
+  it("最後の 1 卓は閉じられない", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+    ];
+    const result = planManualTableClose(seated, [1], 1);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected only-one-table");
+    expect(result.reason).toBe("only-one-table");
+  });
+
+  it("既閉鎖 / 不正卓番号は not-found", () => {
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "b1", tableNum: 2, seatNum: 1 }),
+      p({ id: "b2", tableNum: 2, seatNum: 2 }),
+    ];
+    // liveTableNums=[1]（卓2 は既閉鎖）。target=2 は生存卓に無い → not-found。
+    // 生存卓集合に存在しない卓番号（実在しない 99 等）も同経路で not-found。
+    const result = planManualTableClose(seated, [1], 2);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected not-found");
+    expect(result.reason).toBe("not-found");
+  });
+
+  it("空卓（active 0）の閉鎖は moves 0 件で成立", () => {
+    // 卓1:3, 卓2:3 の active のみ（卓3 は active 0 = seated に現れない）。
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "a2", tableNum: 1, seatNum: 2 }),
+      p({ id: "a3", tableNum: 1, seatNum: 3 }),
+      p({ id: "b1", tableNum: 2, seatNum: 1 }),
+      p({ id: "b2", tableNum: 2, seatNum: 2 }),
+      p({ id: "b3", tableNum: 2, seatNum: 3 }),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.plan.brokenTableNum).toBe(3);
+    expect(result.plan.moves).toHaveLength(0);
+  });
+
+  it("詰め込みは占有最少卓・同数なら tableNum 昇順", () => {
+    // 卓1:1, 卓2:4, 卓3:2 / target=3 → 卓3 の 2 名は最少の卓1 へ、空き昇順 seat。
+    const seated = [
+      p({ id: "a1", tableNum: 1, seatNum: 1 }),
+      p({ id: "b1", tableNum: 2, seatNum: 1 }),
+      p({ id: "b2", tableNum: 2, seatNum: 2 }),
+      p({ id: "b3", tableNum: 2, seatNum: 3 }),
+      p({ id: "b4", tableNum: 2, seatNum: 4 }),
+      p({ id: "c1", tableNum: 3, seatNum: 1 }),
+      p({ id: "c2", tableNum: 3, seatNum: 2 }),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.plan.moves).toHaveLength(2);
+    expect(result.plan.moves.map((m) => m.to.tableNum)).toEqual([1, 1]);
+    expect(result.plan.moves.map((m) => m.to.seatNum)).toEqual([2, 3]);
+  });
+
+  it("空 live 卓も再配置先になり偽 overflow を出さない", () => {
+    // 卓1:10（満席）, 卓2:0（実在・未閉鎖だが active 0）, 卓3:5 / target=3。
+    // 空卓 2 を destination に含めるため capacity=2×10=20 で 15 名は収まる。
+    // （生存卓を active から導出していた旧実装は卓2 を見落とし survivingTables=[1] と
+    //   誤認 → capacity=10 < 15 で偽 overflow になっていた。）
+    const seated = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        p({ id: `a${i + 1}`, tableNum: 1, seatNum: i + 1 }),
+      ),
+      ...Array.from({ length: 5 }, (_, i) =>
+        p({ id: `c${i + 1}`, tableNum: 3, seatNum: i + 1 }),
+      ),
+    ];
+    const result = planManualTableClose(seated, [1, 2, 3], 3);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.plan.moves).toHaveLength(5);
+    // 卓1 は満席(10)なので 5 名はすべて空卓 2 へ集約され、席は昇順。
+    for (const m of result.plan.moves) {
+      expect(m.to.tableNum).toBe(2);
+    }
+    expect(result.plan.moves.map((m) => m.to.seatNum)).toEqual([1, 2, 3, 4, 5]);
   });
 });
 

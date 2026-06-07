@@ -5,7 +5,7 @@
 // MVP の明示的な近似: TDA の「BB 次プレイヤー」はディーラーボタン位置に基づくが、
 // 本アプリはボタン位置を追跡しないため「席番号最小」を tie-break として代替する。
 
-import { MAX_TABLES } from "@/lib/limits";
+import { MAX_SEATS_PER_TABLE, MAX_TABLES } from "@/lib/limits";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 
 import { shuffle } from "./prng";
@@ -376,6 +376,120 @@ export function planTableBreak(
     occupiedBySurvivor.get(target.t)?.add(seat);
   }
   return { brokenTableNum: toBreak, moves };
+}
+
+/**
+ * Phase 3 (07-third-dryrun-improvements): 運営者が**指定した卓**を閉じる手動閉鎖の計画。
+ *
+ * planTableBreak（自動・最少人数卓固定・定員 seatsPerTable）と異なり:
+ *   - 閉じる卓 `targetTableNum` を運営者が指定する
+ *   - 残卓は seatsPerTable を一時的に超えて `maxSeatsPerTable`(=MAX_SEATS_PER_TABLE) まで収容する
+ *   - 収まらなければ ok:false（overflow）を返し、呼出側で警告して tx を発行しない
+ *
+ * 生存卓集合は **`tables` コレクション由来の `liveTableNums`（実在・未閉鎖の卓番号）**を受け取る。
+ * active プレイヤーから導出していた旧実装と異なり、全員バストした空卓（active 0 だが未閉鎖）も
+ * 再配置先候補に含まれる。これにより「空卓があるのに収まらない」と誤判定する偽 overflow と、
+ * 「最後の 1 卓」の偽判定を防ぐ。
+ *
+ * 詰め込みアルゴリズムは planTableBreak と同じ「占有最少の生存卓へ・同数なら tableNum 昇順・
+ * 空席は seat 1 から探索」を踏襲し、定員のみ maxSeatsPerTable に差し替える。
+ * occupancy < maxSeatsPerTable のとき 1..maxSeatsPerTable に必ず空席があるため seatNum は
+ * 常に <= maxSeatsPerTable(=10) に収まる（rule の seatNum<=10 と整合）。
+ *
+ * 結果:
+ *   - target が `liveTableNums` に無い（既閉鎖 / 実在しない卓番号）→ not-found
+ *   - 生存卓が target だけ（liveTableNums.length <= 1）→ only-one-table
+ *   - target が空卓（active 0）→ moves:[] で成立（isBroken=true のみ）
+ */
+export type ManualTableClosePlan =
+  | { ok: true; plan: TableBreakPlan }
+  | {
+      ok: false;
+      reason: "not-found" | "only-one-table" | "overflow";
+      /** overflow 時: 残卓の最大収容人数 (= 生存卓数 × maxSeatsPerTable)。 */
+      capacity?: number;
+      /** overflow 時: 残卓へ配置する必要のある総人数。 */
+      needed?: number;
+    };
+
+export function planManualTableClose(
+  seatedPlayers: PlayerDoc[],
+  liveTableNums: number[],
+  targetTableNum: number,
+  maxSeatsPerTable: number = MAX_SEATS_PER_TABLE,
+): ManualTableClosePlan {
+  const active = seatedPlayers.filter((p) => !p.isBusted && p.tableNum !== null);
+  const liveSet = new Set(liveTableNums);
+
+  // target が実在・未閉鎖の生存卓でなければ閉じられない（既閉鎖 / 実在しない卓番号）。
+  if (!liveSet.has(targetTableNum)) {
+    return { ok: false, reason: "not-found" };
+  }
+  // 生存卓が target だけ（空卓を含めても 1 つ）なら閉鎖不可。
+  if (liveSet.size <= 1) {
+    return { ok: false, reason: "only-one-table" };
+  }
+
+  const survivingTables = liveTableNums
+    .filter((n) => n !== targetTableNum)
+    .sort((a, b) => a - b);
+  const brokenPlayers = active
+    .filter((p) => p.tableNum === targetTableNum)
+    .sort((a, b) => (a.seatNum ?? 0) - (b.seatNum ?? 0));
+
+  // 収容可能性の必要十分条件: 全 active プレイヤー <= 生存卓数 × maxSeatsPerTable。
+  // 閉鎖卓 player は移動・残卓 player は据置で、合計が生存卓に収まればよい。
+  // greedy（占有最少へ詰める）は容量が足りる限り必ず成功する（pigeonhole）。
+  const capacity = survivingTables.length * maxSeatsPerTable;
+  const needed = active.length;
+  if (needed > capacity) {
+    return { ok: false, reason: "overflow", capacity, needed };
+  }
+
+  const occupiedBySurvivor = new Map<number, Set<number>>();
+  for (const t of survivingTables) occupiedBySurvivor.set(t, new Set());
+  for (const p of active) {
+    if (p.tableNum !== targetTableNum && p.seatNum !== null) {
+      occupiedBySurvivor.get(p.tableNum as number)?.add(p.seatNum);
+    }
+  }
+  const moves: BalancingMove[] = [];
+  for (const p of brokenPlayers) {
+    const candidates = survivingTables
+      .map((t) => ({ t, count: occupiedBySurvivor.get(t)?.size ?? 0 }))
+      .filter((c) => c.count < maxSeatsPerTable)
+      .sort((a, b) => (a.count !== b.count ? a.count - b.count : a.t - b.t));
+    // capacity チェック済みのため candidates が空になることはないが防御的に。
+    if (candidates.length === 0) {
+      return { ok: false, reason: "overflow", capacity, needed };
+    }
+    const target = candidates[0];
+    let seat = 1;
+    while (occupiedBySurvivor.get(target.t)?.has(seat)) seat++;
+    moves.push({
+      playerId: p.id,
+      from: { tableNum: targetTableNum, seatNum: p.seatNum as number },
+      to: { tableNum: target.t, seatNum: seat },
+    });
+    occupiedBySurvivor.get(target.t)?.add(seat);
+  }
+  return { ok: true, plan: { brokenTableNum: targetTableNum, moves } };
+}
+
+/**
+ * 手動卓閉鎖 overflow の警告メッセージ。`CloseTableConfirmDialog` の確認文と
+ * `applyManualTableClose` の throw message で文言を共有するための単一定義
+ * （DRY: 文言 drift を防ぐ）。`capacity` / `needed` は `planManualTableClose` の
+ * overflow 結果由来で、`capacity / maxSeatsPerTable` は生存卓数（整数）。
+ */
+export function formatTableCloseOverflow(
+  capacity: number,
+  needed: number,
+  maxSeatsPerTable: number = MAX_SEATS_PER_TABLE,
+): string {
+  return `残卓に収まりません（最大 ${maxSeatsPerTable} 名/卓 × ${
+    capacity / maxSeatsPerTable
+  } 卓 = ${capacity} 名、配置必要 ${needed} 名）。先に脱落者をバストさせてから閉じてください。`;
 }
 
 /**
