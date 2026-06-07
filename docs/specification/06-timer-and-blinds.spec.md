@@ -6,8 +6,9 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md
   - .claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md
-targetPhase: Phase 5.3 完了時点（進行中のレベル時間変更・末尾追加まで対応）/ オフライン耐性・デバイス制御は PRD 03 Phase B・C 完了時点
-lastUpdated: 2026-05-10
+  - .claude/PRPs/06-second-dryrun-improvements/prds/06-second-dryrun-improvements.prd.md
+targetPhase: Phase 5.3 完了時点（進行中のレベル時間変更・末尾追加まで対応）/ オフライン耐性・デバイス制御は PRD 03 Phase B・C 完了時点 / レベル切替時のタイマー飛び解消は 06-second-dryrun-improvements Phase 4 完了時点
+lastUpdated: 2026-06-07
 status: stable
 ---
 
@@ -114,6 +115,7 @@ status: stable
 - ブラインドアップ時に音声通知が鳴る（[07-audio-notifications.spec.md](07-audio-notifications.spec.md) 参照）
 - 休憩レベルへの遷移も自動で行われ、画面が「休憩中」表示に切り替わる
 - 最終レベルに到達した状態では auto-advance しない（レベル末尾追加 or 手動進行が必要）
+- **次のレベルは満了どおりに 0:00（満タン）から正確にカウントダウンを始める**。以前はレベルが切り替わる瞬間に残り時間が 2 秒ほど飛んで見える違和感があったが、この飛びは解消されている
 
 #### 3.3.2 誰が・いつ使うか
 
@@ -131,6 +133,7 @@ status: stable
 
 - 自動進行は運営者ロールの端末でのみ実行される（参加者側の端末では発火しない）
 - ネット切断時は自動進行が遅れる場合がある（復旧後に同期）
+- レベル切替の瞬間にタイマーが 2 秒ほど飛んで見える問題は解消済み（オンラインの自動進行時。新レベルの開始時刻を満了どおりの値で確定するようになったため）。手動進行・オフライン時の挙動は従来どおり
 
 ### 3.4 手動レベル進行（次レベル / 巻戻し）
 
@@ -419,6 +422,7 @@ status: stable
 
 - 通信切断時は明示的にバッジ表示
 - 一時的な通信障害でも自動進行が止まらず、復帰時に状態が同期される
+- 自動でレベルが切り替わる瞬間も、新レベルは満了どおりの時刻から始まるため残り時間が飛んで見えない（通信往復の遅延に左右されない）
 - トーナメント終了は通信必須（オフライン中は再試行を促すメッセージで明示）
 - 同時複数の運営者操作はまとめて確定（途中失敗で何も変わらない）
 - レベル時間の変更は配列の書き戻し処理で、競合時は後勝ち
@@ -463,6 +467,7 @@ status: stable
 - 関連: 観戦経路（[/spectate/[tid]](/spectate/%5Btid%5D)）でもタイマー / ブラインドが読み取り専用で表示される。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md) 3.3 節
 - 関連 PRD: [01-allin-timer.prd.md](../../.claude/PRPs/01-allin-timer/prds/01-allin-timer.prd.md) Phase 3（タイマー / 同期 / 接続切断 UI）/ Phase 4.7（休憩レベル）/ Phase 4.11（レイアウト）/ Phase 4.14（全画面 API）/ Phase 5.2（レベル時間動的変更）/ Phase 5.3（末尾追加）
 - 関連 PRD: [03-pwa-app-shell.prd.md](../../.claude/PRPs/03-pwa-app-shell/prds/03-pwa-app-shell.prd.md) Phase B（タイマーのオフライン耐性）/ Phase C（端末制御）
+- 関連 PRD: [06-second-dryrun-improvements.prd.md](../../.claude/PRPs/06-second-dryrun-improvements/prds/06-second-dryrun-improvements.prd.md) Phase 4（レベル切替時のタイマー 2 秒飛びの解消・ブラインドアップ音のタイミング改善は [07-audio-notifications.spec.md](07-audio-notifications.spec.md)）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
@@ -471,6 +476,6 @@ status: stable
 
 - 画面: [/tournaments/[tid]](/tournaments/%5Btid%5D)（運営者ダッシュボードのタイマー・操作・補助カード）/ [/tournaments/[tid]/live](/tournaments/%5Btid%5D/live)（参加者向け）
 - 主な操作: 開始 / 一時停止 / 再開 / 次レベル / 巻戻し / レベル時間変更 / レベル末尾追加 / 全画面表示 / 通信切れバナー閲覧
-- 設定項目: レベル時間（1 秒〜86400 秒）/ 末尾追加レベルの SB・BB・アンティ・時間・休憩フラグ（自動進行のオフライン耐性 / 画面消灯防止 / 横向きロックは設定なし、自動有効化）
-- 関連シーン: 通常進行 / 食事休憩での一時停止 / 進行調整（時間短縮）/ 最終レベル超過時の末尾追加 / 会場大画面投影 / 一時通信障害下の自動進行継続 / 投影中の画面消灯防止
+- 設定項目: レベル時間（1 秒〜86400 秒）/ 末尾追加レベルの SB・BB・アンティ・時間・休憩フラグ（自動進行のオフライン耐性 / 画面消灯防止 / 横向きロック / レベル切替時の飛び解消は設定なし、自動適用）
+- 関連シーン: 通常進行 / 食事休憩での一時停止 / 進行調整（時間短縮）/ 最終レベル超過時の末尾追加 / 会場大画面投影 / 一時通信障害下の自動進行継続 / 投影中の画面消灯防止 / レベル切替時のタイマーがスムーズに見える
 - 関連 PRD: 上記参照

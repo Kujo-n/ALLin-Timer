@@ -6,8 +6,9 @@ audience: サークル運営者・新メンバー・外部レビュアー
 relatedPrd:
   - .claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md
   - .claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md
-targetPhase: Phase A・B・D・E 完了時点（基盤・切替・ランキング・結果カード PNG・Web Share API・過去シーズン履歴閲覧 UI・過去シーズン詳細ページ・シーズンポイント計算式の運営者カスタマイズ）/ 結果カード背景画像のサークル別カスタマイズは 05-post-launch-polish Track A（Phase A.1〜A.3）完了時点
-lastUpdated: 2026-05-13
+  - .claude/PRPs/06-second-dryrun-improvements/prds/06-second-dryrun-improvements.prd.md
+targetPhase: Phase A・B・D・E 完了時点（基盤・切替・ランキング・結果カード PNG・Web Share API・過去シーズン履歴閲覧 UI・過去シーズン詳細ページ・シーズンポイント計算式の運営者カスタマイズ）/ 結果カード背景画像のサークル別カスタマイズは 05-post-launch-polish Track A（Phase A.1〜A.3）完了時点 / シーズンタブの順位インライン表示は 06-second-dryrun-improvements Phase 2 完了時点
+lastUpdated: 2026-06-07
 status: stable
 ---
 
@@ -34,6 +35,8 @@ status: stable
 #### 2.2.2 平常系: シーズンランキングの確認
 
 サイドバーから [/groups/[gid]/season](/groups/%5Bgid%5D/season) を開く → 現在シーズンの累計ポイント順で参加者がランキング表示される → 各列で参加・優勝・FT・累計ポイントが確認できる → シーズン開始日も画面上部に表示される。
+
+または、サークル詳細画面 [/groups/[gid]](/groups/%5Bgid%5D) で「シーズン」タブを選ぶだけでも、同じ順位表がその場（タブ内）に表示される。専用のランキング画面まで開かなくても、ワンタップで今シーズンの順位を確認できる。
 
 #### 2.2.3 平常系: シーズン首位カードのダウンロード
 
@@ -139,6 +142,7 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 - 累計ポイント降順で並び替え（同点時は内部順）
 - シーズン開始日が画面上部に表示される
 - 「画像保存」ボタンでシーズン首位カードをダウンロード（後述）
+- **同じ順位表は、サークル詳細画面 [/groups/[gid]](/groups/%5Bgid%5D) の「シーズン」タブを開くだけでもインライン表示される**。専用のランキング画面まで遷移しなくても、タブを選んだその場で今シーズンの順位（同じ列構成）が見える。表示はリアルタイムで自動更新される。戦績がまだない（このシーズンでトーナメントを終えていない）ときは順位表は出さず「戦績はまだありません」という案内に倒れる
 
 #### 3.3.2 誰が・いつ使うか
 
@@ -157,6 +161,7 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 
 - サークルメンバー全員が閲覧可能
 - 戦績がまだない（このシーズンでトーナメントを終えていない）状態では「戦績はまだありません」と表示
+- サークル詳細画面の「シーズン」タブのインライン順位表と、専用のランキング画面 [/groups/[gid]/season](/groups/%5Bgid%5D/season) は同じ内容を表示する。シーズン首位カードのダウンロード / シェアや過去シーズン履歴は専用のランキング画面側にある（[02-circles-and-membership.spec.md](02-circles-and-membership.spec.md) のサークル詳細タブ構成も参照）
 
 ### 3.4 シーズンの開始（手動切替）
 
@@ -476,14 +481,15 @@ iOS Safari / Android Chrome 等の Web Share API に対応した端末では、�
 - 関連: 観戦経路でも進行中の残人数 / 席表は見える（読み取り専用）。詳細は [10-spectate-mode.spec.md](10-spectate-mode.spec.md)
 - 関連 PRD: [02-season-stats-and-share.prd.md](../../.claude/PRPs/02-season-stats-and-share/prds/02-season-stats-and-share.prd.md) Phase A（基盤）/ Phase B（結果カード PNG）/ Phase D（Web Share API・過去シーズン履歴閲覧 UI）/ Phase E（シーズンポイント計算式の運営者カスタマイズ）
 - 関連 PRD: [05-post-launch-polish.prd.md](../../.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md) Track A（結果カード背景画像のサークル別カスタマイズ・Phase A.1〜A.3）
+- 関連 PRD: [06-second-dryrun-improvements.prd.md](../../.claude/PRPs/06-second-dryrun-improvements/prds/06-second-dryrun-improvements.prd.md) Phase 2（サークル詳細「シーズン」タブの順位インライン表示）
 - 用語の翻訳ガイド: [.claude/skills/spec-writer/references/glossary.md](../../.claude/skills/spec-writer/references/glossary.md)
 
 ## 8. 網羅性チェック
 
 ### 対応する画面 / 設定項目 / 想定利用シーン
 
-- 画面: [/groups/[gid]/season](/groups/%5Bgid%5D/season)（ランキング）/ [/groups/[gid]](/groups/%5Bgid%5D)（シーズン開始操作・ポイント計算式カスタマイズ・結果カード背景画像のカスタマイズ）/ [/tournaments/[tid]](/tournaments/%5Btid%5D)（Winner 画面の優勝カードボタン）
-- 主な操作: シーズンランキング閲覧 / シーズン開始（手動切替）/ シーズン首位カードのダウンロード / 優勝カードのダウンロード（補助）/ 履歴の閲覧 / シーズンポイント計算式のカスタマイズ / 結果カード背景画像のアップロード・解除（オーナーのみ）
+- 画面: [/groups/[gid]/season](/groups/%5Bgid%5D/season)（ランキング）/ [/groups/[gid]](/groups/%5Bgid%5D)（「シーズン」タブの順位インライン表示・シーズン開始操作・ポイント計算式カスタマイズ・結果カード背景画像のカスタマイズ）/ [/tournaments/[tid]](/tournaments/%5Btid%5D)（Winner 画面の優勝カードボタン）
+- 主な操作: シーズンランキング閲覧（専用画面 / サークル詳細「シーズン」タブのインライン）/ シーズン開始（手動切替）/ シーズン首位カードのダウンロード / 優勝カードのダウンロード（補助）/ 履歴の閲覧 / シーズンポイント計算式のカスタマイズ / 結果カード背景画像のアップロード・解除（オーナーのみ）
 - 設定項目: シーズン開始日（自動）/ ポイント順位ベース配列（既定 [10,7,5,3,1,1,1,1,1] / カスタマイズ可）/ 参加人数の基準値（既定 8 名 / カスタマイズ可）/ FT しきい値（9 位以内 / 固定）/ 優勝者カード背景画像（既定なし / オーナー設定）/ シーズン首位カード背景画像（既定なし / オーナー設定）/ テキストテーマ（ライト / ダーク）
 - 関連シーン: トーナメント終了時の自動戦績更新 / シーズン首位カードを LINE 共有 / 四半期 / 半期のシーズン切替 / 過去シーズン振り返り / 進行中トーナメントがあるときの切替ガード / ポイント計算式のサークル別調整 / サークル独自背景画像で結果カードをブランディング
 - 関連 PRD: 上記参照
