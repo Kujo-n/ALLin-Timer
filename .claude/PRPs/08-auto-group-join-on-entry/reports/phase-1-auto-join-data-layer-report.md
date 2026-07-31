@@ -183,7 +183,7 @@ deny 12 件を先に、allow 4 件を後に実行する（allow が `memberUids`
 
 ## Next Steps
 
-- [ ] **`firebase deploy --only firestore:rules` の実行（Phase 2 の前提・未実行）** — emulator が green でも本番へ deploy しないと Phase 2 以降で `permission-denied` になる。本番環境への反映のため、ユーザー承認のうえ実行すること。⚠ 今回は self-add ブランチ追加に加えて **`tournaments` の list 挙動が変わる**（絞り込みなしのクエリは deploy 後 deny）
+- [x] **`firebase deploy --only firestore:rules` の実行** — ユーザーが実行済み（Phase 2 実装完了時点で確認）。self-add ブランチ追加に加えて **`tournaments` の list 挙動が変わる**（絞り込みなしのクエリは deploy 後 deny）ため、本番での一覧表示の目視確認は Phase 2 レポートの Next Steps に引き継いだ
 - [x] `/code-review` でレビュー（[local-phase-1-auto-join-review.md](../reviews/local-phase-1-auto-join-review.md)）
 - [ ] `/prp-commit` でコミット（実装とテストは同一 commit にペアで入れる）
 - [ ] `/prp-plan` で Phase 2（受付フロー統合）へ

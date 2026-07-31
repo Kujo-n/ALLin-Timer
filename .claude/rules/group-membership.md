@@ -134,6 +134,23 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 emulator validation: [scripts/test-rules-tournament-join.mjs](../../scripts/test-rules-tournament-join.mjs)
 （`npm run test:rules-tournament-join`）。
 
+**アプリ側の呼出経路（Phase 2）**: `joinGroupViaTournament`（services/auto-group-join.ts）を
+呼ぶのは [receipt.ts](../../src/lib/services/receipt.ts) の内部 helper `receiveEntry` **のみ**。
+`joinAsExistingUser` / `joinViaGoogle` / `joinAsCurrentUser` の 3 経路がこれを通り、
+**`joinAsGuest`（匿名）だけが通らない**（rule の `isSignedInNotAnon()` と併せた二重防御）。
+
+- **順序**: `ensurePlayerCreated`（player doc 作成）→ `joinGroupViaTournament`。
+  rule の `hasTournamentEntryProof` が player doc の存在を前提にするため逆順は必ず deny
+- **best-effort**: 失敗は `logger.warn`（`code: "group/auto-join-failed"`）に落とし、
+  受付結果は `ReceiptOutcome.autoJoin.status = "failed"` として返す。受付自体は成功扱い
+- **`already-joined` でも実行**する。既受付者の取りこぼし回収と失敗時の自動リトライを兼ねる
+- UI（`/join/[tid]`）は `status === "joined"` のときだけ所属メッセージを出し、
+  `setCurrentGroupId` + `refreshGroups` で group コンテキストへ即反映する
+  （`already-member` でも `refreshGroups` のみ実行 — `users/{uid}.groupIds` の補修を一覧へ反映するため）
+
+⚠ DRIFT WARNING: 受付経路を追加する場合（Phase 3 の新規メール登録タブなど）は、
+**`receiveEntry` を経由させる**こと。`ensurePlayerCreated` を直接呼ぶと自動所属が抜ける。
+
 ## ロール定義（Phase 4.6）
 
 | ロール | 定義 | 典型例 |
