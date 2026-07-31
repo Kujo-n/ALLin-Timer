@@ -196,6 +196,25 @@ describe("joinGroupViaTournament", () => {
     });
   });
 
+  it("group が読めても memberUids に自分が居なければ非メンバー扱いで self-add する", async () => {
+    // 除名直後のキャッシュ read など、doc は取れるが membership は失われている状況。
+    // probe は「読めた」ではなく「memberUids に居る」で判定する契約。
+    vi.mocked(getGroupIfMember).mockResolvedValue(makeGroup({ memberUids: ["u-owner"] }));
+
+    const result = await joinGroupViaTournament({
+      tid: "t1",
+      gid: "g1",
+      uid: "u1",
+      displayName: "Alice",
+    });
+
+    expect(result).toEqual({ gid: "g1", outcome: "joined" });
+    expect(addSelfViaTournamentEntry).toHaveBeenCalledWith("g1", "u1", {
+      tid: "t1",
+      displayName: "Alice",
+    });
+  });
+
   it("probe が想定外エラーで throw しても非メンバー扱いで self-add を試みる", async () => {
     // permission-denied 以外（ネットワーク等）は getGroupIfMember が throw する契約。
     vi.mocked(getGroupIfMember).mockRejectedValue(

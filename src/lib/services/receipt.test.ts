@@ -257,6 +257,33 @@ describe("resolveDisplayName (via joinAsCurrentUser)", () => {
   });
 });
 
+describe("joinAsCurrentUser", () => {
+  beforeEach(() => {
+    vi.mocked(getTournament).mockReset().mockResolvedValue(makeTournament());
+    vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
+    vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+    vi.mocked(joinGroupViaTournament)
+      .mockReset()
+      .mockResolvedValue({ gid: "g1", outcome: "joined" });
+    mockAuthState.currentUser = null;
+  });
+
+  it("rejects when not authenticated, before touching Firestore or auto-join", async () => {
+    mockAuthState.currentUser = null;
+
+    await expect(joinAsCurrentUser({ tid: "t1" })).rejects.toMatchObject({
+      code: "auth/not-authenticated",
+    });
+
+    // ガードは tournament read の「前」に効く必要がある（未認証では rules が read を拒否する）
+    expect(getTournament).not.toHaveBeenCalled();
+    expect(upsertPlayer).not.toHaveBeenCalled();
+    expect(joinGroupViaTournament).not.toHaveBeenCalled();
+  });
+});
+
 describe("cancelOwnEntry", () => {
   beforeEach(() => {
     vi.mocked(deletePlayer).mockReset().mockResolvedValue(undefined);

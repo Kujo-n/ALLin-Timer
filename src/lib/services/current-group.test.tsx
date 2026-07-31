@@ -233,6 +233,42 @@ describe("GroupProvider", () => {
     expect(screen.getByTestId("group-names")).toHaveTextContent("Saturday");
   });
 
+  it("サインアウト後に着地した in-flight load は groups を復活させない", async () => {
+    const inflight = deferred<UserProfileDoc | null>();
+    vi.mocked(getUserProfile).mockReset().mockReturnValue(inflight.promise);
+
+    const { rerender } = renderProbe();
+
+    // load 解決前にサインアウトする（effect が reqId を進めて in-flight を無効化する）
+    mockAuthUser(null);
+    await act(async () => {
+      rerender(
+        <GroupProvider>
+          <Probe />
+        </GroupProvider>,
+      );
+    });
+
+    await act(async () => {
+      inflight.resolve(makeProfile(["g1"]));
+      await inflight.promise;
+    });
+
+    expect(screen.getByTestId("group-names")).toHaveTextContent("");
+    expect(screen.getByTestId("current-gid")).toHaveTextContent("-");
+  });
+
+  it("load が失敗したら groups と currentGroupId をクリアする", async () => {
+    vi.mocked(getUserProfile).mockReset().mockRejectedValue(new Error("network down"));
+
+    await act(async () => {
+      renderProbe();
+    });
+
+    expect(screen.getByTestId("group-names")).toHaveTextContent("");
+    expect(screen.getByTestId("current-gid")).toHaveTextContent("-");
+  });
+
   it("最新の load で getGroup できなかった gid は逆引きから外す", async () => {
     vi.mocked(getUserProfile).mockResolvedValue(makeProfile(["g1", "g-gone"]));
     vi.mocked(listMyGroups).mockResolvedValue({
