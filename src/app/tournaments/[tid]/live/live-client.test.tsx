@@ -31,7 +31,9 @@ vi.mock("@/lib/services/auth-actions", () => ({
   attemptAnonymousSelfDelete: vi.fn().mockResolvedValue({ deleted: true }),
 }));
 vi.mock("@/lib/services/receipt", () => ({
-  joinAsCurrentUser: vi.fn().mockResolvedValue("created"),
+  // 08-auto-group-join-on-entry Phase 2: 戻り値は ReceiptOutcome。
+  // live-client は戻り値を使わないが、mock を実体の契約に合わせて drift を防ぐ。
+  joinAsCurrentUser: vi.fn().mockResolvedValue({ result: "created", autoJoin: null }),
 }));
 // QrPanel が transit で読む ThemedQRCode → useTheme を stub（Track D Phase D.2）。
 vi.mock("@/lib/services/theme", () => ({
