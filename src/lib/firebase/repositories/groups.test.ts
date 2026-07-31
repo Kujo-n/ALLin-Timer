@@ -22,6 +22,7 @@ vi.mock("firebase/firestore", async () => {
     updateDoc: vi.fn(),
     deleteDoc: vi.fn(),
     arrayRemove: vi.fn((...args: unknown[]) => ({ __op: "arrayRemove", args })),
+    arrayUnion: vi.fn((...args: unknown[]) => ({ __op: "arrayUnion", args })),
     serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
   };
 });
@@ -30,12 +31,15 @@ vi.mock("@/lib/firebase/converters", () => ({
   zodConverter: vi.fn(() => ({})),
 }));
 
-import { addDoc, arrayRemove, updateDoc } from "firebase/firestore";
+import { addDoc, arrayRemove, arrayUnion, getDoc, updateDoc } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 
 import {
+  addSelfViaTournamentEntry,
   createGroup,
+  getGroupIfMember,
   removeMemberSelf,
   updateAudioSettings,
   updateDefaultSeatsPerTable,
@@ -51,7 +55,11 @@ import {
 beforeEach(() => {
   vi.mocked(addDoc).mockReset();
   vi.mocked(updateDoc).mockReset();
+  vi.mocked(getDoc).mockReset();
   vi.mocked(arrayRemove).mockReset();
+  vi.mocked(arrayUnion)
+    .mockReset()
+    .mockImplementation((...args: unknown[]) => ({ __op: "arrayUnion", args }) as never);
 });
 
 describe("createGroup", () => {
@@ -442,6 +450,118 @@ describe("updateSeasonCardBackground (Phase A.1)", () => {
         textTheme: "dark",
       },
     });
+  });
+});
+
+describe("addSelfViaTournamentEntry (08-auto-group-join-on-entry Phase 1)", () => {
+  it("writes memberUids via arrayUnion + proof + self-key displayName only", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await addSelfViaTournamentEntry("g1", "u-new", { tid: "t1", displayName: "Alice" });
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    // rule の affectedKeys().hasOnly([...]) と 1:1 対応する形。
+    // dot-path（memberDisplayNames.<uid>）にしないと map 全体を上書きして
+    // 他メンバーの entry を消し、self-key 限定の rule 条件で deny される。
+    expect(patch).toEqual({
+      memberUids: { __op: "arrayUnion", args: ["u-new"] },
+      joinedViaTournamentId: "t1",
+      "memberDisplayNames.u-new": "Alice",
+    });
+  });
+
+  it("trims the displayName before writing", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await addSelfViaTournamentEntry("g1", "u-new", { tid: "t1", displayName: "  Alice  " });
+
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toMatchObject({ "memberDisplayNames.u-new": "Alice" });
+  });
+
+  it("rejects an empty / whitespace-only displayName without writing (rule requires size() >= 1)", async () => {
+    await expect(
+      addSelfViaTournamentEntry("g1", "u-new", { tid: "t1", displayName: "   " }),
+    ).rejects.toMatchObject({ code: "validation/display-name-required" });
+
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("rejects a displayName longer than 15 chars without writing (rule requires size() <= 15)", async () => {
+    await expect(
+      addSelfViaTournamentEntry("g1", "u-new", {
+        tid: "t1",
+        displayName: "0123456789abcdef", // 16 字
+      }),
+    ).rejects.toMatchObject({ code: "validation/display-name-too-long" });
+
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it("accepts exactly 15 chars (boundary)", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+
+    await addSelfViaTournamentEntry("g1", "u-new", {
+      tid: "t1",
+      displayName: "0123456789abcde", // 15 字
+    });
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+  });
+
+  it("wraps Firestore errors with firestore/write_failed code", async () => {
+    vi.mocked(updateDoc).mockRejectedValue(new Error("permission denied") as never);
+
+    await expect(
+      addSelfViaTournamentEntry("g1", "u-new", { tid: "t1", displayName: "Alice" }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
+describe("getGroupIfMember (membership probe)", () => {
+  it("returns the group with its id when readable", async () => {
+    vi.mocked(getDoc).mockResolvedValue({
+      exists: () => true,
+      id: "g1",
+      data: () => ({ name: "Saturday", memberUids: ["u1"] }),
+    } as never);
+
+    const group = await getGroupIfMember("g1");
+
+    expect(group).toMatchObject({ id: "g1", name: "Saturday", memberUids: ["u1"] });
+  });
+
+  it("returns null for a missing doc", async () => {
+    vi.mocked(getDoc).mockResolvedValue({ exists: () => false } as never);
+
+    await expect(getGroupIfMember("g1")).resolves.toBeNull();
+  });
+
+  it("returns null WITHOUT a warn log when the read is denied (non-member is the normal path)", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.mocked(getDoc).mockRejectedValue(
+      Object.assign(new Error("Missing or insufficient permissions."), {
+        code: "permission-denied",
+      }) as never,
+    );
+
+    await expect(getGroupIfMember("g1")).resolves.toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it("still warns and throws for unexpected failures", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.mocked(getDoc).mockRejectedValue(new Error("network down") as never);
+
+    await expect(getGroupIfMember("g1")).rejects.toMatchObject({
+      code: "firestore/read_failed",
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
   });
 });
 

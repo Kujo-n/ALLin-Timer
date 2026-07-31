@@ -51,6 +51,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     createdAt,
     joinCodeId: null,
     latestJoinCodeId: null,
+    joinedViaTournamentId: null,
     ...overrides,
   };
 }

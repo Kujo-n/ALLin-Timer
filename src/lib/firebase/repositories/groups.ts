@@ -1,6 +1,7 @@
 import {
   addDoc,
   arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   deleteField,
@@ -85,6 +86,8 @@ export async function createGroup(
         // dryrun-feedback-batch-1: 新規作成時は最新発行コード未追跡。`generateJoinCode` で最初の発行時に
         //   `updateLatestJoinCodeId` 経由で更新される。
         latestJoinCodeId: null,
+        // Phase 1 (08-auto-group-join-on-entry): 新規作成時は受付経由の加入なし。
+        joinedViaTournamentId: null,
       });
       return ref.id;
     },
@@ -106,6 +109,37 @@ export async function getGroup(gid: string): Promise<GroupDoc> {
     },
     { gid },
   );
+}
+
+/**
+ * メンバーシップ probe 専用の read。**メンバーでなければ `null` を返す**。
+ *
+ * **契約（`wrap` helper を使わない例外関数）**:
+ *   - rule に拒否された（= 呼出者が `memberUids` に含まれない）場合は
+ *     **warn ログを出さず `null`** を返す。doc が存在しない場合も `null`。
+ *   - それ以外の失敗（ネットワーク / schema 不整合など）は従来どおり
+ *     `logger.warn` + `AppError` で throw する。
+ *
+ * `getGroup` は `wrapFirestoreRead` 経由のため、permission-denied のたびに warn を 1 本出す。
+ * トーナメント受付経由の自動所属（08-auto-group-join-on-entry）では
+ * **「非メンバー」は正常系のシグナル**であり、新規参加者 1 人につき warn が 1 本積み上がると
+ * 本番ログのノイズになるため、probe 用の read だけを分離した。
+ * 「失敗を返却値に倒す」例外関数の先例は `templateAdmins.isTemplateAdmin`。
+ */
+export async function getGroupIfMember(gid: string): Promise<GroupDoc | null> {
+  try {
+    const snap = await getDoc(groupDocRef(gid));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
+  } catch (e) {
+    if (getErrorCode(e) === "permission-denied") {
+      logger.debug("group read denied (treated as non-member)", { gid });
+      return null;
+    }
+    const wrapped = AppError.from(e, "firestore/read_failed", "サークル取得に失敗しました");
+    logger.warn(wrapped.message, { code: wrapped.code, gid });
+    throw wrapped;
+  }
 }
 
 /**
@@ -224,6 +258,51 @@ export async function setMemberDisplayName(
     { gid, uid },
   );
   logger.info("group member displayName set ok", { gid, uid });
+}
+
+/**
+ * Phase 1 (08-auto-group-join-on-entry): トーナメント受付を消費証明とした self-add。
+ *
+ * 招待コード経由の `consumeJoinCode`（services/group.ts）と対になる書込経路で、
+ * rule 側は `hasTournamentEntryProof(gid, joinedViaTournamentId)` を検証する。
+ *
+ *   - **`arrayUnion` 必須**: 加入前のユーザーは `groups/{gid}` を read できない
+ *     （rule が memberUids 所属を要求）ため、既存配列を知らずに +1 できる唯一の手段。
+ *     配列丸ごと上書きにすると他メンバーを消し飛ばす（かつ rule の hasAll で deny される）。
+ *   - **displayName は 15 字以内必須**: rule が `size() <= 15` を強制するため、
+ *     超過値を渡すと permission-denied になる。呼出側（service）で slice 済みの値を渡すこと。
+ *     本関数でも防御的に再検証する（seasonStats で同じ罠を踏んだ先例）。
+ *   - `runTransaction` は使わない: 招待コードと違い、同 request 内で +1 消費すべき
+ *     外部 doc（`groupJoinCodes`）が存在しないため、単一 doc の updateDoc で足りる。
+ */
+export async function addSelfViaTournamentEntry(
+  gid: string,
+  uid: string,
+  input: { tid: string; displayName: string },
+): Promise<void> {
+  const trimmed = input.displayName.trim();
+  if (!trimmed) {
+    throw new AppError("表示名が空です", "validation/display-name-required");
+  }
+  if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+    throw new AppError(
+      `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください`,
+      "validation/display-name-too-long",
+    );
+  }
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "サークルへの自動加入に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), {
+        memberUids: arrayUnion(uid),
+        joinedViaTournamentId: input.tid,
+        [`memberDisplayNames.${uid}`]: trimmed,
+      });
+    },
+    { gid, uid, tid: input.tid },
+  );
+  logger.info("group self-add via tournament ok", { gid, uid, tid: input.tid });
 }
 
 /**

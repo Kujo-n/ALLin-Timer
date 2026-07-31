@@ -92,6 +92,7 @@ function makeGroup(overrides: Partial<GroupDoc> = {}): GroupDoc {
     winnerCardBackground: null,
     seasonCardBackground: null,
     latestJoinCodeId: null,
+    joinedViaTournamentId: null,
     createdAt: baseTimestamp,
     ...overrides,
   };

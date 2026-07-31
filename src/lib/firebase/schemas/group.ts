@@ -138,6 +138,14 @@ export const groupBodySchema = z
     //   旧 doc（Phase E 以前）はフィールド不在のため default(null) で hydrate される。
     //   organizer が `affectedKeys.hasOnly(['latestJoinCodeId'])` で string | null を書込可。
     latestJoinCodeId: z.string().min(1).nullable().default(null),
+    // Phase 1 (08-auto-group-join-on-entry): トーナメント受付経由の self-add で書き込まれる
+    //   consumption proof。`joinCodeId`（招待コード経由の proof）と同じ役割で、rule 側の
+    //   `hasTournamentEntryProof(gid, tid)` が「この tid が本当にこの gid のトーナメントで、
+    //   受付可能 state で、かつ書込者の player doc が実在する」ことを検証する。
+    //   最後に自動加入したメンバーの tid で上書きされるため**監査ログ用途には使えない**
+    //   （`joinCodeId` と同じ性質）。owner はフルアクセス経由で自由に null 化してよい。
+    //   旧 doc（本 Phase 以前）はフィールド不在のため default(null) で hydrate される。
+    joinedViaTournamentId: z.string().min(1).nullable().default(null),
     // Phase 4.7: uid → displayName のマップ snapshot（各メンバーが自分の entry を書込）。
     //   - 旧 doc（Phase 4.6 以前）は default({}) で受容、UI は UID フォールバック
     //   - rule は self-key 書込のみ許可: diff().affectedKeys().hasOnly([auth.uid])

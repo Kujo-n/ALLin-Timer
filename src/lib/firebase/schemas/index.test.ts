@@ -913,6 +913,7 @@ describe("deriveRole", () => {
     winnerCardBackground: null,
     seasonCardBackground: null,
     latestJoinCodeId: null,
+    joinedViaTournamentId: null,
     createdAt: now,
   };
 
@@ -955,6 +956,7 @@ describe("isSoleOwner", () => {
     winnerCardBackground: null,
     seasonCardBackground: null,
     latestJoinCodeId: null,
+    joinedViaTournamentId: null,
     createdAt: now,
   };
 
