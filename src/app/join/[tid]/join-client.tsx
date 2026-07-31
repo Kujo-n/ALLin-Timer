@@ -18,22 +18,26 @@ import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 import { logger } from "@/lib/logger";
 import { AccountLinkRequired } from "@/lib/services/auth-actions";
+import { useCurrentGroup } from "@/lib/services/current-group";
 import {
   cancelOwnEntry,
   joinAsCurrentUser,
   joinAsExistingUser,
   joinAsGuest,
   joinViaGoogle,
+  type AutoJoinFeedback,
+  type ReceiptOutcome,
   type ReceiptResult,
 } from "@/lib/services/receipt";
 
 type Tab = "login" | "guest";
 type Status =
-  | { kind: "joined"; result: ReceiptResult }
+  | { kind: "joined"; result: ReceiptResult; autoJoin: AutoJoinFeedback | null }
   | { kind: "cancelled" };
 
 export function JoinClient({ tid }: { tid: string }) {
   const { user, loading: authLoading, refreshUser } = useAuthUser();
+  const { groups, setCurrentGroupId, refreshGroups } = useCurrentGroup();
   const [tab, setTab] = useState<Tab>("guest");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,13 +76,37 @@ export function JoinClient({ tid }: { tid: string }) {
     setError(formatErrorForDisplay(wrapped));
   }
 
+  /**
+   * 受付結果を画面に反映し、自動所属が起きていれば group コンテキストを更新する。
+   * 4 経路（Google / ログイン / 継続 / 連携後）で同じ後処理を共有するための helper。
+   *
+   * - 新規加入時のみ `setCurrentGroupId`（既メンバーの選択中サークルを勝手に切り替えない）
+   * - `already-member` でも `refreshGroups` する（前回失敗した `groupIds` の補修が
+   *   走っているケースを一覧に反映するため）
+   */
+  async function applyReceiptOutcome(outcome: ReceiptOutcome) {
+    setStatus({
+      kind: "joined",
+      result: outcome.result,
+      autoJoin: outcome.autoJoin,
+    });
+    const autoJoin = outcome.autoJoin;
+    if (!autoJoin) return;
+    if (autoJoin.status === "joined") {
+      setCurrentGroupId(autoJoin.gid);
+    }
+    if (autoJoin.status === "joined" || autoJoin.status === "already-member") {
+      await refreshGroups();
+    }
+  }
+
   async function onLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const result = await joinAsExistingUser({ tid, email, password });
-      setStatus({ kind: "joined", result });
+      const outcome = await joinAsExistingUser({ tid, email, password });
+      await applyReceiptOutcome(outcome);
     } catch (e) {
       wrapError(e);
     } finally {
@@ -96,14 +124,14 @@ export function JoinClient({ tid }: { tid: string }) {
     }
     setSubmitting(true);
     try {
-      const result = await joinAsGuest({
+      const outcome = await joinAsGuest({
         tid,
         displayName: parsed.data.displayName,
       });
       // Phase 4.7: updateProfile 直後に onAuthStateChanged は発火しないため、
       // AuthBadge 等のヘッダ表示を即更新するために refreshUser を呼ぶ。
       refreshUser();
-      setStatus({ kind: "joined", result });
+      await applyReceiptOutcome(outcome);
     } catch (e) {
       wrapError(e);
     } finally {
@@ -115,8 +143,8 @@ export function JoinClient({ tid }: { tid: string }) {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await joinViaGoogle({ tid });
-      setStatus({ kind: "joined", result });
+      const outcome = await joinViaGoogle({ tid });
+      await applyReceiptOutcome(outcome);
     } catch (e) {
       if (e instanceof AccountLinkRequired) {
         setLinkRequest({ email: e.email, credential: e.pendingCredential });
@@ -132,11 +160,11 @@ export function JoinClient({ tid }: { tid: string }) {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await joinAsCurrentUser({
+      const outcome = await joinAsCurrentUser({
         tid,
         displayName: user?.displayName ?? user?.email ?? undefined,
       });
-      setStatus({ kind: "joined", result });
+      await applyReceiptOutcome(outcome);
     } catch (e) {
       wrapError(e);
     } finally {
@@ -172,6 +200,11 @@ export function JoinClient({ tid }: { tid: string }) {
           ? "受付が完了しました。会場の運営 PC / 大画面でブラインドや席表をご確認ください。"
           : "運営者が席決めするまでお待ちください。"
         : "再度参加したい場合は、下のボタンから受付画面に戻ってください。";
+    const autoJoin = status.kind === "joined" ? status.autoJoin : null;
+    // refreshGroups 後の context から名前を引く。補修失敗などで引けない場合は
+    // 汎用文言に fallback する（サークル名は必須情報ではない）。
+    const joinedGroupName =
+      autoJoin !== null ? (groups.find((g) => g.id === autoJoin.gid)?.name ?? null) : null;
     return (
       <main className="mx-auto max-w-md space-y-4 p-8">
         <Card>
@@ -181,6 +214,21 @@ export function JoinClient({ tid }: { tid: string }) {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {tournament ? <p>トーナメント: {tournament.name}</p> : null}
+            {autoJoin?.status === "joined" ? (
+              <p
+                role="status"
+                className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-100"
+              >
+                {joinedGroupName
+                  ? `${joinedGroupName} のメンバーになりました。`
+                  : "サークルのメンバーになりました。"}
+              </p>
+            ) : null}
+            {autoJoin?.status === "failed" ? (
+              <p className="text-xs text-muted-foreground">
+                サークルへの登録は完了していません。次回の受付時に自動で再試行されます。
+              </p>
+            ) : null}
             {error ? (
               <p className="text-destructive" role="alert">
                 {error}
@@ -363,8 +411,8 @@ export function JoinClient({ tid }: { tid: string }) {
             setLinkRequest(null);
             // 連携直後に現在のアカウントで受付を進める
             try {
-              const result = await joinAsCurrentUser({ tid });
-              setStatus({ kind: "joined", result });
+              const outcome = await joinAsCurrentUser({ tid });
+              await applyReceiptOutcome(outcome);
             } catch (e) {
               wrapError(e);
             }
