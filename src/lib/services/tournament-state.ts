@@ -195,11 +195,13 @@ export function canClone(t: TournamentDoc): boolean {
  *  - setup / seating / running / paused（= !finished）で true、finished で false。
  *  - 可読性のため 4 述語の OR で明示する（実質 `!isFinished(t)` と等価）。
  *
- * ⚠ DRIFT WARNING: 本述語の許可 state 集合は `firestore.rules` の
- *   `match /players/{pid}` `allow create` organizer-proxy / name-only ブランチの
- *   `get(...).data.state in ["setup", "seating", "running", "paused"]` リテラルと
- *   **手動同期**すること（Cloud Firestore Rules に const 機構がないためハードコード）。
- *   state を増減する場合は rule 側 4 リテラルと本述語の両方を同時更新する。
+ * ⚠ DRIFT WARNING: 本述語の許可 state 集合は `firestore.rules` の以下 2 箇所の
+ *   `["setup", "seating", "running", "paused"]` リテラルと**手動同期**すること
+ *   （Cloud Firestore Rules に const 機構がないためハードコード）:
+ *   - `match /players/{pid}` `allow create` の member-proxy / name-only ブランチ
+ *   - `hasTournamentEntryProof(gid, tid)`（08-auto-group-join-on-entry Phase 1 追加。
+ *     トーナメント受付を消費証明とした `groups/{gid}` self-add で使う）
+ *   state を増減する場合は上記すべてと本述語を同時更新する。
  *
  * membership / role の判定は呼出側（service の `assertOrganizer`）で別途行う。
  * late entry deadline 超過の扱いは service 側（entry-guards の `assertAcceptingEntries`）。

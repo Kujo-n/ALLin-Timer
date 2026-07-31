@@ -61,6 +61,33 @@ service cloud.firestore {
                     <= get(/databases/$(database)/documents/groupJoinCodes/$(code)).data.maxUses);
     }
 
+    // Phase 1 (08-auto-group-join-on-entry): トーナメント受付を「サークル加入の消費証明」として
+    // 使うための検証 helper。招待コードの hasValidJoinCodeConsumption と対になる第 2 の proof。
+    //
+    // 検証内容:
+    //   1. tournaments/{tid} が実在する（exists ガード — 外部 doc 参照規約）
+    //   2. その tournament が本当にこの gid のもの（groupId == gid）
+    //      — これが無いと、別サークルのトーナメントに受付した uid が任意 group に加入できる
+    //   3. 受付可能 state（setup / seating / running / paused）
+    //      — finished 済みトーナメントの過去参加者が後からいつでも加入できる経路を塞ぐ
+    //   4. 自分の player doc（pid == auth.uid）が実在する = 受付済みである
+    //      — 「名前だけ」代理受付 player は合成 pid のため本条件を満たさない（設計通り）
+    //
+    // ⚠ DRIFT WARNING: 受付可能 4 state リテラルは以下と**手動同期**する
+    //   （Cloud Firestore Rules に const 機構がないためハードコード）:
+    //   - src/lib/services/tournament-state.ts の `isAcceptingProxyEntry`
+    //   - match /players/{pid} allow create の member-proxy / name-only ブランチ
+    //
+    // read コスト: exists + get（同一 rule 評価内で同一 path の get は cache される）+ exists で
+    //   2〜3 read。加入時 1 回のみ発火し、既メンバーは service 側の probe で write 自体が起きない。
+    function hasTournamentEntryProof(gid, tid) {
+      return exists(/databases/$(database)/documents/tournaments/$(tid))
+             && get(/databases/$(database)/documents/tournaments/$(tid)).data.groupId == gid
+             && get(/databases/$(database)/documents/tournaments/$(tid)).data.state
+                  in ["setup", "seating", "running", "paused"]
+             && exists(/databases/$(database)/documents/tournaments/$(tid)/players/$(request.auth.uid));
+    }
+
     // users: 本人のみ自分のプロフィールを読書（groupIds 含む）
     match /users/{uid} {
       allow read, write: if isSignedIn() && request.auth.uid == uid;
@@ -80,7 +107,8 @@ service cloud.firestore {
                     && request.resource.data.memberUids.hasOnly([request.auth.uid]);
 
       // owner はフル update（ownerUids が空になる変更は禁止、createdAt 不変）／
-      // 非メンバーは「自分を memberUids に +1 追加、organizerUids / ownerUids は不変」のみ（招待コード加入）／
+      // 非メンバーは「自分を memberUids に +1 追加、organizerUids / ownerUids は不変」のみ
+      //   （消費証明は招待コード = joinCodeId、またはトーナメント受付 = joinedViaTournamentId の 2 経路）／
       // 非 owner メンバーは「自分を memberUids / organizerUids から -1 除外」のみ。
       allow update: if (
         // owner update（name / ロール配列 / memberUids / memberDisplayNames 自由、
@@ -114,6 +142,43 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.joinCodeId is string
         && hasValidJoinCodeConsumption(gid, request.resource.data.joinCodeId)
+        && request.resource.data.get('memberDisplayNames', {})
+             .diff(resource.data.get('memberDisplayNames', {}))
+             .affectedKeys()
+             .hasOnly([request.auth.uid])
+        && request.resource.data.memberDisplayNames[request.auth.uid] is string
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() >= 1
+        && request.resource.data.memberDisplayNames[request.auth.uid].size() <= 15
+      ) || (
+        // Phase 1 (08-auto-group-join-on-entry): self-add（トーナメント受付経由の自動所属）。
+        //   招待コード self-add と**並列の第 2 経路**。consumption proof は
+        //   `joinedViaTournamentId`（受付した tournament の tid）で、`hasTournamentEntryProof` が
+        //   「その tid が本当にこの gid のもので、受付可能 state で、かつ自分の player doc が
+        //   実在する」ことを atomic に検証する。
+        //
+        //   匿名ユーザーは isSignedInNotAnon() で除外する（メンバー一覧が使い捨てアカウントで
+        //   汚染されるのを防ぐ）。UI 側でも `joinAsGuest` からは自動所属を呼ばない二重防御。
+        //
+        //   不変条件は招待コード self-add と**完全に同一の並び**にする:
+        //     memberUids は自分 1 人だけ +1 / organizerUids・ownerUids・name・createdAt は不変 /
+        //     memberDisplayNames の差分は自分のキーのみ・1〜15 文字。
+        //   affectedKeys を 4 キーに限定することで、加入と同時に audioSettings /
+        //   finishedTournamentCount / seasonPointsRule 等を改竄する経路を塞ぐ（Phase 4.16 の教訓）。
+        isSignedInNotAnon()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['memberUids', 'organizerUids', 'joinedViaTournamentId', 'memberDisplayNames'])
+        && !(request.auth.uid in resource.data.memberUids)
+        && request.auth.uid in request.resource.data.memberUids
+        && !(request.auth.uid in request.resource.data.organizerUids)
+        && !(request.auth.uid in request.resource.data.ownerUids)
+        && request.resource.data.memberUids.size() == resource.data.memberUids.size() + 1
+        && request.resource.data.memberUids.hasAll(resource.data.memberUids)
+        && request.resource.data.organizerUids == resource.data.organizerUids
+        && request.resource.data.ownerUids == resource.data.ownerUids
+        && request.resource.data.name == resource.data.name
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.joinedViaTournamentId is string
+        && hasTournamentEntryProof(gid, request.resource.data.joinedViaTournamentId)
         && request.resource.data.get('memberDisplayNames', {})
              .diff(resource.data.get('memberDisplayNames', {}))
              .affectedKeys()
@@ -493,9 +558,26 @@ service cloud.firestore {
       //   field 自体が無い旧 doc は `.get('spectateEnabled', false)` で false 扱い。
       allow get: if isSignedIn()
                  || resource.data.get('spectateEnabled', false) == true;
-      // 既存の signed-in 経由 list（`listTournamentsByGroup` などの `where("groupId","==",gid)`）
-      // は維持。anon の collection 列挙のみ deny。
-      allow list: if isSignedIn();
+      // 08-auto-group-join-on-entry Phase 1 (C-1 対応): list を **group メンバー限定**に狭める。
+      //
+      //   旧 `allow list: if isSignedIn()` は `resource` を一切参照しないため、
+      //   **絞り込みなしの全件列挙**（`getDocs(collection("tournaments"))`）が許可されており、
+      //   任意のログインユーザーが全サークルの tid / groupId / state を取得できた。
+      //   トーナメント受付を消費証明とする `groups/{gid}` self-add（`hasTournamentEntryProof`）は
+      //   「tid を知っている = 受付 QR を提示された人」を前提にしているため、この列挙経路が
+      //   空いていると *任意サークルへの自己加入* が成立する（player の self-create は
+      //   親 tournament の membership を問わないため、tid さえ判れば proof を自作できる）。
+      //
+      //   Firestore の list rule は「クエリの制約から導いた resource」に対して 1 度だけ評価される
+      //   （rules are not filters）ため:
+      //     - `where("groupId","==",gid)` で絞った既存クエリ
+      //       （`listTournamentsByGroup` / `subscribeTournamentsByGroup`）は**そのまま通る**
+      //     - 絞り込みなしのクエリは `groupId` が未定義となり deny される
+      //   コストは 1 クエリあたり exists + get の 1〜2 read（返却件数に比例しない）。
+      //
+      //   ⚠ 以後 `tournaments` に対して **groupId 制約なしの list を書くと必ず deny** される。
+      //   anon 向けの list を開ける場合（観戦モードの一覧など）は別途 rule 設計が必要。
+      allow list: if isGroupMember(resource.data.groupId);
       allow create: if isSignedIn()
                     && request.resource.data.createdByUid == request.auth.uid
                     && isOrganizer(request.resource.data.groupId);
@@ -732,8 +814,21 @@ service cloud.firestore {
     //   空集合を返し、サイドバーの「参加中のトーナメント」が永遠に出ない。
     //   write は path-specific rule 側に集約しており、ここでは read だけを開ける。
     //   `players` collection-id は tournaments 配下にしか存在しないため副作用なし。
+    //
+    // 08-auto-group-join-on-entry Phase 1 (C-1 対応): `isSignedIn()` から
+    //   **`uid` が自分自身の doc のみ**へ狭める。
+    //   旧条件は `resource` を参照しないため、`collectionGroup("players")` の
+    //   絞り込みなしクエリで**全トーナメントの player doc**（= パスに含まれる全 tid）を
+    //   列挙できた。`tournaments` の list を絞っても、こちらが空いていると
+    //   tid の discovery 経路が残ってしまうため同時に塞ぐ。
+    //
+    //   `subscribePlayersByUid` は `where("uid","==",uid)` で絞っているため影響なし
+    //   （list rule はクエリ制約から導いた resource に対して評価される）。
+    //   path-specific な read（`subscribePlayers(tid)` / 観戦モードの anon read）は
+    //   `match /tournaments/{tid}/players/{pid}` 側で allow されるため影響なし
+    //   — Firestore は match した rule の **OR** で判定するので、こちらが deny でも通る。
     match /{path=**}/players/{pid} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
   }
 }

@@ -17,6 +17,8 @@
     "test:rules-card-background": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-card-background.mjs\"",
     "test:rules-clone-players": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-clone-players.mjs\"",
     "test:rules-proxy-create": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-proxy-create.mjs\"",
+    "test:rules-tournament-join": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-tournament-join.mjs\"",
+    "test:rules-list-scope": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-list-scope.mjs\"",
     "test:rules-season": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-season.mjs\"",
     "test:rules-season-points-rule": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-season-points-rule.mjs\"",
     "test:rules-spectate": "firebase emulators:exec --only auth,firestore --project allin-pokertimer-e2e \"node scripts/test-rules-spectate.mjs\"",

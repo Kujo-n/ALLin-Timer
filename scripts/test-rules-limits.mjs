@@ -11,8 +11,9 @@
  *   - players.tableNum: >= 1 / <= MAX_TABLES
  *   - players.seatNum:  >= 1 / <= MAX_SEATS_PER_TABLE
  *   - groups.defaultSeatsPerTable: >= MIN_SEATS_PER_TABLE / <= MAX_SEATS_PER_TABLE
- *   - displayName 上限（<= DISPLAY_NAME_MAX_LENGTH）: 3 経路
- *     - groups.memberDisplayNames[uid] (self-add / self-key update)
+ *   - displayName 上限（<= DISPLAY_NAME_MAX_LENGTH）: 4 経路
+ *     - groups.memberDisplayNames[uid] (self-add(招待コード) / self-add(トーナメント受付) /
+ *       self-key update)
  *     - structureTemplates.createdByDisplayName (create)
  *     - seasonStats.displayName (create / update)
  *
@@ -115,14 +116,16 @@ const checks = [
     expected: EXPECTED.MAX_SEATS_PER_TABLE,
   },
   // L-2 (Phase A): displayName 上限の drift 検出。
-  // 3 経路すべてで `<= DISPLAY_NAME_MAX_LENGTH` (= 15) と同期している必要がある。
-  // self-add / self-key update の memberDisplayNames は同じ rule 内で 2 回登場するため、
+  // 全経路で `<= DISPLAY_NAME_MAX_LENGTH` (= 15) と同期している必要がある。
+  // memberDisplayNames は同じ rule 内で 3 回登場するため、
   // findByPattern が「全 match の値が一致 == 1 種類」をまとめて検証する。
   {
     label: "groups.memberDisplayNames[uid] upper bound (<= DISPLAY_NAME_MAX_LENGTH)",
     pattern: /memberDisplayNames\[request\.auth\.uid\]\.size\(\)\s*<=\s*(\d+)/g,
     expected: EXPECTED.DISPLAY_NAME_MAX_LENGTH,
-    minOccurrences: 2, // self-add / self-key update の 2 箇所
+    // self-add(招待コード) / self-add(トーナメント受付) / self-key update の 3 箇所
+    // （2 つ目は 08-auto-group-join-on-entry Phase 1 で追加）
+    minOccurrences: 3,
   },
   {
     label: "structureTemplates.createdByDisplayName upper bound (<= DISPLAY_NAME_MAX_LENGTH)",

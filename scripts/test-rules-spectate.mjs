@@ -38,13 +38,18 @@
  *   list 列挙の防御（MEDIUM 修正後）:
  *    15. anon が `tournaments` collection を list → deny
  *        （`allow read` を `allow get + allow list: if isSignedIn()` に分割した defense-in-depth）
- *    16. signed-in member が `tournaments` collection を list → allow（既存挙動の回帰確認）
+ *    16. signed-in member が絞り込みなしで `tournaments` collection を list → deny
+ *        （08-auto-group-join-on-entry Phase 1 / C-1 対応で `allow list` を
+ *          group メンバー限定に狭めたため。`where("groupId","==",gid)` 付きの allow ケースは
+ *          scripts/test-rules-list-scope.mjs が担当）
  *
  *   collectionGroup query 経路の防御（04-spectate-mode 設計判断の pin、Phase 1 LOW-2 follow-up）:
  *    17. anon が collectionGroup("players") query を runQuery で叩く → deny
  *        （PRD「`match /{path=**}/players/{pid}` は触らない」設計を機械検証。
  *          path-specific rule で観戦 read を開いても、wildcard 経路は signed-in のみに据え置き）
- *    18. signed-in member が collectionGroup("players") query → allow（既存 JoinedTournamentsNav 経路の回帰確認）
+ *    18. signed-in member が絞り込みなしで collectionGroup("players") query → deny
+ *        （同じく C-1 対応で wildcard read を `uid == request.auth.uid` に狭めたため。
+ *          `where("uid","==",self)` 付きの JoinedTournamentsNav 回帰は list-scope 側）
  */
 
 const PROJECT_ID = "allin-pokertimer-e2e";
@@ -515,8 +520,12 @@ async function main() {
     "(15) anon list tournaments (defense-in-depth: allow list = signed-in only)",
     () => listCollectionAnon("tournaments"),
   );
-  await expectAllow(
-    "(16) signed-in member list tournaments (regression: 既存挙動を維持)",
+  // 08-auto-group-join-on-entry Phase 1 (C-1 対応) で `allow list` を group メンバー限定に
+  // 狭めたため、**signed-in でも絞り込みなしの列挙は deny** になった。
+  // 絞り込み付き（`where("groupId","==",gid)`）の allow ケースは
+  // scripts/test-rules-list-scope.mjs 側で網羅する。
+  await expectDeny(
+    "(16) signed-in member list tournaments WITHOUT a groupId filter (C-1: discovery blocked)",
     () => listCollectionAuth(member.idToken, "tournaments"),
   );
 
@@ -530,8 +539,12 @@ async function main() {
     "(17) anon collectionGroup query players (wildcard 経路は signed-in only)",
     () => runCollectionGroupQueryAnon("players"),
   );
-  await expectAllow(
-    "(18) signed-in member collectionGroup query players (JoinedTournamentsNav regression)",
+  // 同じく C-1 対応で wildcard read を `uid == request.auth.uid` に狭めたため、
+  // **絞り込みなしの collectionGroup 列挙は signed-in でも deny**。
+  // `where("uid","==",self)` 付きの JoinedTournamentsNav 経路の回帰確認は
+  // scripts/test-rules-list-scope.mjs のケース 6 が担当する。
+  await expectDeny(
+    "(18) signed-in member collectionGroup query players WITHOUT a uid filter (C-1: tid discovery blocked)",
     () => runCollectionGroupQueryAuth(member.idToken, "players"),
   );
 
