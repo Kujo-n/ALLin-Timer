@@ -45,7 +45,7 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 ## データモデル
 
-- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / **seasonPointsRule** / createdAt / **joinCodeId** / **latestJoinCodeId**
+- `groups/{gid}` — name / **ownerUids[]** / **organizerUids[]** / memberUids / memberDisplayNames / audioSettings / **finishedTournamentCount** / **defaultSeatsPerTable** / **seasonStartDate** / **seasonPointsRule** / createdAt / **joinCodeId** / **latestJoinCodeId** / **joinedViaTournamentId**
   - invariant: `ownerUids ⊆ organizerUids ⊆ memberUids`（`ownerUids.length >= 1`）
   - Phase 2.5 の `ownerUid: string` は Phase 4.6 migration で廃止（`scripts/migrate-phase-4.6-roles.ts`）
   - `joinCodeId`（Phase 4.6.1 追加）: 直近の self-add で消費された `groupJoinCodes/{code}` の doc ID。rule 側の consumption proof として利用する（下記「招待コードの rule 側検証」）。新規 group / 未消費状態では `null`。owner は owner update 経路で自由に上書き／null 化してよい
@@ -54,6 +54,12 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
     旧 doc（Phase E 以前）はフィールド不在のため `default(null)` で hydrate される。書込経路は service の
     `generateJoinCode` 一系統のみで、rule は organizer 以上が `affectedKeys().hasOnly(['latestJoinCodeId'])` で
     `string | null` を書込可能。owner は full owner-update 経路で自由に変更可能
+  - `joinedViaTournamentId`（08-auto-group-join-on-entry Phase 1 追加・default null）:
+    トーナメント受付を消費証明とした self-add で書き込まれる tid。`joinCodeId`（招待コードの
+    consumption proof）と同じ役割・同じ性質（**最後の加入者の値で上書きされるため監査ログ用途には
+    使えない**）。書込経路は `joinGroupViaTournament`（services/auto-group-join.ts）→
+    `addSelfViaTournamentEntry`（repositories/groups.ts）の 1 系統のみ。
+    旧 doc はフィールド不在のため `default(null)` で hydrate される
   - `finishedTournamentCount`（Phase 4.16 追加）: 当該サークルで `state="finished"` に遷移したトーナメントの累計数。
     自動経路は `finishTournament()` の runTransaction で `increment(1)`（tx 内で `state !== "finished"` を
     再 read することで複数端末同時呼び出し時の二重 increment race を防止）、手動経路はサークル詳細画面の
@@ -108,6 +114,26 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 
 また `groupJoinCodes` は `allow get` のみ許可し `allow list: if false`。認証済みユーザーによる全コード／全 gid の列挙を防ぐ（gid を知らないと攻撃起点が作れない）。
 
+### トーナメント受付による self-add の rule 側検証（08-auto-group-join-on-entry Phase 1）
+
+`groups/{gid}` の self-add には**第 2 の経路**がある。トーナメント受付そのものを
+消費証明として使い、招待コードなしで member として自己加入する経路:
+
+1. 書込者が**通常アカウント**であること（`isSignedInNotAnon()` — 匿名は deny）
+2. ペイロードに `joinedViaTournamentId: <tid>` が含まれること（`is string`）
+3. `tournaments/{tid}` が存在し、`groupId` が現在の group と一致
+4. `tournaments/{tid}.state` が受付可能 4 state（`setup` / `seating` / `running` / `paused`）
+5. `tournaments/{tid}/players/{auth.uid}` が存在する（= 受付済み）
+6. `affectedKeys().hasOnly(['memberUids','organizerUids','joinedViaTournamentId','memberDisplayNames'])`
+   ＋ 招待コード self-add と同一の不変条件（memberUids は +1 のみ / organizerUids・ownerUids・
+   name・createdAt は不変 / memberDisplayNames は self-key のみ・1〜15 文字）
+
+⚠ DRIFT WARNING: 受付可能 4 state リテラルは `isAcceptingProxyEntry`（tournament-state.ts）
+および `players/{pid}` create の member-proxy / name-only ブランチと**手動同期**する。
+
+emulator validation: [scripts/test-rules-tournament-join.mjs](../../scripts/test-rules-tournament-join.mjs)
+（`npm run test:rules-tournament-join`）。
+
 ## ロール定義（Phase 4.6）
 
 | ロール | 定義 | 典型例 |
@@ -154,6 +180,8 @@ Phase 2.5 で以下を `ownerUid` 個人所有モデルから `groupId` 共有�
 | 観戦モード（`tournaments/{tid}.spectateEnabled`）の toggle | ○ | ○ | × |
 | 観戦モード ON 中 tournament の **anon read**（`/spectate/[tid]` 経由） | -（anon でも可） | -（同上） | -（同上） |
 | アカウント自己削除（`/settings`） | ○（sole-owner サークルがあれば block） | ○ | ○ |
+| トーナメント受付経由のサークル自動加入（通常アカウント） | ○ | ○ | ○（未所属者が member として加入） |
+| 同上（匿名ゲスト） | - | - | ×（rule + service の二重防御で deny） |
 
 ## ロール遷移
 
@@ -361,6 +389,33 @@ Phase 1 受付代理（本人スマホ依存を回避し、運営者の手元操
 **緩和**: organizer は元々サークル内の structures / tournaments 全 CRUD を持つ信頼ロール（[権限マトリクス](#権限マトリクス) 参照）のため、信頼境界を超えた緩和ではない。`organizer-clone` と同方針で Cloud Functions 化（client から直接 `players/{pid}` create を deny に戻す）は将来課題。
 
 ⚠ DRIFT WARNING: `players` schema に新フィールドを追加する場合は、self-create / member-proxy / name-only の **3 ブランチすべて**に同じ invariant を反映すること。受付可能 4 state リテラルは `isAcceptingProxyEntry`（tournament-state.ts）と手動同期。emulator validation: [scripts/test-rules-proxy-create.mjs](../../scripts/test-rules-proxy-create.mjs) を `npm run test:rules-proxy-create` で起動。
+
+### トーナメント QR の拡散による意図しないメンバー化（08-auto-group-join-on-entry Phase 1〜）
+
+受付 QR（`/join/[tid]`）を知る通常アカウントは、受付するだけで当該サークルの member に
+なれる。招待コードのような 129bit ランダム性は tid（base62 ≈ 117bit）にもあるが、
+**QR を提示した場ではその場の全員が読み取れる**点が招待コードとの違い。
+
+**緩和**: 「トーナメント QR はサークルに入れてよい相手にのみ提示する」運用前提を
+ユーザーと合意済み（PRD の Users & Context / Decisions Log）。加えて rule 側で
+受付可能 4 state に限定しているため、終了済みトーナメントの QR が後から拡散しても
+加入経路にはならない。誤加入メンバーはオーナーの除名 UI（Phase 4）で事後回収する。
+member ロールで加入するため、structures / tournaments への write 権限は付かない。
+
+⚠ **この緩和は「tid が列挙できないこと」に完全に依存する**。ローカルレビュー（C-1）で、
+旧 `allow list: if isSignedIn()`（`tournaments`）と旧 wildcard read（collectionGroup `players`）が
+**絞り込みなしの全件列挙**を許しており、任意のログインユーザーが全 tid を取得 →
+player 自作 → 任意サークルへ自己加入できる経路が成立していたことが判明したため、
+同 Phase で両者の list scope を絞り込み済み
+（[firebase-patterns.md](firebase-patterns.md) の「list scope の絞り込み」）。
+**今後 `tournaments` / collectionGroup `players` の list 条件を緩める変更は、
+本 self-add 経路の前提を直接壊す**ので、必ず本節と併せてレビューすること。
+
+**除名との関係**: 除名は運用上トーナメント終了後に行う（進行中の除名はトーナメント進行が
+成り立たないため発生しない）。`hasTournamentEntryProof` は受付可能 4 state を要求するので、
+finished 後はその tid が消費証明として失効し、除名は永続する。
+唯一の例外は「同じサークルで別のトーナメントが受付可能 state にあり、除名対象者が
+そちらにも player doc を持つ」ケースで、同時開催しない運用であれば発生しない。
 
 ## 招待コード設計原則（Phase 2.5 以降）
 

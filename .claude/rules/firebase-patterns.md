@@ -75,8 +75,15 @@ export async function updateGroupName(gid: string, name: string): Promise<void> 
 
 - `onSnapshot` 系（`subscribePlayers` / `subscribeTables` / `subscribeTournament` 等）— エラーを `onError` callback に渡す独自契約
 - `templateAdmins.isTemplateAdmin` — 失敗を `false` 返却に倒す独自契約
+- `groups.getGroupIfMember`（08-auto-group-join-on-entry Phase 1 追加）— **permission-denied を
+  `null` 返却に倒し warn を出さない**独自契約。「非メンバー」が正常系のシグナルになる
+  membership probe 専用。permission-denied 以外の失敗は従来どおり warn + throw する。
+  通常の read（メンバーであることが前提の画面表示など）は `getGroup` を使い続けること
 
 このような関数はコメントで契約を明示する。
+
+**判断基準**: 「その失敗が正常系として頻繁に起きるか」で分ける。頻繁に起きるなら wrap を外して
+返却値に倒す（warn ログのノイズ化を防ぐ）。そうでなければ wrap 経由に統一する。
 
 ## 数値リミット定数の単一真実源（Phase 4 architect-refactor 以降）
 
@@ -227,7 +234,8 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 - `allow read` は **`allow get` + `allow list` に明示分割**:
   - `allow get: if isSignedIn() || resource.data.get('spectateEnabled', false) == true`（unauthenticated GET を OR で開放）
-  - `allow list: if isSignedIn()`（既存の signed-in 経由 list は維持。**anon の collection 列挙は deny**）
+  - `allow list: if isGroupMember(resource.data.groupId)`（08-auto-group-join-on-entry Phase 1 で
+    `isSignedIn()` から**さらに狭めた**。下記「list scope の絞り込み」参照）
   - 分割理由: `allow read` 複合形のままだと anon が `where("spectateEnabled", "==", true)` で公開中の全 tournament を
     列挙できる discovery 経路が成立する。tid base62 の推測困難性（≈117bit）は GET の防御にしか効かないため、
     LIST 経由 discovery を `groupJoinCodes` と同方針で deny する（defense-in-depth）
@@ -238,9 +246,48 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 - 旧 `allow update, delete` の合体行を分割し、`allow delete` を独立行に（rule 分割の回帰確認は emulator
   validator のケース 14）
 - emulator validator: [scripts/test-rules-spectate.mjs](../../scripts/test-rules-spectate.mjs)（`npm run test:rules-spectate`）
-  — read allow / deny / write 経路据え置き / delete 回帰 / **anon list deny + signed-in list 維持** までを 16 ケースで網羅
-- collectionGroup wildcard `match /{path=**}/players/{pid}` は **触らない**（`/spectate/[tid]` ページは
-  path-specific rule 経由でしか read しない設計のため、観戦経路で wildcard を緩める必要がない）
+  — read allow / deny / write 経路据え置き / delete 回帰 / **anon・signed-in の無絞り込み list deny** までを 16 ケースで網羅
+- collectionGroup wildcard `match /{path=**}/players/{pid}` は観戦経路のためには **緩めない**（`/spectate/[tid]` ページは
+  path-specific rule 経由でしか read しない設計）。逆方向（狭める）は 08-auto-group-join-on-entry Phase 1 で実施済み
+
+### list scope の絞り込み（08-auto-group-join-on-entry Phase 1 / C-1 対応）
+
+**原則**: `allow list` に `resource` を参照しない条件（`if isSignedIn()` 等）を書くと、
+**絞り込みなしの全件列挙が許可される**。コレクション全体が「ログインさえすれば読める」状態になるため、
+新規 collection / 既存 collection の list 条件は必ず `resource` を参照する形にする。
+
+現在の設定:
+
+| Path | `allow list` | 前提となるクエリ制約 |
+| --- | --- | --- |
+| `tournaments/{tid}` | `isGroupMember(resource.data.groupId)` | `where("groupId","==",gid)`（`listTournamentsByGroup` / `subscribeTournamentsByGroup`） |
+| `{path=**}/players/{pid}`（collectionGroup） | `isSignedIn() && resource.data.uid == request.auth.uid` | `where("uid","==",uid)`（`subscribePlayersByUid`） |
+
+**なぜ必要か**: トーナメント受付を消費証明とする `groups/{gid}` self-add（`hasTournamentEntryProof`）は
+「tid を知っている = 受付 QR を提示された人」を前提にしている。旧 rule では
+
+1. 絞り込みなしの list で全サークルの tid / groupId / state を列挙
+2. `players` の self-create は親 tournament の membership を問わないので proof を自作
+3. `groups/{gid}` の self-add ブランチが allow
+
+の 3 手で **任意のログインユーザーが任意サークルへ自己加入できた**。
+`tournaments` の list だけを塞いでも collectionGroup `players` から tid が漏れるため、**両方を同時に塞ぐ**。
+
+**Firestore の list 評価モデル**（実測で確認済み）:
+
+- list rule は「クエリの制約から導いた `resource`」に対して **クエリ 1 回につき 1 度**評価される
+  （返却 doc ごとではない = *rules are not filters*）
+- したがって `get()` / `exists()` を使っても **コストは返却件数に比例しない**（1 クエリあたり 1〜2 read）。
+  15 件返却のクエリが [10 access call 上限](https://firebase.google.com/docs/firestore/security/rules-conditions)
+  に当たらないことを emulator validator のケース 1 / 5 で機械検証している
+- 制約が無いクエリは対象フィールドが未定義となり `Property <field> is undefined on object` で deny される
+
+⚠ DRIFT WARNING: 上記 2 パスに対して **`where` 制約なしの list を新規に書くと必ず deny される**。
+新しい一覧画面を作るときはクエリ側に制約を必ず付けること。
+anon 向け list（観戦モードの公開一覧など）を将来開ける場合は、`resource` を参照する別条件の設計が必要。
+
+emulator validator: [scripts/test-rules-list-scope.mjs](../../scripts/test-rules-list-scope.mjs)（`npm run test:rules-list-scope`）
+— 絞り込みあり allow / 無絞り込み deny / 非メンバー deny / anon deny / path-specific list の非回帰を 9 ケースで網羅
 
 `match /groups/{gid}` 配下（Phase A で追加）:
 
@@ -260,12 +307,13 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 
 ### `groups/{gid}` update の allowed-keys 一覧（Phase 4 architect-refactor 以降）
 
-`firestore.rules` の `groups/{gid}` `allow update` は 9 ブランチに分かれており（Phase A で 1 ブランチ / Phase C で 1 ブランチ / Phase E で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
+`firestore.rules` の `groups/{gid}` `allow update` は 14 ブランチに分かれており（Phase A で 1 ブランチ / Phase C で 1 ブランチ / Phase E で 1 ブランチ / Phase A.1 で 2 ブランチ / Phase C.1 で 1 ブランチ / 08-auto-group-join-on-entry Phase 1 で 1 ブランチ追加）、各ブランチで `affectedKeys().hasOnly([...])` を別々に列挙している。新規フィールド追加時の見落とし（Phase 4.16 で発覚した self-* 分岐の `affectedKeys` 抜け型のバグ）を防ぐため、ブランチごとに許可するキーを表で一元化する:
 
 | ブランチ | 条件 | 許可される変更キー（`affectedKeys().hasOnly`） |
 | --- | --- | --- |
 | **owner-update** | owner 全権 | （上限なし。ただし `ownerUids.size >= 1` / `createdAt` 不変は強制） |
 | **self-add**（招待コード加入） | 非メンバー + 有効な joinCodeId | `memberUids` / `organizerUids` / `joinCodeId` / `memberDisplayNames` |
+| **self-add**（トーナメント受付加入、08-auto-group-join-on-entry Phase 1） | 非メンバー + 通常アカウント（`isSignedInNotAnon`） + 有効な参加証明（`hasTournamentEntryProof`） | `memberUids` / `organizerUids` / `joinedViaTournamentId` / `memberDisplayNames` |
 | **self-leave**（脱退） | メンバー + 非 owner | `memberUids` / `organizerUids` / `memberDisplayNames` |
 | **self-key memberDisplayNames update** | 既メンバー | `memberDisplayNames`（自身の uid キーのみ） |
 | **audioSettings update** | organizer | `audioSettings` |
@@ -274,6 +322,8 @@ Phase 5.4 organizer-clone の strict invariants を**全て bypass**する穴が
 | **seasonStartDate update**（Phase A） | organizer | `seasonStartDate`（`is timestamp`） |
 | **defaultTableLabels update**（Phase C） | organizer | `defaultTableLabels`（`is list` + `size() <= 6`、各要素 string 長は service / schema 側で enforce） |
 | **seasonPointsRule update**（Phase E） | organizer | `seasonPointsRule`（`null` または `is map` + `base.size() 1..9` + `baseline 2..10`、各要素 `>= 0 number` は schema / service 側で enforce） |
+| **winnerCardBackground update**（Phase A.1） | owner | `winnerCardBackground`（`null` または `is map` + `textTheme` が `'light' \| 'dark'`、`imageUrl` / `storageAssetId` は nullable string） |
+| **seasonCardBackground update**（Phase A.1） | owner | `seasonCardBackground`（winnerCardBackground と同型・同制約） |
 | **latestJoinCodeId update**（dryrun-feedback-batch-1 / Phase C.1） | organizer | `latestJoinCodeId`（`string` または `null`。`generateJoinCode` service が新コード発行直後に呼び出すライフサイクル管理用 pointer。`joinCodeId`（self-add consumption proof）とは別フィールド） |
 
 新規フィールドを `groups/{gid}` に追加する場合の手順:
