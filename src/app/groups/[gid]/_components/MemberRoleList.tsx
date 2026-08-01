@@ -38,6 +38,12 @@ interface MemberRoleListProps {
   onPromoteOwner: (targetUid: string) => void;
   onDemoteToMember: (targetUid: string) => void;
   onDemoteOwner: (targetUid: string) => void;
+  /**
+   * Phase 4 (08-auto-group-join-on-entry): 「除外」押下（owner のみ・自分以外）。
+   * 実際の除外は親が確認ダイアログを挟んでから service を呼ぶ（本 component は
+   * 対象行を親へ伝えるだけ）。
+   */
+  onRemoveMember: (target: MemberLine) => void;
 }
 
 /**
@@ -57,6 +63,7 @@ export function MemberRoleList({
   onPromoteOwner,
   onDemoteToMember,
   onDemoteOwner,
+  onRemoveMember,
 }: MemberRoleListProps) {
   const onlyOwner = group.ownerUids.length <= 1;
   return (
@@ -64,7 +71,7 @@ export function MemberRoleList({
       <CardHeader>
         <CardTitle>メンバー</CardTitle>
         <CardDescription>
-          ロールは「オーナー / 運営 / 一般」の 3 階層。オーナーのみ昇降格できます。
+          ロールは「オーナー / 運営 / 一般」の 3 階層。オーナーのみ昇降格・除外できます。
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -139,6 +146,23 @@ export function MemberRoleList({
                         運営へ降格
                       </Button>
                     ) : null}
+                    {/*
+                      Phase 4 (08-auto-group-join-on-entry): サークルからの除外。
+                      aria-label に表示名を埋めて行ごとにユニークにする（複数メンバーがいると
+                      「除外」テキストだけでは strict-mode violation になり、E2E / component
+                      test 双方がこの label 規約に依存する）。
+                      disabled は working のみ —— 自分以外の owner を対象にできる時点で owner は
+                      2 人以上おり、最後の 1 人の保護は service の group/last-owner が担う。
+                    */}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={working}
+                      aria-label={`${m.displayName} を除外`}
+                      onClick={() => onRemoveMember(m)}
+                    >
+                      除外
+                    </Button>
                   </div>
                 ) : null}
               </li>

@@ -31,6 +31,7 @@ import {
   leaveGroup,
   promoteToOrganizer,
   promoteToOwner,
+  removeMemberByOwner,
   renameGroup,
   setDefaultSeatsPerTable,
   setDefaultTableSettings,
@@ -47,6 +48,7 @@ import { GroupHeaderCard } from "./_components/GroupHeaderCard";
 import { InviteCodeCard } from "./_components/InviteCodeCard";
 import { LeaveDeleteDialogs } from "./_components/LeaveDeleteDialogs";
 import { MemberRoleList, type MemberLine } from "./_components/MemberRoleList";
+import { RemoveMemberDialog } from "./_components/RemoveMemberDialog";
 import { SeasonCard } from "./_components/SeasonCard";
 import { SeasonCardBackgroundCard } from "./_components/SeasonCardBackgroundCard";
 import { SeasonPointsRuleCard } from "./_components/SeasonPointsRuleCard";
@@ -76,6 +78,9 @@ export function GroupDetailClient({ gid }: { gid: string }) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
   const [confirmStartSeasonOpen, setConfirmStartSeasonOpen] = useState(false);
+  // Phase 4 (08-auto-group-join-on-entry): 除外確認ダイアログの対象行。
+  //   null = 閉じている。MemberLine ごと持つのは dialog に表示名を渡すため。
+  const [removeTarget, setRemoveTarget] = useState<MemberLine | null>(null);
   const [working, setWorking] = useState(false);
 
   const reload = useCallback(async () => {
@@ -323,6 +328,26 @@ export function GroupDetailClient({ gid }: { gid: string }) {
     });
   }
 
+  /**
+   * Phase 4 (08-auto-group-join-on-entry): メンバー除外。owner のみ
+   * （ボタン自体が owner にしか出ず、service の assertOwner が最終防御）。
+   * 除外対象は `removeTarget` state から取る（dialog の確定ボタンから呼ばれる）。
+   */
+  async function onRemoveMember() {
+    if (!user || !removeTarget) return;
+    // closeDialog が先に走って removeTarget が null 化されても呼出引数がぶれないよう、
+    // uid を helper 呼出の外で取り出しておく。
+    const targetUid = removeTarget.uid;
+    await runReloadRefreshAction(
+      () => removeMemberByOwner({ gid, actorUid: user.uid, targetUid }),
+      {
+        errorCode: "group/remove-member-failed",
+        errorMessage: "メンバーの除外に失敗しました",
+        closeDialog: () => setRemoveTarget(null),
+      },
+    );
+  }
+
   async function onSaveSeasonPointsRule(next: SeasonPointsRule) {
     if (!user) return;
     await runReloadRefreshAction(
@@ -408,6 +433,7 @@ export function GroupDetailClient({ gid }: { gid: string }) {
                     "オーナー降格に失敗しました",
                   )
                 }
+                onRemoveMember={(target) => setRemoveTarget(target)}
               />
             </>
           ),
@@ -524,6 +550,17 @@ export function GroupDetailClient({ gid }: { gid: string }) {
         open={confirmStartSeasonOpen}
         onOpenChange={setConfirmStartSeasonOpen}
         onConfirm={() => void onStartSeason()}
+        working={working}
+      />
+
+      <RemoveMemberDialog
+        targetName={removeTarget?.displayName ?? null}
+        groupName={group.name}
+        onOpenChange={(next) => {
+          // Radix は open=true でも呼び得るため、閉じる方向のときだけ state を落とす。
+          if (!next) setRemoveTarget(null);
+        }}
+        onConfirm={() => void onRemoveMember()}
         working={working}
       />
     </main>
