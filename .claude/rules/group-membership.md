@@ -192,6 +192,7 @@ uid が変わると `players/{uid}` が別 doc として作られるため、**�
 | group の name 変更 / roles 変更 | ○ | × | × |
 | group 自体の削除 | ○ | × | × |
 | group 脱退 | ○（他 owner が 1 人以上いる場合のみ） | ○ | ○ |
+| 他メンバーの除外（`removeMemberByOwner`） | ○ | × | × |
 | 招待コード発行（`groupJoinCodes` create） | ○ | ○ | × |
 | 招待コード削除 | ○ | × | × |
 | structures CRUD | ○ | ○ | read のみ |
@@ -231,6 +232,49 @@ uid が変わると `players/{uid}` が別 doc として作られるため、**�
   - `organizer` ↔ `owner`（`promoteToOwner` / `demoteOwner`）
   - 直接 `member` → `owner` は禁止（先に `organizer` に昇格）
 - 最後のオーナーは降格 / 脱退不可（rule + service の二重防御）
+
+### オーナーによるメンバー除外（08-auto-group-join-on-entry Phase 4）
+
+トーナメント受付による自動所属（Phase 1〜3）で入った誤参加者・一見さんを、オーナーが
+事後に外すための経路。**Firestore Rules の変更を伴わない** —— 既存の owner-update
+ブランチ（`auth.uid in resource.data.ownerUids` + `ownerUids.size() >= 1` +
+`createdAt` 不変）が `memberUids` を含むフル update を既に許可しているため。
+
+- service: [`removeMemberByOwner({ gid, actorUid, targetUid })`](../../src/lib/services/group.ts)
+  1. **自己除外の禁止**（`group/cannot-remove-self`）— 脱退は `leaveGroup` を使う
+  2. `assertOwner`（organizer は不可）
+  3. 対象が既に非メンバーなら no-op で return（冪等）
+  4. 対象が owner かつ `ownerUids.length <= 1` なら `group/last-owner`
+- repository: [`removeOtherMember(gid, targetUid)`](../../src/lib/firebase/repositories/groups.ts)
+  — `memberUids` / `organizerUids` / `ownerUids` の `arrayRemove` ＋
+  `memberDisplayNames[targetUid]` の `deleteField()` を 1 回の `updateDoc` で atomic に適用
+- UI: サークル詳細「メンバー」タブの各行（owner 視点・自分以外）に「除外」ボタン ＋
+  確認ダイアログ（`RemoveMemberDialog`）
+
+**既知の制約（設計上の割り切り）**:
+
+- 除外対象の `users/{uid}.groupIds` は**本人以外書き換えられない**（`users/{uid}` は
+  self-only rule）。`deleteGroupByOwner` と同じ制約。stale な gid は対象者側の
+  [`GroupProvider`](../../src/lib/services/current-group.tsx) が `listMyGroups` の
+  `failedGids` として検出し `removeGroupIdFromUser` で自己修復する。
+- そのため、**除外直後に招待コードで再加入しようとすると `consumeJoinCode` が
+  stale な `groupIds` を見て「既メンバー」と誤判定する**。対象者が一度アプリを開いて
+  自己修復を走らせれば解消する。トーナメント受付経由の自動所属（Phase 1 の
+  `joinGroupViaTournament`）は membership 判定に `getGroup` の成否を使う設計のため、
+  stale `groupIds` の影響を受けない。
+- ⚠ **除外が永続するのは「受付可能なトーナメントが残っていない」ときだけ** — 上記の裏返しで、
+  除外対象者が `setup` / `seating`、または締切前の `running` / `paused` のトーナメントに
+  `players/{uid}` を残していると、本人が `/join/[tid]` を開き直すだけで自動所属で戻る
+  （`receiveEntry` は `already-joined` でも `joinGroupViaTournament` を実行するため）。
+  `finished` 後は service の [`assertAcceptingEntries`](../../src/lib/services/entry-guards.ts) と
+  rule の `hasTournamentEntryProof` の二層で塞がり、除外は永続する。
+  締切超過（`currentLevel > lateEntryDeadlineLevel`）の `running` / `paused` も service 側で
+  塞がるが、**`setup` / `seating` は締切判定の対象外**（`isInProgress` ではない）なので、
+  次回枠や clone で `setup` のまま放置されたトーナメントがあると窓が開いたままになる。
+  詳細は「既知のセキュリティリスク」の
+  [トーナメント QR の拡散による意図しないメンバー化](#トーナメント-qr-の拡散による意図しないメンバー化08-auto-group-join-on-entry-phase-1) →「除名との関係」を参照。
+- 過去トーナメントの `players/{pid}` と `seasonStats/{uid}` は**意図的に残す**
+  （履歴の継続性。アカウント自己削除と同方針）。
 
 ### アカウント自己削除（通常アカウント）
 
@@ -451,11 +495,16 @@ player 自作 → 任意サークルへ自己加入できる経路が成立し�
 **今後 `tournaments` / collectionGroup `players` の list 条件を緩める変更は、
 本 self-add 経路の前提を直接壊す**ので、必ず本節と併せてレビューすること。
 
-**除名との関係**: 除名は運用上トーナメント終了後に行う（進行中の除名はトーナメント進行が
+**除名との関係**（UI は [オーナーによるメンバー除外](#オーナーによるメンバー除外08-auto-group-join-on-entry-phase-4)）:
+除名は運用上トーナメント終了後に行う（進行中の除名はトーナメント進行が
 成り立たないため発生しない）。`hasTournamentEntryProof` は受付可能 4 state を要求するので、
 finished 後はその tid が消費証明として失効し、除名は永続する。
-唯一の例外は「同じサークルで別のトーナメントが受付可能 state にあり、除名対象者が
-そちらにも player doc を持つ」ケースで、同時開催しない運用であれば発生しない。
+例外は「同じサークルで**別の**トーナメントが受付可能 state にあり、除名対象者が
+そちらにも player doc を持つ」ケース。同時開催しない運用でも、
+**次回枠や clone で `setup` のまま放置されたトーナメント**が該当し得る点に注意
+（`setup` / `seating` は late entry 締切判定の対象外なので、期限なく窓が開いたままになる）。
+除名を確実に効かせたい場合は、対象者が player doc を持つ受付可能 state の
+トーナメントを先に終了させる。
 
 ## 招待コード設計原則（Phase 2.5 以降）
 

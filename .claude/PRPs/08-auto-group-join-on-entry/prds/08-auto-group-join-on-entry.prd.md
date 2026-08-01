@@ -159,7 +159,7 @@ When **会場で受付をするとき**, I want to **QR を 1 枚読むだけで
 | 1 | 自動所属 データ層 | rule 新ブランチ＋`joinedViaTournamentId` schema、`joinGroupViaTournament` service、emulator validator | complete | with 4 | - | [phase-1-auto-join-data-layer.plan.md](../plans/completed/phase-1-auto-join-data-layer.plan.md) ／ [実装レポート](../reports/phase-1-auto-join-data-layer-report.md) |
 | 2 | 受付フロー統合 | `receipt.ts` の 4 経路に自動所属を接続、完了画面フィードバック、group コンテキスト反映 | complete | with 4 | 1 | [phase-2-receipt-flow-integration.plan.md](../plans/completed/phase-2-receipt-flow-integration.plan.md) ／ [実装レポート](../reports/phase-2-receipt-flow-integration-report.md) |
 | 3 | 受付画面の新規登録タブ | `/join/[tid]` にメール新規登録タブを追加し、自動所属と接続 | complete | - | 2 | [phase-3-join-register-tab.plan.md](../plans/completed/phase-3-join-register-tab.plan.md) ／ [実装レポート](../reports/phase-3-join-register-tab-report.md) |
-| 4 | メンバー除名 UI | オーナーがメンバーを除名できる service + サークル詳細 UI（rule 変更なし） | in-progress | with 1, 2 | - | [phase-4-member-removal-ui.plan.md](../plans/phase-4-member-removal-ui.plan.md) |
+| 4 | メンバー除名 UI | オーナーがメンバーを除名できる service + サークル詳細 UI（rule 変更なし） | complete | with 1, 2 | - | [phase-4-member-removal-ui.plan.md](../plans/completed/phase-4-member-removal-ui.plan.md) ／ [実装レポート](../reports/phase-4-member-removal-ui-report.md) |
 
 ### Phase Details
 
