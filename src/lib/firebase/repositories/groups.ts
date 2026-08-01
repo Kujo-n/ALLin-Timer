@@ -12,14 +12,13 @@ import {
 } from "firebase/firestore";
 
 import { AppError, getErrorCode } from "@/lib/errors";
+import { DEFAULT_SEATS_PER_TABLE } from "@/lib/limits";
 import {
-  DEFAULT_SEATS_PER_TABLE,
-  MAX_SEATS_PER_TABLE,
-  MAX_TABLES,
-  MIN_SEATS_PER_TABLE,
-  SEASON_POINTS_BASE_MAX_LENGTH,
-  TABLE_LABEL_MAX_LENGTH,
-} from "@/lib/limits";
+  assertDefaultSeats,
+  assertDefaultTableSettings,
+  assertFinishedCount,
+  assertSeasonPointsRule,
+} from "@/lib/validation/group-settings";
 import { firestore } from "@/lib/firebase/client";
 import { zodConverter } from "@/lib/firebase/converters";
 import {
@@ -385,12 +384,7 @@ export async function updateFinishedTournamentCount(
   gid: string,
   value: number,
 ): Promise<void> {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new AppError(
-      "開催数は 0 以上の整数で指定してください",
-      "validation/finished-count-invalid",
-    );
-  }
+  assertFinishedCount(value);
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "開催数の更新に失敗しました",
@@ -436,16 +430,7 @@ export async function updateDefaultSeatsPerTable(
   gid: string,
   value: number,
 ): Promise<void> {
-  if (
-    !Number.isInteger(value) ||
-    value < MIN_SEATS_PER_TABLE ||
-    value > MAX_SEATS_PER_TABLE
-  ) {
-    throw new AppError(
-      `デフォルト席数は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
-      "validation/default-seats-invalid",
-    );
-  }
+  assertDefaultSeats(value);
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "デフォルト席数の更新に失敗しました",
@@ -473,47 +458,7 @@ export async function updateDefaultTableSettings(
   payload: { labels: string[]; colors: (string | null)[] },
 ): Promise<void> {
   const { labels, colors } = payload;
-  if (!Array.isArray(labels)) {
-    throw new AppError(
-      "Table 名デフォルトは配列で指定してください",
-      "validation/default-table-labels-invalid",
-    );
-  }
-  if (labels.length > MAX_TABLES) {
-    throw new AppError(
-      `Table 名デフォルトは最大 ${MAX_TABLES} 件までです`,
-      "validation/default-table-labels-invalid",
-    );
-  }
-  if (!Array.isArray(colors) || colors.length !== labels.length) {
-    throw new AppError(
-      "Table 色デフォルトは Table 名デフォルトと同じ要素数で指定してください",
-      "validation/default-table-colors-invalid",
-    );
-  }
-  for (const label of labels) {
-    if (typeof label !== "string") {
-      throw new AppError(
-        "Table 名デフォルトは文字列の配列で指定してください",
-        "validation/default-table-labels-invalid",
-      );
-    }
-    const trimmed = label.trim();
-    if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
-      throw new AppError(
-        `Table 名は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
-        "validation/default-table-labels-invalid",
-      );
-    }
-  }
-  for (const color of colors) {
-    if (color !== null && (typeof color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(color))) {
-      throw new AppError(
-        "Table 色は #RRGGBB 形式で指定してください",
-        "validation/default-table-colors-invalid",
-      );
-    }
-  }
+  assertDefaultTableSettings(labels, colors);
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "Table 名デフォルトの更新に失敗しました",
@@ -547,36 +492,7 @@ export async function updateSeasonPointsRule(
   gid: string,
   value: SeasonPointsRule | null,
 ): Promise<void> {
-  if (value !== null) {
-    if (
-      !Array.isArray(value.base) ||
-      value.base.length < 1 ||
-      value.base.length > SEASON_POINTS_BASE_MAX_LENGTH
-    ) {
-      throw new AppError(
-        `base 配列は 1 件以上 ${SEASON_POINTS_BASE_MAX_LENGTH} 件以下で指定してください`,
-        "validation/season-points-rule-invalid",
-      );
-    }
-    for (const v of value.base) {
-      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
-        throw new AppError(
-          "base 配列の各要素は 0 以上の数値で指定してください",
-          "validation/season-points-rule-invalid",
-        );
-      }
-    }
-    if (
-      !Number.isInteger(value.baseline) ||
-      value.baseline < MIN_SEATS_PER_TABLE ||
-      value.baseline > MAX_SEATS_PER_TABLE
-    ) {
-      throw new AppError(
-        `baseline は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
-        "validation/season-points-rule-invalid",
-      );
-    }
-  }
+  assertSeasonPointsRule(value);
   await wrapFirestoreWrite(
     "firestore/write_failed",
     "シーズンポイント計算ルールの更新に失敗しました",

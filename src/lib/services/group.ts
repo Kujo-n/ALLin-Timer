@@ -9,12 +9,11 @@ import {
 
 import { AppError, assertNonEmptyString, getErrorCode } from "@/lib/errors";
 import {
-  MAX_SEATS_PER_TABLE,
-  MAX_TABLES,
-  MIN_SEATS_PER_TABLE,
-  SEASON_POINTS_BASE_MAX_LENGTH,
-  TABLE_LABEL_MAX_LENGTH,
-} from "@/lib/limits";
+  assertDefaultSeats,
+  assertFinishedCount,
+  parseDefaultTableSettings,
+  parseSeasonPointsRule,
+} from "@/lib/validation/group-settings";
 import { firebaseAuth, firestore } from "@/lib/firebase/client";
 import {
   createGroup,
@@ -354,12 +353,7 @@ export async function setFinishedTournamentCount({
   uid: string;
   value: number;
 }): Promise<void> {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new AppError(
-      "開催数は 0 以上の整数で指定してください",
-      "validation/finished-count-invalid",
-    );
-  }
+  assertFinishedCount(value);
   const group = await getGroup(gid);
   assertOrganizer(group, uid);
   await updateFinishedTournamentCount(gid, value);
@@ -380,16 +374,7 @@ export async function setDefaultSeatsPerTable({
   uid: string;
   value: number;
 }): Promise<void> {
-  if (
-    !Number.isInteger(value) ||
-    value < MIN_SEATS_PER_TABLE ||
-    value > MAX_SEATS_PER_TABLE
-  ) {
-    throw new AppError(
-      `デフォルト席数は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
-      "validation/default-seats-invalid",
-    );
-  }
+  assertDefaultSeats(value);
   const group = await getGroup(gid);
   assertOrganizer(group, uid);
   await updateDefaultSeatsPerTable(gid, value);
@@ -420,59 +405,8 @@ export async function setDefaultTableSettings({
   labels: string[];
   colors: (string | null)[];
 }): Promise<void> {
-  if (!Array.isArray(labels)) {
-    throw new AppError(
-      "Table 名デフォルトは配列で指定してください",
-      "validation/default-table-labels-invalid",
-    );
-  }
-  if (labels.length > MAX_TABLES) {
-    throw new AppError(
-      `Table 名デフォルトは最大 ${MAX_TABLES} 件までです`,
-      "validation/default-table-labels-invalid",
-    );
-  }
-  if (!Array.isArray(colors) || colors.length !== labels.length) {
-    throw new AppError(
-      "Table 色デフォルトは Table 名デフォルトと同じ要素数で指定してください",
-      "validation/default-table-colors-invalid",
-    );
-  }
-  const normalizedLabels: string[] = [];
-  for (const label of labels) {
-    if (typeof label !== "string") {
-      throw new AppError(
-        "Table 名デフォルトは文字列の配列で指定してください",
-        "validation/default-table-labels-invalid",
-      );
-    }
-    const trimmed = label.trim();
-    if (trimmed.length < 1 || trimmed.length > TABLE_LABEL_MAX_LENGTH) {
-      throw new AppError(
-        `Table 名は 1 文字以上 ${TABLE_LABEL_MAX_LENGTH} 文字以下で指定してください`,
-        "validation/default-table-labels-invalid",
-      );
-    }
-    normalizedLabels.push(trimmed);
-  }
-  const normalizedColors: (string | null)[] = colors.map((c) => {
-    if (c === null || c === undefined) return null;
-    if (typeof c !== "string") {
-      throw new AppError(
-        "Table 色は文字列または null で指定してください",
-        "validation/default-table-colors-invalid",
-      );
-    }
-    const trimmed = c.trim();
-    if (trimmed.length === 0) return null;
-    if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
-      throw new AppError(
-        "Table 色は #RRGGBB 形式で指定してください",
-        "validation/default-table-colors-invalid",
-      );
-    }
-    return trimmed;
-  });
+  const { labels: normalizedLabels, colors: normalizedColors } =
+    parseDefaultTableSettings(labels, colors);
   const group = await getGroup(gid);
   assertOrganizer(group, uid);
   await updateDefaultTableSettings(gid, {
@@ -511,39 +445,7 @@ export async function setSeasonPointsRule({
   uid: string;
   value: SeasonPointsRule | null;
 }): Promise<void> {
-  let normalized: SeasonPointsRule | null = null;
-  if (value !== null) {
-    if (
-      !Array.isArray(value.base) ||
-      value.base.length < 1 ||
-      value.base.length > SEASON_POINTS_BASE_MAX_LENGTH
-    ) {
-      throw new AppError(
-        `base 配列は 1 件以上 ${SEASON_POINTS_BASE_MAX_LENGTH} 件以下で指定してください`,
-        "validation/season-points-rule-invalid",
-      );
-    }
-    const safeBase: number[] = value.base.map((v) => {
-      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
-        throw new AppError(
-          "base 配列の各要素は 0 以上の数値で指定してください",
-          "validation/season-points-rule-invalid",
-        );
-      }
-      return Math.round(v * 100) / 100;
-    });
-    if (
-      !Number.isInteger(value.baseline) ||
-      value.baseline < MIN_SEATS_PER_TABLE ||
-      value.baseline > MAX_SEATS_PER_TABLE
-    ) {
-      throw new AppError(
-        `baseline は ${MIN_SEATS_PER_TABLE} 以上 ${MAX_SEATS_PER_TABLE} 以下の整数で指定してください`,
-        "validation/season-points-rule-invalid",
-      );
-    }
-    normalized = { base: safeBase, baseline: value.baseline };
-  }
+  const normalized = parseSeasonPointsRule(value);
   const group = await getGroup(gid);
   assertOrganizer(group, uid);
   await updateSeasonPointsRule(gid, normalized);
