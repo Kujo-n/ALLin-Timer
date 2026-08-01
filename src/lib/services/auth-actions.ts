@@ -26,6 +26,7 @@ import {
 } from "@/lib/firebase/repositories/users";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
+import { parseDisplayName } from "@/lib/services/entry-guards";
 import { propagateDisplayNameToGroups } from "@/lib/services/group";
 
 /**
@@ -33,19 +34,16 @@ import { propagateDisplayNameToGroups } from "@/lib/services/group";
  * 共通バリデータ。trim 済み文字列を返す。
  *
  * Phase 4.7: 空文字拒否 + 上限 DISPLAY_NAME_MAX_LENGTH で統一（スマホ 1 行制約）。
+ *
+ * architect-refactor 20260801 (finding-3): 実装は `entry-guards.parseDisplayName` と
+ * **code / メッセージ / 分岐順序まで完全に同一**だったため、そちらへ委譲する。
+ * これにより受付（receipt）/ 運営者代理受付（proxy-receipt）/ 認証（本 module）の
+ * 3 経路が同一の関数を通り、表示名ポリシーの変更が 1 箇所で完結する。
+ * 名前つき薄いラッパを残すのは、3 callsite での可読性（上限が常に
+ * DISPLAY_NAME_MAX_LENGTH であることを呼出側に書かせない）ため。
  */
 function validateDisplayName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    throw new AppError("表示名を入力してください", "validation/display-name-required");
-  }
-  if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
-    throw new AppError(
-      `表示名は ${DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください`,
-      "validation/display-name-too-long",
-    );
-  }
-  return trimmed;
+  return parseDisplayName(name, { maxLength: DISPLAY_NAME_MAX_LENGTH });
 }
 
 function normalizeAuthCode(code: string): string {
