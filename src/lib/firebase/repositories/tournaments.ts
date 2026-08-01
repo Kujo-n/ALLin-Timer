@@ -954,7 +954,10 @@ export function subscribeTournamentsByGroup(
  *  - state === "setup" または "finished" のときのみ許可（進行中は先に終了が必要）。
  *  - sub-collection（players / tables）も同じ writeBatch で cascade 削除する。
  *    20 人 × 6 卓規模では 1 batch（500 ops 上限）に収まる。
- *  - rule 側の `match /{sub=**}` の write は親 doc が exists かつ isOrganizer を要求するが、
+ *  - rule 側は `match /players/{pid}` / `match /tables/{tableId}` の explicit rule が
+ *    delete に「親 tournament が exists かつ isOrganizer」を要求する
+ *    （Phase 5.4 で再帰ワイルドカード `match /{sub=**}` は重大バグとして廃止済み。
+ *     firebase-patterns.md の「subcollection の rule 設計原則」参照）。
  *    `exists()` は当該 request 開始時点の DB を見るため、同 batch 内で親 doc を最後に
  *    delete しても sub-collection delete は許容される。
  */

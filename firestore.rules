@@ -676,8 +676,13 @@ service cloud.firestore {
         //   - tableNum と seatNum は同時 null か同時 int でなければならない（片方だけ設定不可）
         //
         // ⚠ DRIFT WARNING (L3): 以下の定数は rule 内ハードコード。drift を防ぐため、変更時は同期更新すること:
-        //   - MAX_TABLES = 6 ↔ src/lib/services/seating/engine.ts の MAX_TABLES
-        //   - MAX_SEATS_PER_TABLE = 10 ↔ src/lib/firebase/schemas/tournament.ts の seatsPerTable.max(10)
+        //   - MAX_TABLES = 6 ↔ src/lib/limits.ts の MAX_TABLES
+        //   - MAX_SEATS_PER_TABLE = 10 ↔ src/lib/limits.ts の MAX_SEATS_PER_TABLE
+        //     （schemas/tournament.ts の seatsPerTable.max() は limits.ts を import して使う）
+        //   数値リミットの真実源は limits.ts に集約済み（Phase 4 architect-refactor P2-1）。
+        //   seating/engine.ts の MAX_TABLES は limits.ts からの re-export に過ぎないため、
+        //   値を変えるときは engine.ts ではなく limits.ts を編集すること。
+        //   drift 検出は scripts/test-rules-limits.mjs（npm run test:rules-limits）。
         // Cloud Functions 化（Phase 5+）で集約する場合はこの分散ロジックを廃止する。
         allow update: if isSignedIn()
                       && (
