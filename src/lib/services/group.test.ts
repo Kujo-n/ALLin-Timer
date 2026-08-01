@@ -2,6 +2,7 @@ import { Timestamp } from "firebase/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
+import { MAX_TABLES, TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import type { GroupDoc } from "@/lib/firebase/schemas/group";
 import type { GroupJoinCodeDoc } from "@/lib/firebase/schemas/groupJoinCode";
 
@@ -35,8 +36,11 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   setMemberDisplayName: vi.fn(),
   updateFinishedTournamentCount: vi.fn(),
   updateDefaultSeatsPerTable: vi.fn(),
+  updateDefaultTableSettings: vi.fn(),
   updateLatestJoinCodeId: vi.fn(),
   updateSeasonPointsRule: vi.fn(),
+  updateWinnerCardBackground: vi.fn(),
+  updateSeasonCardBackground: vi.fn(),
 }));
 
 vi.mock("@/lib/firebase/repositories/groupJoinCodes", () => ({
@@ -92,11 +96,14 @@ import {
   removeMemberSelf,
   setMemberDisplayName,
   updateDefaultSeatsPerTable,
+  updateDefaultTableSettings,
   updateFinishedTournamentCount,
   updateGroupName,
   updateGroupRoles,
   updateLatestJoinCodeId,
+  updateSeasonCardBackground,
   updateSeasonPointsRule,
+  updateWinnerCardBackground,
 } from "@/lib/firebase/repositories/groups";
 import {
   createJoinCode,
@@ -123,8 +130,11 @@ import {
   propagateDisplayNameToGroups,
   renameGroup,
   setDefaultSeatsPerTable,
+  setDefaultTableSettings,
   setFinishedTournamentCount,
+  setSeasonCardBackground,
   setSeasonPointsRule,
+  setWinnerCardBackground,
   startNewSeason,
 } from "./group";
 
@@ -187,7 +197,10 @@ beforeEach(() => {
   vi.mocked(setMemberDisplayName).mockReset();
   vi.mocked(updateFinishedTournamentCount).mockReset();
   vi.mocked(updateDefaultSeatsPerTable).mockReset();
+  vi.mocked(updateDefaultTableSettings).mockReset();
   vi.mocked(updateSeasonPointsRule).mockReset();
+  vi.mocked(updateWinnerCardBackground).mockReset();
+  vi.mocked(updateSeasonCardBackground).mockReset();
   vi.mocked(getJoinCode).mockReset();
   vi.mocked(createJoinCode).mockReset();
   vi.mocked(deleteJoinCode).mockReset();
@@ -430,9 +443,9 @@ describe("generateJoinCode", () => {
         memberUids: ["u-owner", "u-mem"],
       }),
     );
-    await expect(
-      generateJoinCode({ gid: "g1", createdByUid: "u-mem" }),
-    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    await expect(generateJoinCode({ gid: "g1", createdByUid: "u-mem" })).rejects.toMatchObject({
+      code: "group/not-organizer",
+    });
     expect(createJoinCode).not.toHaveBeenCalled();
     expect(updateLatestJoinCodeId).not.toHaveBeenCalled();
     expect(deleteJoinCode).not.toHaveBeenCalled();
@@ -495,9 +508,9 @@ describe("generateJoinCode", () => {
       new AppError("write fail", "firestore/write_failed"),
     );
 
-    await expect(
-      generateJoinCode({ gid: "g1", createdByUid: "u-owner" }),
-    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+    await expect(generateJoinCode({ gid: "g1", createdByUid: "u-owner" })).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
     // 既に new code は作成済みなので revert はしない（cleanup-orphan-firestore に委譲）
     expect(createJoinCode).toHaveBeenCalled();
     expect(deleteJoinCode).not.toHaveBeenCalled();
@@ -672,6 +685,250 @@ describe("setDefaultSeatsPerTable", () => {
   );
 });
 
+/**
+ * Phase C / 02-02: Table 名 / 色デフォルトの一括更新。
+ *
+ * この service が **唯一の防御ライン**である点が重要。rule 側は
+ * `affectedKeys.hasOnly(['defaultTableLabels','defaultTableColors'])` + `is list` +
+ * `size() <= 6` までしか強制できず、**各要素の文字数と hex 形式は Cloud Firestore
+ * Rules の言語仕様で表現できない**。したがって以下を仕様として固定する:
+ *
+ *   1. labels は trim 正規化して repository へ渡す（前後空白の混入を保存しない）
+ *   2. colors は labels と同数必須。空文字 / undefined は null に正規化
+ *   3. 文字数（1〜10）・hex 形式（`#RRGGBB`）・件数（≤6）の逸脱は throw
+ *   4. **検証は getGroup より前**（無駄な read を消費しないフェイルファスト）
+ *   5. 権限は organizer 以上
+ */
+describe("setDefaultTableSettings (Phase C / 02-02)", () => {
+  function organizerGroup() {
+    return makeGroup({
+      ownerUids: ["uOwner"],
+      organizerUids: ["uOwner", "uOrg"],
+      memberUids: ["uOwner", "uOrg", "uMember"],
+    });
+  }
+
+  it("trims labels and forwards labels / colors as one atomic patch", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    await setDefaultTableSettings({
+      gid: "g1",
+      uid: "uOwner",
+      labels: ["  Main ", "Feature"],
+      colors: ["#ff0000", null],
+    });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledTimes(1);
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels: ["Main", "Feature"],
+      colors: ["#ff0000", null],
+    });
+  });
+
+  it("allows organizer (non-owner)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    await setDefaultTableSettings({
+      gid: "g1",
+      uid: "uOrg",
+      labels: ["A"],
+      colors: [null],
+    });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels: ["A"],
+      colors: [null],
+    });
+  });
+
+  it("accepts empty arrays (clearing all defaults)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    await setDefaultTableSettings({ gid: "g1", uid: "uOwner", labels: [], colors: [] });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", { labels: [], colors: [] });
+  });
+
+  it("accepts exactly MAX_TABLES entries (boundary)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    const labels = Array.from({ length: MAX_TABLES }, (_, i) => `T${i + 1}`);
+    await setDefaultTableSettings({
+      gid: "g1",
+      uid: "uOwner",
+      labels,
+      colors: labels.map(() => null),
+    });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels,
+      colors: labels.map(() => null),
+    });
+  });
+
+  it("accepts a label of exactly TABLE_LABEL_MAX_LENGTH chars (boundary)", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    const label = "x".repeat(TABLE_LABEL_MAX_LENGTH);
+    await setDefaultTableSettings({ gid: "g1", uid: "uOwner", labels: [label], colors: [null] });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels: [label],
+      colors: [null],
+    });
+  });
+
+  it("normalizes blank / undefined colors to null", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    await setDefaultTableSettings({
+      gid: "g1",
+      uid: "uOwner",
+      labels: ["A", "B", "C"],
+      // 空文字は UI の「色なし」入力、undefined は疎な配列由来。どちらも null 保存に倒す。
+      colors: ["   ", undefined as unknown as string | null, "#ABCDEF"],
+    });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels: ["A", "B", "C"],
+      colors: [null, null, "#ABCDEF"],
+    });
+  });
+
+  it("accepts uppercase and lowercase hex alike", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+    vi.mocked(updateDefaultTableSettings).mockResolvedValue();
+
+    await setDefaultTableSettings({
+      gid: "g1",
+      uid: "uOwner",
+      labels: ["A", "B"],
+      colors: ["#AbCdEf", " #123456 "],
+    });
+
+    expect(updateDefaultTableSettings).toHaveBeenCalledWith("g1", {
+      labels: ["A", "B"],
+      // hex も trim してから保存する。
+      colors: ["#AbCdEf", "#123456"],
+    });
+  });
+
+  it("rejects more than MAX_TABLES labels before reading group", async () => {
+    const labels = Array.from({ length: MAX_TABLES + 1 }, (_, i) => `T${i + 1}`);
+
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uOwner",
+        labels,
+        colors: labels.map(() => null),
+      }),
+    ).rejects.toMatchObject({ code: "validation/default-table-labels-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateDefaultTableSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-array labels argument", async () => {
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uOwner",
+        labels: "Main" as unknown as string[],
+        colors: [],
+      }),
+    ).rejects.toMatchObject({ code: "validation/default-table-labels-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["blank after trim", "   "],
+    ["over TABLE_LABEL_MAX_LENGTH", "x".repeat(TABLE_LABEL_MAX_LENGTH + 1)],
+  ])("rejects a label that is %s", async (_desc, bad) => {
+    await expect(
+      setDefaultTableSettings({ gid: "g1", uid: "uOwner", labels: [bad], colors: [null] }),
+    ).rejects.toMatchObject({ code: "validation/default-table-labels-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateDefaultTableSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string label element", async () => {
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uOwner",
+        labels: [42 as unknown as string],
+        colors: [null],
+      }),
+    ).rejects.toMatchObject({ code: "validation/default-table-labels-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects a colors array whose length differs from labels", async () => {
+    await expect(
+      setDefaultTableSettings({ gid: "g1", uid: "uOwner", labels: ["A", "B"], colors: [null] }),
+    ).rejects.toMatchObject({ code: "validation/default-table-colors-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateDefaultTableSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-array colors argument", async () => {
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uOwner",
+        labels: [],
+        colors: null as unknown as (string | null)[],
+      }),
+    ).rejects.toMatchObject({ code: "validation/default-table-colors-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["3-digit shorthand", "#abc"],
+    ["missing hash", "ff0000"],
+    ["non-hex chars", "#gggggg"],
+    ["too long", "#1234567"],
+  ])("rejects a color that is %s", async (_desc, bad) => {
+    await expect(
+      setDefaultTableSettings({ gid: "g1", uid: "uOwner", labels: ["A"], colors: [bad] }),
+    ).rejects.toMatchObject({ code: "validation/default-table-colors-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(updateDefaultTableSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string color element", async () => {
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uOwner",
+        labels: ["A"],
+        colors: [123 as unknown as string],
+      }),
+    ).rejects.toMatchObject({ code: "validation/default-table-colors-invalid" });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
+
+  it("rejects a general member with group/not-organizer after validation passes", async () => {
+    vi.mocked(getGroup).mockResolvedValue(organizerGroup());
+
+    await expect(
+      setDefaultTableSettings({
+        gid: "g1",
+        uid: "uMember",
+        labels: ["A"],
+        colors: [null],
+      }),
+    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    expect(updateDefaultTableSettings).not.toHaveBeenCalled();
+  });
+});
+
 describe("setSeasonPointsRule (Phase E)", () => {
   it("allows owner to set a valid custom rule", async () => {
     vi.mocked(getGroup).mockResolvedValue(
@@ -784,21 +1041,18 @@ describe("setSeasonPointsRule (Phase E)", () => {
     expect(getGroup).not.toHaveBeenCalled();
   });
 
-  it.each([1, 11, 8.5])(
-    "rejects out-of-range or non-int baseline %p",
-    async (bad) => {
-      await expect(
-        setSeasonPointsRule({
-          gid: "g1",
-          uid: "uOwner",
-          value: { base: [10], baseline: bad as number },
-        }),
-      ).rejects.toMatchObject({
-        code: "validation/season-points-rule-invalid",
-      });
-      expect(getGroup).not.toHaveBeenCalled();
-    },
-  );
+  it.each([1, 11, 8.5])("rejects out-of-range or non-int baseline %p", async (bad) => {
+    await expect(
+      setSeasonPointsRule({
+        gid: "g1",
+        uid: "uOwner",
+        value: { base: [10], baseline: bad as number },
+      }),
+    ).rejects.toMatchObject({
+      code: "validation/season-points-rule-invalid",
+    });
+    expect(getGroup).not.toHaveBeenCalled();
+  });
 
   it("normalizes base values to 2 decimal places (defensive against UI float artifacts)", async () => {
     vi.mocked(getGroup).mockResolvedValue(
@@ -822,6 +1076,106 @@ describe("setSeasonPointsRule (Phase E)", () => {
   });
 });
 
+/**
+ * Phase A.1 (05-post-launch-polish Track A): 結果カード背景メタデータの設定・解除。
+ *
+ * winner / season は共通 internal helper (`setCardBackground`) の kind 違いでしかない
+ * ため、**両者が対称であること**（同じ権限判定・同じ pass-through・互いの repository を
+ * 呼ばないこと）を仕様として固定する。kind の取り違えはコンパイルで捕まらず、
+ * 「優勝カードを設定したらシーズンカードが変わる」形で表面化するため。
+ *
+ * 値の invariant（imageUrl と storageAssetId は同時に null か同時に string）は
+ * repository の `validateCardBackground` が持つ責務なので、ここでは service が値を
+ * **加工せず素通しする**ことだけを確認する。
+ */
+describe("setWinnerCardBackground / setSeasonCardBackground (Phase A.1)", () => {
+  const bg = {
+    imageUrl: "https://example.test/bg.png",
+    storageAssetId: "groups/g1/winner/asset-1",
+    textTheme: "dark" as const,
+  };
+
+  function ownerGroup() {
+    return makeGroup({
+      ownerUids: ["uOwner"],
+      organizerUids: ["uOwner", "uOrg"],
+      memberUids: ["uOwner", "uOrg", "uMember"],
+    });
+  }
+
+  it.each([
+    ["winner", setWinnerCardBackground],
+    ["season", setSeasonCardBackground],
+  ] as const)("%s: forwards the value to its own repository unchanged", async (kind, setter) => {
+    vi.mocked(getGroup).mockResolvedValue(ownerGroup());
+    vi.mocked(updateWinnerCardBackground).mockResolvedValue();
+    vi.mocked(updateSeasonCardBackground).mockResolvedValue();
+
+    await setter({ gid: "g1", uid: "uOwner", value: bg });
+
+    const [called, notCalled] =
+      kind === "winner"
+        ? [updateWinnerCardBackground, updateSeasonCardBackground]
+        : [updateSeasonCardBackground, updateWinnerCardBackground];
+    expect(called).toHaveBeenCalledTimes(1);
+    expect(called).toHaveBeenCalledWith("g1", bg);
+    // kind の取り違えで相手側を書き換えないこと。
+    expect(notCalled).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["winner", setWinnerCardBackground],
+    ["season", setSeasonCardBackground],
+  ] as const)("%s: forwards null (clear) to its own repository", async (kind, setter) => {
+    vi.mocked(getGroup).mockResolvedValue(ownerGroup());
+    vi.mocked(updateWinnerCardBackground).mockResolvedValue();
+    vi.mocked(updateSeasonCardBackground).mockResolvedValue();
+
+    await setter({ gid: "g1", uid: "uOwner", value: null });
+
+    const called = kind === "winner" ? updateWinnerCardBackground : updateSeasonCardBackground;
+    expect(called).toHaveBeenCalledWith("g1", null);
+  });
+
+  it.each([
+    ["winner", setWinnerCardBackground],
+    ["season", setSeasonCardBackground],
+  ] as const)("%s: rejects organizer (non-owner) with group/not-owner", async (_kind, setter) => {
+    vi.mocked(getGroup).mockResolvedValue(ownerGroup());
+
+    // カード背景は owner 限定。organizer は他の group 設定を触れても不可。
+    await expect(setter({ gid: "g1", uid: "uOrg", value: bg })).rejects.toMatchObject({
+      code: "group/not-owner",
+    });
+    expect(updateWinnerCardBackground).not.toHaveBeenCalled();
+    expect(updateSeasonCardBackground).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["winner", setWinnerCardBackground],
+    ["season", setSeasonCardBackground],
+  ] as const)("%s: rejects a general member with group/not-owner", async (_kind, setter) => {
+    vi.mocked(getGroup).mockResolvedValue(ownerGroup());
+
+    await expect(setter({ gid: "g1", uid: "uMember", value: bg })).rejects.toMatchObject({
+      code: "group/not-owner",
+    });
+    expect(updateWinnerCardBackground).not.toHaveBeenCalled();
+    expect(updateSeasonCardBackground).not.toHaveBeenCalled();
+  });
+
+  it("propagates repository failures instead of swallowing them", async () => {
+    vi.mocked(getGroup).mockResolvedValue(ownerGroup());
+    vi.mocked(updateWinnerCardBackground).mockRejectedValue(
+      new AppError("背景画像の更新に失敗しました", "firestore/write_failed"),
+    );
+
+    await expect(
+      setWinnerCardBackground({ gid: "g1", uid: "uOwner", value: bg }),
+    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+  });
+});
+
 describe("startNewSeason (Phase A)", () => {
   /** stats snapshot を tx 内で受け取る共通 helper。tx.delete / tx.set / tx.update の呼出を記録する。 */
   function captureTxOps(stats: Array<{ id: string; data: Record<string, unknown> }> = []) {
@@ -840,9 +1194,7 @@ describe("startNewSeason (Phase A)", () => {
         get: vi.fn(),
         set: vi.fn((ref, data) => setCalls.push([ref, data as Record<string, unknown>])),
         delete: vi.fn((ref) => deleteCalls.push(ref)),
-        update: vi.fn((ref, patch) =>
-          updateCalls.push([ref, patch as Record<string, unknown>]),
-        ),
+        update: vi.fn((ref, patch) => updateCalls.push([ref, patch as Record<string, unknown>])),
       };
       await fn(tx as unknown as Parameters<typeof fn>[0]);
       return undefined as unknown;
@@ -942,9 +1294,9 @@ describe("startNewSeason (Phase A)", () => {
         memberUids: ["uOwner", "uMember"],
       }),
     );
-    await expect(
-      startNewSeason({ gid: "g1", uid: "uMember" }),
-    ).rejects.toMatchObject({ code: "group/not-organizer" });
+    await expect(startNewSeason({ gid: "g1", uid: "uMember" })).rejects.toMatchObject({
+      code: "group/not-organizer",
+    });
     // tx は呼ばれない
     expect(runTransaction).not.toHaveBeenCalled();
     expect(getDocs).not.toHaveBeenCalled();
@@ -1028,9 +1380,9 @@ describe("startNewSeason (Phase A)", () => {
       } as never,
     ]);
 
-    await expect(
-      startNewSeason({ gid: "g1", uid: "uOwner" }),
-    ).rejects.toMatchObject({ code: "season/in-progress-tournament" });
+    await expect(startNewSeason({ gid: "g1", uid: "uOwner" })).rejects.toMatchObject({
+      code: "season/in-progress-tournament",
+    });
 
     expect(runTransaction).not.toHaveBeenCalled();
     expect(getDocs).not.toHaveBeenCalled();
@@ -1048,9 +1400,9 @@ describe("startNewSeason (Phase A)", () => {
       { id: "t-seat", groupId: "g1", name: "Seating", state: "seating" } as never,
     ]);
 
-    await expect(
-      startNewSeason({ gid: "g1", uid: "uOwner" }),
-    ).rejects.toMatchObject({ code: "season/in-progress-tournament" });
+    await expect(startNewSeason({ gid: "g1", uid: "uOwner" })).rejects.toMatchObject({
+      code: "season/in-progress-tournament",
+    });
   });
 
   it("allows when only setup / finished tournaments exist (no race risk)", async () => {
