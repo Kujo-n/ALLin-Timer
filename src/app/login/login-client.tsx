@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import type { AuthCredential } from "firebase/auth";
 
 import { DisplayNameDialog } from "@/components/auth/DisplayNameDialog";
+import { DisplayNameField } from "@/components/auth/DisplayNameField";
+import { EmailPasswordFields, PASSWORD_MIN_LENGTH } from "@/components/auth/EmailPasswordFields";
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
 import { LinkAccountDialog } from "@/components/auth/LinkAccountDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
@@ -242,26 +242,23 @@ export function LoginClient() {
 
           {mode === "register" ? (
             <>
-              <div className="space-y-2 rounded-md border bg-muted/50 p-4">
-                <Label htmlFor="reg-name" className="font-medium">
-                  表示名（必須）
-                </Label>
-                <Input
-                  id="reg-name"
-                  required
-                  maxLength={DISPLAY_NAME_MAX_LENGTH}
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="bg-background"
-                />
-                <p className="text-xs text-muted-foreground">
-                  トーナメント参加時に席表・参加者一覧に表示される名前です（
-                  {DISPLAY_NAME_MAX_LENGTH} 文字以内）。
-                  <strong className="font-medium">
-                    メールアドレス／Google のどちらで登録する場合も先に入力してください。
-                  </strong>
-                </p>
-              </div>
+              <DisplayNameField
+                id="reg-name"
+                label="表示名（必須）"
+                value={displayName}
+                onChange={setDisplayName}
+                inputClassName="bg-background"
+                className="rounded-md border bg-muted/50 p-4"
+                hint={
+                  <>
+                    トーナメント参加時に席表・参加者一覧に表示される名前です（
+                    {DISPLAY_NAME_MAX_LENGTH} 文字以内）。
+                    <strong className="font-medium">
+                      メールアドレス／Google のどちらで登録する場合も先に入力してください。
+                    </strong>
+                  </>
+                }
+              />
               <div className="relative my-2">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />
@@ -274,29 +271,15 @@ export function LoginClient() {
           ) : null}
 
           <form onSubmit={onSubmitPassword} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">メールアドレス</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">パスワード</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+            <EmailPasswordFields
+              idPrefix="login"
+              mode={mode}
+              email={email}
+              password={password}
+              onEmailChange={setEmail}
+              onPasswordChange={setPassword}
+              passwordMinLength={PASSWORD_MIN_LENGTH}
+            />
             {error ? (
               <p className="text-sm text-destructive" role="alert">
                 {error}

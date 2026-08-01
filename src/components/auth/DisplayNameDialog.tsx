@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { DisplayNameField } from "@/components/auth/DisplayNameField";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,11 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { logger } from "@/lib/logger";
 import { updateDisplayName } from "@/lib/services/auth-actions";
 
@@ -66,20 +64,7 @@ export function DisplayNameDialog({ open, onDone, initialName = "" }: Props) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSave} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="dn">表示名</Label>
-            <Input
-              id="dn"
-              required
-              maxLength={DISPLAY_NAME_MAX_LENGTH}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">
-              {DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください。
-            </p>
-          </div>
+          <DisplayNameField id="dn" value={name} onChange={setName} autoFocus />
           {error ? (
             <p className="text-sm text-destructive" role="alert">
               {error}
