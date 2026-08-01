@@ -31,6 +31,7 @@ vi.mock("@/lib/services/auth-actions", () => ({
   attemptAnonymousSelfDelete: vi.fn(),
   signInAsGuest: vi.fn(),
   loginWithEmail: vi.fn(),
+  registerWithEmail: vi.fn(),
   signInWithGoogle: vi.fn(),
 }));
 // 08-auto-group-join-on-entry Phase 2: helper 境界で mock する（testing.md）。
@@ -46,6 +47,7 @@ import { logger } from "@/lib/logger";
 import {
   attemptAnonymousSelfDelete,
   loginWithEmail,
+  registerWithEmail,
   signInAsGuest,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
@@ -54,9 +56,11 @@ import { joinGroupViaTournament } from "@/lib/services/auto-group-join";
 import {
   cancelOwnEntry,
   cancelPlayerEntry,
+  EntryFailedAfterRegister,
   joinAsCurrentUser,
   joinAsExistingUser,
   joinAsGuest,
+  joinAsNewUser,
   joinViaGoogle,
 } from "./receipt";
 
@@ -287,9 +291,7 @@ describe("joinAsCurrentUser", () => {
 describe("cancelOwnEntry", () => {
   beforeEach(() => {
     vi.mocked(deletePlayer).mockReset().mockResolvedValue(undefined);
-    vi.mocked(attemptAnonymousSelfDelete)
-      .mockReset()
-      .mockResolvedValue({ deleted: false });
+    vi.mocked(attemptAnonymousSelfDelete).mockReset().mockResolvedValue({ deleted: false });
     mockAuthState.currentUser = null;
   });
 
@@ -484,14 +486,163 @@ describe("joinViaGoogle", () => {
   });
 });
 
+describe("joinAsNewUser (08 Phase 3)", () => {
+  beforeEach(() => {
+    vi.mocked(getTournament).mockReset().mockResolvedValue(makeTournament());
+    vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
+    vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
+    vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);
+    vi.mocked(getUserProfile).mockReset().mockResolvedValue(null);
+    vi.mocked(registerWithEmail)
+      .mockReset()
+      .mockResolvedValue({
+        uid: "u-new",
+        email: "a@example.com",
+        displayName: "Alice",
+        isAnonymous: false,
+      } as unknown as Awaited<ReturnType<typeof registerWithEmail>>);
+    vi.mocked(joinGroupViaTournament)
+      .mockReset()
+      .mockResolvedValue({ gid: "g1", outcome: "joined" });
+    mockAuthState.currentUser = null;
+  });
+
+  it("アカウント作成 → 受付 → 自動所属まで完走する", async () => {
+    const outcome = await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    });
+
+    expect(registerWithEmail).toHaveBeenCalledTimes(1);
+    expect(registerWithEmail).toHaveBeenCalledWith("a@example.com", "pass123456", "Alice");
+    expect(outcome).toEqual({
+      result: "created",
+      autoJoin: { gid: "g1", status: "joined" },
+    });
+    expect(upsertPlayer).toHaveBeenCalledWith("t1", "u-new", { displayName: "Alice" });
+  });
+
+  it("入力された表示名を自動所属へそのまま渡す", async () => {
+    await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    });
+
+    expect(joinGroupViaTournament).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: "Alice" }),
+    );
+  });
+
+  it("registerWithEmail → upsertPlayer → joinGroupViaTournament の順で呼ぶ", async () => {
+    await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    });
+
+    // rule の hasTournamentEntryProof が players/{uid} の存在を前提にするため順序厳守。
+    expect(vi.mocked(registerWithEmail).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(upsertPlayer).mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(upsertPlayer).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(joinGroupViaTournament).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("アカウント作成に失敗したら受付も自動所属も行わない", async () => {
+    vi.mocked(registerWithEmail).mockRejectedValue(
+      new AppError("新規登録に失敗しました", "auth/already-exists"),
+    );
+
+    const err = await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    }).catch((e: unknown) => e);
+
+    expect(err).toMatchObject({ code: "auth/already-exists" });
+    // アカウントが作られていないので「作成済み」扱いにはしない（UI の案内文が分岐する）
+    expect(err).not.toBeInstanceOf(EntryFailedAfterRegister);
+    expect(upsertPlayer).not.toHaveBeenCalled();
+    expect(joinGroupViaTournament).not.toHaveBeenCalled();
+  });
+
+  it("アカウント作成後の受付失敗は EntryFailedAfterRegister で包み、原因の code を保つ", async () => {
+    // rules が tournament read に認証を要求するため、受付可否の判定はアカウント作成の
+    // 「後」にしか行えない。この順序ゆえに起きる「アカウントだけ残る」状態を型で識別する。
+    vi.mocked(getTournament).mockResolvedValue(makeTournament({ state: "finished" }));
+
+    const err = await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(EntryFailedAfterRegister);
+    expect(err).toMatchObject({ code: "tournament/late-entry-closed" });
+    // アカウント作成は済んでいる（UI はこれを根拠に復旧手順を案内する）
+    expect(registerWithEmail).toHaveBeenCalledTimes(1);
+    expect(upsertPlayer).not.toHaveBeenCalled();
+    expect(joinGroupViaTournament).not.toHaveBeenCalled();
+  });
+
+  it("自動所属の失敗は EntryFailedAfterRegister にしない（受付自体は成功のため）", async () => {
+    vi.mocked(joinGroupViaTournament).mockRejectedValue(
+      new AppError("サークルへの自動加入に失敗しました", "group/auto-join-failed"),
+    );
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    await expect(
+      joinAsNewUser({
+        tid: "t1",
+        email: "a@example.com",
+        password: "pass123456",
+        displayName: "Alice",
+      }),
+    ).resolves.toMatchObject({ result: "created" });
+
+    warnSpy.mockRestore();
+  });
+
+  it("自動所属が失敗しても受付は成功のまま（status=failed + warn 1 本）", async () => {
+    vi.mocked(joinGroupViaTournament).mockRejectedValue(
+      new AppError("サークルへの自動加入に失敗しました", "group/auto-join-failed"),
+    );
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    const outcome = await joinAsNewUser({
+      tid: "t1",
+      email: "a@example.com",
+      password: "pass123456",
+      displayName: "Alice",
+    });
+
+    expect(outcome).toEqual({
+      result: "created",
+      autoJoin: { gid: "g1", status: "failed" },
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnSpy.mockRestore();
+  });
+});
+
 describe("assertAcceptingEntries (via joinAsGuest)", () => {
   beforeEach(() => {
     vi.mocked(getTournament).mockReset();
-    vi.mocked(signInAsGuest).mockReset().mockResolvedValue({
-      uid: "guest-1",
-      email: null,
-      displayName: "Alice",
-    } as unknown as Awaited<ReturnType<typeof signInAsGuest>>);
+    vi.mocked(signInAsGuest)
+      .mockReset()
+      .mockResolvedValue({
+        uid: "guest-1",
+        email: null,
+        displayName: "Alice",
+      } as unknown as Awaited<ReturnType<typeof signInAsGuest>>);
     vi.mocked(getPlayer).mockReset().mockResolvedValue(null);
     vi.mocked(upsertPlayer).mockReset().mockResolvedValue(undefined);
     vi.mocked(upsertUserProfile).mockReset().mockResolvedValue(undefined);

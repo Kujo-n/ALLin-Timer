@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 
-import { AppError, getErrorCode } from "@/lib/errors";
+import { AppError, getErrorCode, unwrapOrFrom } from "@/lib/errors";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { deletePlayer, getPlayer, upsertPlayer } from "@/lib/firebase/repositories/players";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
 import {
   attemptAnonymousSelfDelete,
   loginWithEmail,
+  registerWithEmail,
   signInAsGuest,
   signInWithGoogle,
 } from "@/lib/services/auth-actions";
@@ -141,6 +142,67 @@ export async function joinAsExistingUser({
   // 未設定なら ensurePlayerCreated が validation/display-name-required を投げる。
   const outcome = await receiveEntry(tid, user);
   logger.info("join as existing user ok", {
+    tid,
+    uid: user.uid,
+    result: outcome.result,
+    autoJoin: outcome.autoJoin?.status,
+  });
+  return outcome;
+}
+
+/**
+ * `joinAsNewUser` で **Auth アカウントの作成には成功したが、その後の受付で失敗した**
+ * ことを示すエラー。08-auto-group-join-on-entry Phase 3 レビュー M-3 対応。
+ *
+ * rules が tournament の read に認証を要求するため、受付可否の判定（`assertAcceptingEntries`）は
+ * 原理的にアカウント作成の**後**にしか行えない。レイトエントリー締切超過やネットワーク障害で
+ * ここに落ちると、Auth アカウントと `users/{uid}` だけが残った状態でユーザーに
+ * エラーが返る。UI 側で「アカウントは作成済みなので、次はログインタブから」と
+ * 案内できるよう、この状態だけを型で識別可能にする。
+ *
+ * `code` / `message` は原因エラーのものをそのまま引き継ぐ（表示文言は変えない）。
+ * 原因エラーは内側で既に warn 済みのため、ここでは再ログしない。
+ */
+export class EntryFailedAfterRegister extends AppError {
+  constructor(cause: AppError) {
+    super(cause.message, cause.code, cause);
+    this.name = "EntryFailedAfterRegister";
+  }
+}
+
+/**
+ * 受付画面から新規アカウントを作成して、そのまま受付する。
+ * 08-auto-group-join-on-entry Phase 3。
+ *
+ * `registerWithEmail` が displayName を先に検証する（trim / 非空 / 15 字以内）ため、
+ * 不正な表示名で Auth アカウントだけが作られることはない。
+ * 作成した user をそのまま `receiveEntry` に渡すので、他の通常アカウント経路と同じく
+ * **player 作成 → サークル自動所属** の順序と best-effort 契約が適用される。
+ *
+ * アカウント作成後の失敗は `EntryFailedAfterRegister` で包んで throw する
+ * （アカウントが残っていることを UI が案内できるようにするため）。
+ */
+export async function joinAsNewUser({
+  tid,
+  email,
+  password,
+  displayName,
+}: {
+  tid: string;
+  email: string;
+  password: string;
+  displayName: string;
+}): Promise<ReceiptOutcome> {
+  const user = await registerWithEmail(email, password, displayName);
+  // 登録時に入力された名前を hint として渡し、players と memberDisplayNames を揃える。
+  // ここから先の失敗は「アカウントだけ作られた」状態を意味する。
+  let outcome: ReceiptOutcome;
+  try {
+    outcome = await receiveEntry(tid, user, displayName);
+  } catch (e) {
+    throw new EntryFailedAfterRegister(unwrapOrFrom(e, "receipt/unknown", "受付に失敗しました"));
+  }
+  logger.info("join as new user ok", {
     tid,
     uid: user.uid,
     result: outcome.result,
