@@ -41,6 +41,86 @@ describe("isAllowedBgImageUrl", () => {
   });
 });
 
+/**
+ * architect-refactor 20260801 (finding-2): host allowlist だけでは
+ * `storage.googleapis.com` / `firebasestorage.googleapis.com` が GCS 全体で共有される
+ * マルチテナントホストのため、任意の公開バケットが通ってしまう。
+ * `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` 設定時はバケット一致まで検査する。
+ */
+describe("isAllowedBgImageUrl — バケット限定（NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET 設定時）", () => {
+  const BUCKET = "allin-pokertimer.appspot.com";
+
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", BUCKET);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("自バケットの Firebase download URL 形式は許可", () => {
+    expect(
+      isAllowedBgImageUrl(
+        `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/groups%2Fg1%2FbgImages%2Fa.jpg?alt=media&token=xyz`,
+      ),
+    ).toBe(true);
+  });
+
+  it("自バケットの GCS path-style URL は許可", () => {
+    expect(
+      isAllowedBgImageUrl(`https://storage.googleapis.com/${BUCKET}/groups/g1/a.png`),
+    ).toBe(true);
+  });
+
+  it("他バケットは両形式とも拒否（画像プロキシ化の防止）", () => {
+    expect(
+      isAllowedBgImageUrl(
+        "https://firebasestorage.googleapis.com/v0/b/someone-else.appspot.com/o/x.jpg",
+      ),
+    ).toBe(false);
+    expect(
+      isAllowedBgImageUrl("https://storage.googleapis.com/someone-else-bucket/x.png"),
+    ).toBe(false);
+  });
+
+  it("bucket セグメントを取り出せない path 形は拒否（GCS JSON API 形式など）", () => {
+    expect(
+      isAllowedBgImageUrl(
+        `https://storage.googleapis.com/download/storage/v1/b/${BUCKET}/o/x?alt=media`,
+      ),
+    ).toBe(false);
+    expect(isAllowedBgImageUrl("https://firebasestorage.googleapis.com/")).toBe(false);
+    expect(isAllowedBgImageUrl("https://storage.googleapis.com/")).toBe(false);
+  });
+
+  it("host allowlist 外は bucket 名が一致していても拒否（host 検査が先）", () => {
+    expect(isAllowedBgImageUrl(`https://attacker.example.com/${BUCKET}/x.jpg`)).toBe(
+      false,
+    );
+  });
+});
+
+describe("isAllowedBgImageUrl — env 未設定時は host-only 判定にフォールバック", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("bucket が異なっても allowlist host なら許可（emulator / CI の非回帰）", () => {
+    expect(isAllowedBgImageUrl("https://storage.googleapis.com/any-bucket/x.png")).toBe(
+      true,
+    );
+    expect(
+      isAllowedBgImageUrl("https://firebasestorage.googleapis.com/v0/b/any/o/x.jpg"),
+    ).toBe(true);
+  });
+
+  it("host allowlist 外は引き続き拒否", () => {
+    expect(isAllowedBgImageUrl("https://attacker.example.com/a.jpg")).toBe(false);
+  });
+});
+
 describe("fetchAsDataUri", () => {
   beforeEach(() => {
     globalThis.fetch = vi.fn();

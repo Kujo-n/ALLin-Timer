@@ -24,6 +24,13 @@ import { AppError } from "@/lib/errors";
  * 背景画像 URL のホスト allowlist。
  * Firebase Storage の download URL は `firebasestorage.googleapis.com` 形式が現行（v0 API）、
  * `storage.googleapis.com` 形式が新形式（GCS 直）。同一バケットに対する両形式を受容する。
+ *
+ * ⚠ host 単独では不十分: 両ホストとも **GCS 全体で共有されるマルチテナントホスト**であり、
+ *   `https://storage.googleapis.com/<任意の公開バケット>/<obj>` が同じ host に解決する。
+ *   host だけを検査すると、未認証の OG route が「世界中の公開 GCS オブジェクトを
+ *   取得して PNG に埋め込む汎用画像プロキシ」として第三者に利用できてしまう
+ *   （内部ネットワークへの SSRF ではないが、最小権限の原則からの逸脱 + Vercel 帯域の流用）。
+ *   そのため `isAllowedBgImageUrl` は host に加えて **バケット一致**も検査する。
  */
 const BG_IMAGE_URL_HOST_ALLOWLIST: ReadonlySet<string> = new Set([
   "firebasestorage.googleapis.com",
@@ -42,8 +49,47 @@ const FETCH_TIMEOUT_MS = 8_000;
 const MAX_BYTES = 2 * 1024 * 1024;
 
 /**
- * URL がスキーマと host allowlist の両方をパスするか検証する純関数。
+ * 期待するバケット名（= このプロジェクトの Firebase Storage バケット）。
+ *
+ * `NEXT_PUBLIC_*` は build 時にインライン化されるため、client / server の双方から参照できる。
+ * **未設定なら `null` を返し、呼出側は host-only 判定にフォールバックする**
+ * （emulator / CI / 単体テストなど bucket を持たない環境の非回帰のため）。
+ */
+function expectedStorageBucket(): string | null {
+  const trimmed = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * allowlist 済み host の URL から bucket セグメントを取り出す純関数。合致しなければ `null`。
+ *
+ *   - `firebasestorage.googleapis.com` → `/v0/b/<bucket>/o/<path>`（Firebase download URL）
+ *   - `storage.googleapis.com`         → `/<bucket>/<path>`（GCS path-style）
+ *
+ * 上記以外の path 形（GCS JSON API の `/download/storage/v1/b/<bucket>/o/` 等）は
+ * アプリが生成しないため **意図的に非対応**とし、`null`（= deny 側）に倒す。
+ * virtual-hosted style（`https://<bucket>.storage.googleapis.com/...`）は hostname が
+ * allowlist と一致しないため、本関数に到達する前に弾かれる。
+ */
+function extractBucket(parsed: URL): string | null {
+  const segments = parsed.pathname.split("/").filter((s) => s.length > 0);
+  if (parsed.hostname === "firebasestorage.googleapis.com") {
+    // ["v0", "b", "<bucket>", "o", ...]
+    if (segments.length >= 3 && segments[0] === "v0" && segments[1] === "b") {
+      return decodeURIComponent(segments[2]);
+    }
+    return null;
+  }
+  // storage.googleapis.com（path-style）: 先頭セグメントが bucket。
+  return segments.length >= 1 ? decodeURIComponent(segments[0]) : null;
+}
+
+/**
+ * URL がスキーマ・host allowlist・バケット一致のすべてをパスするか検証する純関数。
  * `og-payload.ts` の zod refine と同一ロジックを共有するため export する。
+ *
+ * バケット検査は `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` が設定されている環境でのみ有効。
+ * 未設定時は従来どおり host のみで判定する（フォールバック）。
  */
 export function isAllowedBgImageUrl(url: string): boolean {
   let parsed: URL;
@@ -53,7 +99,10 @@ export function isAllowedBgImageUrl(url: string): boolean {
     return false;
   }
   if (parsed.protocol !== "https:") return false;
-  return BG_IMAGE_URL_HOST_ALLOWLIST.has(parsed.hostname);
+  if (!BG_IMAGE_URL_HOST_ALLOWLIST.has(parsed.hostname)) return false;
+  const expected = expectedStorageBucket();
+  if (expected === null) return true;
+  return extractBucket(parsed) === expected;
 }
 
 export async function fetchAsDataUri(
