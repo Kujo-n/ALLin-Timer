@@ -1,7 +1,6 @@
 "use client";
 
 import type { AuthCredential } from "firebase/auth";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { DisplayNameField } from "@/components/auth/DisplayNameField";
@@ -26,15 +25,12 @@ import {
   joinAsGuest,
   joinAsNewUser,
   joinViaGoogle,
-  type AutoJoinFeedback,
   type ReceiptOutcome,
-  type ReceiptResult,
 } from "@/lib/services/receipt";
 
+import { JoinResultCard, type JoinStatus } from "./_components/JoinResultCard";
+
 type Tab = "login" | "guest" | "register";
-type Status =
-  | { kind: "joined"; result: ReceiptResult; autoJoin: AutoJoinFeedback | null }
-  | { kind: "cancelled" };
 
 const TAB_LABELS: [Tab, string][] = [
   ["guest", "ゲスト"],
@@ -49,7 +45,7 @@ export function JoinClient({ tid }: { tid: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [status, setStatus] = useState<Status | null>(null);
+  const [status, setStatus] = useState<JoinStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [tournament, setTournament] = useState<TournamentDoc | null>(null);
@@ -258,90 +254,23 @@ export function JoinClient({ tid }: { tid: string }) {
   }
 
   if (status) {
-    const title =
-      status.kind === "joined"
-        ? status.result === "already-joined"
-          ? "既に参加済みです"
-          : "受付完了"
-        : "参加を取り消しました";
-    // Phase 5.1: 匿名ゲストには `/live` への遷移ボタンを出さない設計（動線完結）。
-    const isAnon = !!user?.isAnonymous;
-    const description =
-      status.kind === "joined"
-        ? isAnon
-          ? "受付が完了しました。会場の運営 PC / 大画面でブラインドや席表をご確認ください。"
-          : "運営者が席決めするまでお待ちください。"
-        : "再度参加したい場合は、下のボタンから受付画面に戻ってください。";
-    const autoJoin = status.kind === "joined" ? status.autoJoin : null;
-    // refreshGroups 後の context から名前を引く。補修失敗などで引けない場合は
-    // 汎用文言に fallback する（サークル名は必須情報ではない）。
-    const joinedGroupName =
-      autoJoin !== null ? (groups.find((g) => g.id === autoJoin.gid)?.name ?? null) : null;
     return (
-      <main className="mx-auto max-w-md space-y-4 p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {tournament ? <p>トーナメント: {tournament.name}</p> : null}
-            {autoJoin?.status === "joined" ? (
-              <p
-                role="status"
-                className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-100"
-              >
-                {joinedGroupName
-                  ? `${joinedGroupName} のメンバーになりました。`
-                  : "サークルのメンバーになりました。"}
-              </p>
-            ) : null}
-            {autoJoin?.status === "failed" ? (
-              <p className="text-xs text-muted-foreground">
-                サークルへの登録は完了していません。次回の受付時に自動で再試行されます。
-              </p>
-            ) : null}
-            {error ? (
-              <p className="text-destructive" role="alert">
-                {error}
-              </p>
-            ) : null}
-            {status.kind === "joined" ? (
-              <div className="flex flex-col gap-2">
-                {!isAnon ? (
-                  <Link href={`/tournaments/${tid}/live`}>
-                    <Button size="sm" className="w-full">
-                      タイマー画面へ
-                    </Button>
-                  </Link>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={submitting}
-                  onClick={() => {
-                    void onCancelOwnEntry();
-                  }}
-                >
-                  {submitting ? "取消中…" : "参加を取り消す"}
-                </Button>
-              </div>
-            ) : null}
-            {status.kind === "cancelled" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStatus(null);
-                  setError(null);
-                }}
-              >
-                受付画面に戻る
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
-      </main>
+      <JoinResultCard
+        tid={tid}
+        status={status}
+        tournament={tournament}
+        groups={groups}
+        isAnon={!!user?.isAnonymous}
+        submitting={submitting}
+        error={error}
+        onCancelEntry={() => {
+          void onCancelOwnEntry();
+        }}
+        onBackToForm={() => {
+          setStatus(null);
+          setError(null);
+        }}
+      />
     );
   }
 
