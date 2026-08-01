@@ -10,6 +10,16 @@ import type { APIRequestContext } from "@playwright/test";
 
 // playwright.config.ts と global-setup.ts でも参照する単一真実源。
 export const E2E_PROJECT_ID = "allin-pokertimer-e2e";
+
+/**
+ * E2E で dev server に注入される `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+ * （playwright.config.ts の同名 env と一致させる）。
+ *
+ * OG route の背景画像 allowlist（`isAllowedBgImageUrl`）は host に加えて
+ * **バケット一致**まで検査するため、spec 側で「allowlist を通る URL」を組み立てるには
+ * この値が必要になる（architect-refactor 20260801 finding-2）。
+ */
+export const E2E_STORAGE_BUCKET = `${E2E_PROJECT_ID}.appspot.com`;
 const AUTH_EMULATOR = "http://127.0.0.1:9099";
 const FIRESTORE_EMULATOR = "http://127.0.0.1:8080";
 

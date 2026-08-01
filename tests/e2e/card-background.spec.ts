@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures/test-context";
-import { getDocument } from "./fixtures/emulator";
+import { E2E_STORAGE_BUCKET, getDocument } from "./fixtures/emulator";
 import {
   createGroup,
   randomOrganizer,
@@ -10,9 +10,12 @@ import {
  * Phase A.3 (05-post-launch-polish Track A): 結果カード背景画像の通し検証。
  *
  * カバレッジ:
- *   1. OG route HTTP 層 — `/api/og/winner/[tid]?bgImageUrl=<Firebase Storage host>` で
- *      200 + image/png を返す（host allowlist 経由のフェッチが失敗してもグラデ fallback
+ *   1. OG route HTTP 層 — `/api/og/winner/[tid]?bgImageUrl=<自バケットの Storage URL>` で
+ *      200 + image/png を返す（allowlist を通ったフェッチが失敗してもグラデ fallback
  *      で render が止まらないことの回帰検出）
+ *   1'. 同 HTTP 層 — 他プロジェクトのバケットの URL は 400 で拒否される
+ *      （architect-refactor 20260801 finding-2: allowlist は host に加えてバケット一致まで
+ *       検査する。未認証 OG route が任意の公開 GCS オブジェクトの画像プロキシ化するのを防ぐ）
  *   2. UI 経路 — owner が settings タブを開き、ファイル入力に小さな PNG を流し込み、
  *      「保存」 → groups doc に `winnerCardBackground.imageUrl` が反映され、preview に
  *      画像が描画されることを確認
@@ -57,25 +60,36 @@ function readWinnerCardBgImageUrl(
 }
 
 test.describe("Phase A.3: card background — readability layer & dialog", () => {
-  test("/api/og/winner/[tid] が bgImageUrl 経由でも 200 + image/png を返す（fetch 失敗 → グラデ fallback の回帰検出）", async ({
-    request,
-  }) => {
-    // ホスト allowlist は通過するが実体が存在しない URL を渡し、fetchAsDataUri が
-    // AppError を throw → OG route がグラデ fallback で 200 を返すことを assert する。
-    // host allowlist 自体の deny 検証は og-image-fetch.test.ts に分担し、本 E2E は
-    // 「fetch 失敗で render が止まらない」ことの観測点に絞る。
-    const unreachableUrl =
-      "https://firebasestorage.googleapis.com/v0/b/nonexistent/o/missing.jpg?alt=media";
-    const sp = new URLSearchParams({
+  /** winner OG route の共通クエリ（bgImageUrl 以外は固定）。 */
+  function winnerQuery(bgImageUrl: string): string {
+    return new URLSearchParams({
       winnerName: "Bob",
       tournamentName: "Sample",
       participants: "8",
       finishedAtLabel: "2026/5/12",
       filename: "winner-sample",
-      bgImageUrl: unreachableUrl,
+      bgImageUrl,
       bgTextTheme: "light",
-    });
-    const res = await request.get(`/api/og/winner/dummy-tid?${sp.toString()}`);
+    }).toString();
+  }
+
+  test("/api/og/winner/[tid] が bgImageUrl 経由でも 200 + image/png を返す（fetch 失敗 → グラデ fallback の回帰検出）", async ({
+    request,
+  }) => {
+    // allowlist（host + バケット一致）は通過するが実体が存在しない URL を渡し、
+    // fetchAsDataUri が AppError を throw → OG route がグラデ fallback で 200 を返すことを
+    // assert する。allowlist 判定そのものの網羅は og-image-fetch.test.ts に分担し、
+    // 本 E2E は「fetch 失敗で render が止まらない」ことの観測点に絞る。
+    //
+    // ⚠ バケットは E2E_STORAGE_BUCKET（= playwright.config.ts が dev server に注入する
+    //   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET）と一致させる必要がある。
+    //   architect-refactor 20260801 finding-2 で allowlist がバケット一致まで検査するように
+    //   なったため、任意のバケット名だと fetch に到達する前に schema で 400 になる
+    //   （= 本 test が検証したい「fetch 失敗」経路に入らない）。
+    const unreachableUrl = `https://firebasestorage.googleapis.com/v0/b/${E2E_STORAGE_BUCKET}/o/missing.jpg?alt=media`;
+    const res = await request.get(
+      `/api/og/winner/dummy-tid?${winnerQuery(unreachableUrl)}`,
+    );
     expect(res.status(), `body=${await res.text()}`).toBe(200);
     expect(res.headers()["content-type"]).toContain("image/png");
     const body = await res.body();
@@ -83,6 +97,25 @@ test.describe("Phase A.3: card background — readability layer & dialog", () =>
     expect(body[1]).toBe(0x50);
     expect(body[2]).toBe(0x4e);
     expect(body[3]).toBe(0x47);
+  });
+
+  test("/api/og/winner/[tid] は他プロジェクトのバケットの bgImageUrl を 400 で拒否する", async ({
+    request,
+  }) => {
+    // architect-refactor 20260801 finding-2: host allowlist だけでは
+    // storage.googleapis.com / firebasestorage.googleapis.com が GCS 全体で共有される
+    // マルチテナントホストのため、未認証の OG route が「任意の公開 GCS オブジェクトを
+    // 取得して PNG に埋め込む汎用画像プロキシ」として第三者に利用できてしまう。
+    // バケット一致検査が本番相当の env（bucket 設定済み）で効いていることを HTTP 層で確認する。
+    for (const foreignUrl of [
+      "https://firebasestorage.googleapis.com/v0/b/someone-else.appspot.com/o/x.jpg?alt=media",
+      "https://storage.googleapis.com/someone-else-bucket/x.png",
+    ]) {
+      const res = await request.get(
+        `/api/og/winner/dummy-tid?${winnerQuery(foreignUrl)}`,
+      );
+      expect(res.status(), `url=${foreignUrl} body=${await res.text()}`).toBe(400);
+    }
   });
 
   test("owner が settings タブで背景画像を upload → groups doc に imageUrl が反映 + プレビューに img が出る", async ({
