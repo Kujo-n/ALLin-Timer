@@ -5,7 +5,8 @@ import { seedOrganizerTournament, randomOrganizer } from "./fixtures/flows";
  * Phase 4.5: Email Link サインイン方式を撤廃した後の回帰テスト。
  *   - `/auth/email-link` へ直接アクセスで 404
  *   - `/login` タブは「ログイン」「新規登録」のみ（「メールリンク」不在）
- *   - `/join/[tid]` タブは「ゲスト」「ログイン」のみ（「メール登録」不在）
+ *   - `/join/[tid]` タブは「ゲスト」「ログイン」「新規登録」（「メールリンク」/「メール登録」不在）
+ *     ※「新規登録」タブは 08-auto-group-join-on-entry Phase 3 で追加（Email Link とは別方式）
  */
 
 test.describe("Email Link 撤廃", () => {
@@ -47,7 +48,7 @@ test.describe("Email Link 撤廃", () => {
     await expect(page.getByRole("alert").filter({ hasText: "表示名" })).toBeVisible();
   });
 
-  test("/join/[tid] has only guest + login tabs (no email tab)", async ({
+  test("/join/[tid] has guest + login + register tabs (no email link tab)", async ({
     page,
     joinPage,
   }) => {
@@ -65,7 +66,11 @@ test.describe("Email Link 撤廃", () => {
 
     await expect(guestPage.getByRole("tab", { name: "ゲスト" })).toBeVisible();
     await expect(guestPage.getByRole("tab", { name: "ログイン" })).toBeVisible();
+    // 08-auto-group-join-on-entry Phase 3 で追加した受付画面内の新規アカウント作成タブ。
+    await expect(guestPage.getByRole("tab", { name: "新規登録" })).toBeVisible();
+    // 旧 Email Link 方式のタブは復活していない
     await expect(guestPage.getByRole("tab", { name: "メール登録" })).toHaveCount(0);
+    await expect(guestPage.getByRole("tab", { name: "メールリンク" })).toHaveCount(0);
 
     // 未使用だが POM 参照して他パスの回帰も検証可能にしておく。
     void guestJoinPage;

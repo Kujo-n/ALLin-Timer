@@ -168,4 +168,50 @@ test.describe("受付によるサークル自動所属", () => {
     await detail.selectTab("members");
     await expect(page.getByRole("listitem").filter({ hasText: "ゲストA" })).toHaveCount(0);
   });
+
+  test("受付画面の「新規登録」タブでアカウントを作ってメンバーになる", async ({
+    page,
+    groupDetailPage,
+  }) => {
+    const { gid, tid } = await seedOwnerTournament(page, "owner4");
+
+    const browser = page.context().browser();
+    if (!browser) throw new Error("browser unavailable");
+    // 未サインインの端末から、受付画面だけでアカウント作成 → 受付 → 自動所属まで完結させる。
+    // `registerOrganizer` は使わない（`/login` を経由しないことが本テストの主旨）。
+    const newUserCtx = await browser.newContext();
+    const newUser = randomOrganizer("newbie");
+    try {
+      const joinPage = await newUserCtx.newPage();
+      await joinPage.goto(`/join/${tid}`);
+      await joinPage.getByRole("tab", { name: "新規登録" }).click();
+      await joinPage.getByLabel("表示名").fill(newUser.displayName);
+      await joinPage.getByLabel("メールアドレス").fill(newUser.email);
+      await joinPage.getByLabel("パスワード").fill(newUser.password);
+      await joinPage.getByRole("button", { name: "登録して受付" }).click();
+
+      // Cold emulator では auth 作成 + 複数 Firestore write が走るため 30s 許容。
+      await expect(joinPage.getByText("受付完了")).toBeVisible({ timeout: 30_000 });
+      await expect(joinPage.getByText(`${GROUP_NAME} のメンバーになりました。`)).toBeVisible({
+        timeout: 15_000,
+      });
+
+      // フルリロード後も（= Firestore に永続化された状態で）サークルが見える
+      await joinPage.goto("/groups");
+      await expect(joinPage.locator("#main").getByText(GROUP_NAME)).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      await newUserCtx.close();
+    }
+
+    // owner 側のメンバー一覧にも現れる（招待コード未使用）
+    const detail = groupDetailPage(gid);
+    await detail.goto();
+    await detail.expectLoaded();
+    await detail.selectTab("members");
+    await expect(page.getByRole("listitem").filter({ hasText: newUser.displayName })).toBeVisible({
+      timeout: 15_000,
+    });
+  });
 });

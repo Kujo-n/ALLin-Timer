@@ -12,7 +12,8 @@ export class JoinPage extends BasePage {
 
   readonly guestTab: Locator = this.page.getByRole("tab", { name: "ゲスト" });
   readonly loginTab: Locator = this.page.getByRole("tab", { name: "ログイン" });
-  readonly emailTab: Locator = this.page.getByRole("tab", { name: "メール登録" });
+  // 08-auto-group-join-on-entry Phase 3: 受付画面から新規アカウントを作るタブ。
+  readonly registerTab: Locator = this.page.getByRole("tab", { name: "新規登録" });
   readonly displayNameInput: Locator = this.page.getByLabel("表示名");
   readonly guestSubmitButton: Locator = this.page.getByRole("button", { name: /ゲストで受付/ });
   readonly cancelButton: Locator = this.page.getByRole("button", { name: /参加を取り消す/ });
