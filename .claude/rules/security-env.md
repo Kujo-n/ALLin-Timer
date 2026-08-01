@@ -20,7 +20,8 @@ applyOnPathsExclude:
 - **除外**: `**/*.test.{ts,tsx}`
 - **対象外（include に含まれない）**:
   - `src/lib/logger.ts` — `process.env.NODE_ENV` 等の非機密フラグ参照のみ
-  - `src/app/debug/**` — `NEXT_PUBLIC_ENABLE_DEBUG` 等のフィーチャフラグ参照のみ
+  - `src/app/api/og/_lib/og-image-fetch.ts` — `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` を
+    背景画像 URL の allowlist 判定に参照するのみ（公開値・秘密を持たない）
   - 新規に `process.env.*` を追加する場合は、本ファイルを Read してから作業すること
 
 ## 環境変数の管理

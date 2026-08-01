@@ -76,10 +76,10 @@ npm run dev
 ```
 
 - <http://localhost:3000/> で「ALLin-PokerTimer」見出しが表示されれば OK
-- <http://localhost:3000/debug/fs> で [書込] → [一覧] を押し、作成したドキュメント ID が表示されれば Firestore 疎通 OK
 - <http://localhost:3000/login> で新規登録 → <http://localhost:3000/structures/new> → <http://localhost:3000/tournaments/new> でトーナメント作成が可能
 
-> `/debug/fs` は Phase 1 の疎通確認用ページです。本番公開を避けるため `NEXT_PUBLIC_ENABLE_DEBUG=1` が設定されている環境でのみ表示されます（未設定なら 404）。Phase 5 で削除予定。
+> Firestore への疎通は上記の一連の操作（サークル作成 → ストラクチャ作成 → トーナメント作成）で確認できます。
+> 網羅的な確認は `npm run test:e2e`（Playwright + Emulator、35 spec）で行ってください。
 
 ### 運営者 / 参加者フロー（Phase 2.5）
 
@@ -266,9 +266,8 @@ Phase 4.8 でサークル横断の **Structure Templates**（`structureTemplates
 1. GitHub に本リポジトリを push
 2. [Vercel](https://vercel.com/) で「Import Git Repository」から選択
 3. 環境変数 `NEXT_PUBLIC_FIREBASE_*` と `NEXT_PUBLIC_LOG_LEVEL` を **Production / Preview** の両方に設定
-4. `NEXT_PUBLIC_ENABLE_DEBUG=1` は **Preview のみ**に設定（Production は未設定で放置）。これにより本番 URL では `/debug/fs` が 404 になる
-5. デプロイ後、Firebase Console → Authentication → 承認済みドメインに本番 URL を追加
-6. Vercel Preview URL の `/debug/fs` で動作確認（本番 URL ではなく）
+4. デプロイ後、Firebase Console → Authentication → 承認済みドメインに本番 URL を追加
+5. Vercel Preview URL で動作確認してから Production にマージする
 
 ## よく使うコマンド
 
@@ -338,7 +337,6 @@ Playwright + Firebase Emulator で統合テストを自動化している。`npm
 src/
 ├─ app/                           # Next.js App Router
 │  ├─ api/og/                     # Open Graph 画像生成 API Route（season / winner、Phase D Web Share 用）
-│  ├─ debug/fs/                   # Firestore 疎通確認（Phase 5 で削除、ENABLE_DEBUG ゲート）
 │  ├─ groups/                     # サークル一覧 / 作成 / 詳細 / 招待コードによる加入（Phase 2.5）
 │  │                              # / [gid]/audio-settings（サウンド設定、Phase 4.9）
 │  │                              # / [gid]/season（シーズンランキング、Phase A
@@ -457,7 +455,6 @@ tests/
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes  | 同上                                                                       |
 | `NEXT_PUBLIC_FIREBASE_APP_ID`              | Yes  | 同上                                                                       |
 | `NEXT_PUBLIC_LOG_LEVEL`                    | No   | ログレベル。`debug` / `info`（既定） / `warn` / `error`                    |
-| `NEXT_PUBLIC_ENABLE_DEBUG`                 | No   | `/debug/fs` を有効化（local dev と Preview のみ `1`、Production は未設定） |
 | `NEXT_PUBLIC_NOTE_INTRO_ARTICLE_URL`       | No   | トップ画面 `/` に表示するアプリ紹介記事の note URL（未設定なら非表示）     |
 | `NEXT_PUBLIC_NOTE_CIRCLE_SETUP_GUIDE_URL`  | No   | トップ画面 `/` に表示するサークル開設ガイド記事の note URL（未設定なら非表示） |
 | `NEXT_PUBLIC_NOTE_OPERATING_GUIDE_URL`     | No   | トップ画面 `/` に表示する運営ガイド記事の note URL（未設定なら非表示）     |
