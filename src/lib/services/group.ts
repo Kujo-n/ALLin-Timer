@@ -7,7 +7,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 
-import { AppError, getErrorCode } from "@/lib/errors";
+import { AppError, assertNonEmptyString, getErrorCode } from "@/lib/errors";
 import {
   MAX_SEATS_PER_TABLE,
   MAX_TABLES,
@@ -22,6 +22,7 @@ import {
   getGroup,
   groupDocRef,
   removeMemberSelf,
+  removeOtherMember,
   setMemberDisplayName,
   updateDefaultSeatsPerTable,
   updateDefaultTableSettings,
@@ -832,4 +833,55 @@ export async function demoteOwner({
     ownerUids: group.ownerUids.filter((u) => u !== targetUid),
   });
   logger.info("demote owner", { gid, actorUid, targetUid });
+}
+
+/**
+ * Phase 4 (08-auto-group-join-on-entry): owner が他メンバーをサークルから除外する。
+ *
+ * PRD 08 の自動所属（トーナメント受付でメンバーになる）の副作用 —— 誤参加者・
+ * 一見さんの滞留 —— に対する事後回収手段。rule 変更は不要で、owner-update 経路
+ * （`memberUids` を含むフル update）にそのまま乗る。
+ *
+ * ガード（すべて service + UI の二重防御）:
+ *   1. **自分自身は除外できない** — 脱退は `leaveGroup`（別導線）を使う。
+ *      オーナーが自分を消して owner 不在になる事故を防ぐ。
+ *   2. actor が owner であること（`assertOwner`）。organizer は不可。
+ *   3. 対象が既にメンバーでなければ **no-op で return**（冪等。多端末での二重押し対策）。
+ *   4. 対象が owner かつ owner が 1 人しかいない場合は deny。
+ *      （1. により actor ≠ target なので、target が owner なら owner は 2 人以上
+ *        存在するはず。到達しない防御だが `demoteOwner` と条件を揃えて明示する）
+ *
+ * ⚠ 除外対象の `users/{uid}.groupIds` は本人以外書き換えられないため stale が残る。
+ *   対象者のアプリ側で `GroupProvider` が `failedGids` として検出し自己修復する。
+ *   過去トーナメントの `players/{pid}` と `seasonStats/{uid}` は履歴として意図的に残す。
+ */
+export async function removeMemberByOwner({
+  gid,
+  actorUid,
+  targetUid,
+}: {
+  gid: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  assertNonEmptyString(gid, "gid");
+  assertNonEmptyString(actorUid, "actorUid");
+  assertNonEmptyString(targetUid, "targetUid");
+  if (actorUid === targetUid) {
+    throw new AppError(
+      "自分自身は除外できません。サークルを抜ける場合は「脱退」を使用してください",
+      "group/cannot-remove-self",
+    );
+  }
+  const group = await getGroup(gid);
+  assertOwner(group, actorUid);
+  if (!group.memberUids.includes(targetUid)) {
+    logger.info("remove member: already not a member", { gid, actorUid, targetUid });
+    return;
+  }
+  if (group.ownerUids.includes(targetUid) && group.ownerUids.length <= 1) {
+    throw new AppError("最後のオーナーは除外できません", "group/last-owner");
+  }
+  await removeOtherMember(gid, targetUid);
+  logger.info("remove member by owner ok", { gid, actorUid, targetUid });
 }

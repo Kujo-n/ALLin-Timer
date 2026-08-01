@@ -32,6 +32,7 @@ vi.mock("@/lib/firebase/repositories/groups", () => ({
   updateGroupName: vi.fn(),
   updateGroupRoles: vi.fn(),
   removeMemberSelf: vi.fn(),
+  removeOtherMember: vi.fn(),
   deleteGroup: vi.fn(),
   setMemberDisplayName: vi.fn(),
   updateFinishedTournamentCount: vi.fn(),
@@ -94,6 +95,7 @@ import {
   deleteGroup,
   getGroup,
   removeMemberSelf,
+  removeOtherMember,
   setMemberDisplayName,
   updateDefaultSeatsPerTable,
   updateDefaultTableSettings,
@@ -128,6 +130,7 @@ import {
   promoteToOrganizer,
   promoteToOwner,
   propagateDisplayNameToGroups,
+  removeMemberByOwner,
   renameGroup,
   setDefaultSeatsPerTable,
   setDefaultTableSettings,
@@ -191,6 +194,7 @@ beforeEach(() => {
   vi.mocked(createGroup).mockReset();
   vi.mocked(getGroup).mockReset();
   vi.mocked(removeMemberSelf).mockReset();
+  vi.mocked(removeOtherMember).mockReset();
   vi.mocked(deleteGroup).mockReset();
   vi.mocked(updateGroupName).mockReset();
   vi.mocked(updateGroupRoles).mockReset();
@@ -1613,6 +1617,123 @@ describe("demoteOwner", () => {
     await demoteOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
 
     expect(updateGroupRoles).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Phase 4 (08-auto-group-join-on-entry): owner による他メンバーの除外。
+ *
+ * 固定する仕様:
+ *   1. owner が他メンバーを除外すると repository の removeOtherMember が 1 回だけ呼ばれる
+ *      （ロール配列 3 本 + memberDisplayNames は repository 側で atomic に処理する）
+ *   2. 自己除外は `group/cannot-remove-self` で早期 throw（getGroup も呼ばない）
+ *   3. 非 owner（organizer）からの実行は `group/not-owner`
+ *   4. 最後のオーナーの除外は `group/last-owner`
+ *   5. 対象が既に非メンバーなら throw せず no-op（冪等）
+ *   6. 空文字引数は `validation/empty-string`
+ */
+describe("removeMemberByOwner", () => {
+  it("removes a plain member via removeOtherMember", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(removeOtherMember).mockResolvedValue();
+
+    await removeMemberByOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    expect(removeOtherMember).toHaveBeenCalledTimes(1);
+    expect(removeOtherMember).toHaveBeenCalledWith("g1", "u-target");
+  });
+
+  it("removes an organizer member with a single repository call", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-target"],
+        memberUids: ["u-owner", "u-target"],
+      }),
+    );
+    vi.mocked(removeOtherMember).mockResolvedValue();
+
+    await removeMemberByOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-target" });
+
+    // organizer 兼務でも service は 3 配列を組み立て直さない
+    // （repository の arrayRemove が role によらず一括で外す）。
+    expect(updateGroupRoles).not.toHaveBeenCalled();
+    expect(removeOtherMember).toHaveBeenCalledTimes(1);
+    expect(removeOtherMember).toHaveBeenCalledWith("g1", "u-target");
+  });
+
+  it("throws group/cannot-remove-self and does not read the group", async () => {
+    await expect(
+      removeMemberByOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-owner" }),
+    ).rejects.toMatchObject({ code: "group/cannot-remove-self" });
+    // 自己除外は getGroup の前で弾く（read を無駄に消費しないフェイルファスト）。
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(removeOtherMember).not.toHaveBeenCalled();
+  });
+
+  it("throws group/not-owner when actor is an organizer", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner", "u-actor"],
+        memberUids: ["u-owner", "u-actor", "u-target"],
+      }),
+    );
+
+    await expect(
+      removeMemberByOwner({ gid: "g1", actorUid: "u-actor", targetUid: "u-target" }),
+    ).rejects.toMatchObject({ code: "group/not-owner" });
+    expect(removeOtherMember).not.toHaveBeenCalled();
+  });
+
+  it("throws group/last-owner when target is the only owner", async () => {
+    // 到達不能だが防御として維持している分岐。actor ≠ target（ガード 1）かつ
+    // 両者が ownerUids に含まれるなら ownerUids.length >= 2 になるため、整合した
+    // fixture ではこの分岐に入れない。ここでは length は 1 のまま includes だけ
+    // 両者に true を返す矛盾 fixture で、ガードが生きていることだけを固定する。
+    const ownerUids: string[] = ["u-actor"];
+    ownerUids.includes = (u: string) => u === "u-actor" || u === "u-target";
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids,
+        organizerUids: ["u-actor", "u-target"],
+        memberUids: ["u-actor", "u-target"],
+      }),
+    );
+
+    await expect(
+      removeMemberByOwner({ gid: "g1", actorUid: "u-actor", targetUid: "u-target" }),
+    ).rejects.toMatchObject({ code: "group/last-owner" });
+    expect(removeOtherMember).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when target is not a member", async () => {
+    vi.mocked(getGroup).mockResolvedValue(
+      makeGroup({
+        ownerUids: ["u-owner"],
+        organizerUids: ["u-owner"],
+        memberUids: ["u-owner"],
+      }),
+    );
+
+    await expect(
+      removeMemberByOwner({ gid: "g1", actorUid: "u-owner", targetUid: "u-gone" }),
+    ).resolves.toBeUndefined();
+    expect(removeOtherMember).not.toHaveBeenCalled();
+  });
+
+  it("throws validation/empty-string for blank targetUid", async () => {
+    await expect(
+      removeMemberByOwner({ gid: "g1", actorUid: "u-owner", targetUid: "   " }),
+    ).rejects.toMatchObject({ code: "validation/empty-string" });
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(removeOtherMember).not.toHaveBeenCalled();
   });
 });
 
