@@ -4,15 +4,14 @@ import type { AuthCredential } from "firebase/auth";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { DisplayNameField } from "@/components/auth/DisplayNameField";
+import { EmailPasswordFields, PASSWORD_MIN_LENGTH } from "@/components/auth/EmailPasswordFields";
 import { GoogleIcon } from "@/components/auth/GoogleIcon";
 import { LinkAccountDialog } from "@/components/auth/LinkAccountDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import { useAuthUser } from "@/lib/firebase/AuthProvider";
-import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
 import { joinInputSchema } from "@/lib/firebase/schemas/player";
 import { getTournament } from "@/lib/firebase/repositories/tournaments";
 import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
@@ -21,19 +20,27 @@ import { AccountLinkRequired } from "@/lib/services/auth-actions";
 import { useCurrentGroup } from "@/lib/services/current-group";
 import {
   cancelOwnEntry,
+  EntryFailedAfterRegister,
   joinAsCurrentUser,
   joinAsExistingUser,
   joinAsGuest,
+  joinAsNewUser,
   joinViaGoogle,
   type AutoJoinFeedback,
   type ReceiptOutcome,
   type ReceiptResult,
 } from "@/lib/services/receipt";
 
-type Tab = "login" | "guest";
+type Tab = "login" | "guest" | "register";
 type Status =
   | { kind: "joined"; result: ReceiptResult; autoJoin: AutoJoinFeedback | null }
   | { kind: "cancelled" };
+
+const TAB_LABELS: [Tab, string][] = [
+  ["guest", "ゲスト"],
+  ["login", "ログイン"],
+  ["register", "新規登録"],
+];
 
 export function JoinClient({ tid }: { tid: string }) {
   const { user, loading: authLoading, refreshUser } = useAuthUser();
@@ -46,10 +53,32 @@ export function JoinClient({ tid }: { tid: string }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [tournament, setTournament] = useState<TournamentDoc | null>(null);
+  // M-3: アカウントだけ作られて受付が失敗した状態。復旧手順を案内するために保持する。
+  const [accountCreated, setAccountCreated] = useState(false);
   const [linkRequest, setLinkRequest] = useState<{
     email: string;
     credential: AuthCredential;
   } | null>(null);
+
+  // サインイン済み（非匿名）なら「ログイン」「新規登録」タブを畳む（レビュー M-4）。
+  // どちらも `signInWithEmailAndPassword` / `createUserWithEmailAndPassword` で
+  // **現在のセッションを差し替える**ため、上に出ている「このアカウントで受付」と衝突し、
+  // 誤タップで意図せずサインアウトされる。別アカウントを使いたい場合はログアウトが正規手順。
+  const isSignedInNonAnon = !!user && !user.isAnonymous;
+  // 匿名ゲストにはタブを残す（ゲスト受付後にアカウントへ移行したい需要があるため）が、
+  // 別 uid の参加者として二重登録されることを警告する（レビュー M-1）。
+  const isAnonGuest = !!user?.isAnonymous;
+  const visibleTabs: Tab[] = isSignedInNonAnon ? ["guest"] : ["guest", "login", "register"];
+
+  useEffect(() => {
+    // authLoading 中は user が null のため 3 タブが出る。認証確定でタブが消えたときに
+    // 「選択中タブの中身が消えて空白になる」のを防ぐ。
+    // error はここでは消さない — 「認証は通ったが受付で失敗した」直後にこの切替が走るため、
+    // 失敗理由まで消すと画面から原因が消える（手動のタブ切替でのみクリアする）。
+    if (isSignedInNonAnon && tab !== "guest") {
+      setTab("guest");
+    }
+  }, [isSignedInNonAnon, tab]);
 
   useEffect(() => {
     // user が居るタイミングで tournament を取得（rules が auth 必須のため）
@@ -108,6 +137,49 @@ export function JoinClient({ tid }: { tid: string }) {
       const outcome = await joinAsExistingUser({ tid, email, password });
       await applyReceiptOutcome(outcome);
     } catch (e) {
+      wrapError(e);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onRegisterSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setAccountCreated(false);
+    // 表示名はサーバ往復・アカウント作成の前に弾く（ゲストタブと同じ扱い）。
+    const parsed = joinInputSchema.safeParse({ tid, displayName });
+    if (!parsed.success) {
+      setError(`validation/join: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const outcome = await joinAsNewUser({
+        tid,
+        email,
+        password,
+        displayName: parsed.data.displayName,
+      });
+      // register 内の updateProfile 直後は onAuthStateChanged が再発火しないため、
+      // AuthBadge 等のヘッダ表示を即更新する（ゲスト受付と同じ理由）。
+      refreshUser();
+      await applyReceiptOutcome(outcome);
+    } catch (e) {
+      if (e instanceof EntryFailedAfterRegister) {
+        // アカウント作成は成功済み。同じメールでの再登録は auth/already-exists で
+        // 弾かれるため、復旧手順（ログインタブでの再試行）を明示する（M-3）。
+        setAccountCreated(true);
+        wrapError(e);
+        return;
+      }
+      if (e instanceof AppError && e.code === "auth/already-exists") {
+        // 内側の wrapAuthError で warn 済み。二重 warn を避けて文言だけ差し替える。
+        setError(
+          "このメールアドレスは既に登録されています。「ログイン」タブから受付してください。",
+        );
+        return;
+      }
       wrapError(e);
     } finally {
       setSubmitting(false);
@@ -295,6 +367,9 @@ export function JoinClient({ tid }: { tid: string }) {
               >
                 {submitting ? "処理中…" : "このアカウントで受付"}
               </Button>
+              <p className="text-xs text-muted-foreground">
+                別のアカウントで受付する場合は、先にログアウトしてください。
+              </p>
             </div>
           ) : (
             <Button
@@ -311,13 +386,23 @@ export function JoinClient({ tid }: { tid: string }) {
             </Button>
           )}
 
+          {/* M-3: アカウントだけ作られて受付が失敗した状態の復旧案内。
+              register 成功で user が確定するとタブが「ゲスト」だけに畳まれるため、
+              フォーム内ではなくカード直下に置いて残す。 */}
+          {accountCreated ? (
+            <p
+              role="status"
+              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100"
+            >
+              アカウントの作成は完了しています。受付だけが失敗したため、
+              {isSignedInNonAnon
+                ? "上の「このアカウントで受付」からやり直してください。"
+                : "「ログイン」タブから同じメールアドレスで受付をやり直してください。"}
+            </p>
+          ) : null}
+
           <div role="tablist" className="flex gap-1 border-b text-sm">
-            {(
-              [
-                ["guest", "ゲスト"],
-                ["login", "ログイン"],
-              ] as [Tab, string][]
-            ).map(([value, label]) => (
+            {TAB_LABELS.filter(([value]) => visibleTabs.includes(value)).map(([value, label]) => (
               <button
                 key={value}
                 role="tab"
@@ -325,6 +410,7 @@ export function JoinClient({ tid }: { tid: string }) {
                 onClick={() => {
                   setTab(value);
                   setError(null);
+                  setAccountCreated(false);
                 }}
                 className={`border-b-2 px-3 py-2 ${
                   tab === value
@@ -337,21 +423,20 @@ export function JoinClient({ tid }: { tid: string }) {
             ))}
           </div>
 
+          {isAnonGuest && tab !== "guest" ? (
+            <p
+              role="status"
+              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100"
+            >
+              いまはゲスト（匿名）で利用中です。ここでログイン／登録すると
+              <strong className="font-medium">別の参加者として受付されます</strong>。
+              ゲストで受付済みの場合は、先に参加を取り消してください。
+            </p>
+          ) : null}
+
           {tab === "guest" ? (
             <form onSubmit={onGuestSubmit} className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="g-name">表示名</Label>
-                <Input
-                  id="g-name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                  maxLength={DISPLAY_NAME_MAX_LENGTH}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {DISPLAY_NAME_MAX_LENGTH} 文字以内で入力してください。
-                </p>
-              </div>
+              <DisplayNameField id="g-name" value={displayName} onChange={setDisplayName} />
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? "処理中…" : "ゲストで受付"}
               </Button>
@@ -363,31 +448,38 @@ export function JoinClient({ tid }: { tid: string }) {
 
           {tab === "login" ? (
             <form onSubmit={onLoginSubmit} className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="l-email">メールアドレス</Label>
-                <Input
-                  id="l-email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="l-password">パスワード</Label>
-                <Input
-                  id="l-password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
+              <EmailPasswordFields
+                idPrefix="l"
+                mode="login"
+                email={email}
+                password={password}
+                onEmailChange={setEmail}
+                onPasswordChange={setPassword}
+              />
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? "処理中…" : "ログインして受付"}
               </Button>
+            </form>
+          ) : null}
+
+          {tab === "register" ? (
+            <form onSubmit={onRegisterSubmit} className="space-y-3">
+              <DisplayNameField id="r-name" value={displayName} onChange={setDisplayName} />
+              <EmailPasswordFields
+                idPrefix="r"
+                mode="register"
+                email={email}
+                password={password}
+                onEmailChange={setEmail}
+                onPasswordChange={setPassword}
+                passwordMinLength={PASSWORD_MIN_LENGTH}
+              />
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? "処理中…" : "登録して受付"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                アカウントを作ると、次回以降も同じアカウントで参加できます。
+              </p>
             </form>
           ) : null}
 
