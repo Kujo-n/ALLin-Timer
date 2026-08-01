@@ -45,7 +45,7 @@ We'll know we're right when **次回開催で招待コードを 1 回も配ら�
 - [ ] **除名後の `users/{uid}.groupIds` 残留**: owner は他人の `users/{uid}` を書けないため、除名しても対象者の `groupIds` に gid が残る（`deleteGroupByOwner` と同じ既知の制約）。[listMyGroups](../../../../src/lib/firebase/repositories/groups.ts#L119) は read 失敗を `failedGids` として warn + skip する耐性があるため実害は限定的だが、**除名された人が再受付したときに「既メンバー」と誤判定されないか**を実装で担保する必要がある（後述の membership probe 設計で解決する想定 → 実装時に検証）。
 - [ ] **`joinedViaTournamentId` は最後の加入者の tid で上書きされる**（`joinCodeId` と同じ性質）。監査ログ用途には使えない。誰がどのトーナメント経由で入ったかを残す需要が出たら別途設計が必要。
 - [ ] **rule 側の受付可能 state ガードを入れるか**: `players` doc の存在だけを条件にすると、終了済みトーナメントの過去参加者が後からいつでも自動加入できる。service 層は `assertAcceptingEntries` で既に塞いでいるため、rule にも同じ 4 state（`setup` / `seating` / `running` / `paused`）ガードを入れる方針で計画するが、その場合 [tournament-state.ts](../../../../src/lib/services/tournament-state.ts) の `isAcceptingProxyEntry` との**手動同期リテラルが 1 つ増える**（drift リスク）。Phase 1 の実装判断で最終確定する。
-- [ ] **受付画面の新規メール登録タブ**（Q3 で追加を決定）: 既存の `/login` 登録フォームとの UI 重複をどう整理するか（共通コンポーネント抽出 or 受付画面専用の簡易版）。Phase 3 で判断。
+- [x] **受付画面の新規メール登録タブ**（Q3 で追加を決定）: 既存の `/login` 登録フォームとの UI 重複は **共通コンポーネント抽出**で解消する（`DisplayNameField` / `EmailPasswordFields` を `src/components/auth/` に新設し、`/login` と `/join/[tid]` の双方から利用）。抽出の粒度は「入力欄（Label + Input + hint）」に留め、`/login` 固有の外側レイアウト（表示名の枠囲みボックス・区切り線・Google ボタン配置）は抽出対象外として見た目を等価に保つ。（Phase 3 で決定）
 
 ---
 
@@ -158,7 +158,7 @@ When **会場で受付をするとき**, I want to **QR を 1 枚読むだけで
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 自動所属 データ層 | rule 新ブランチ＋`joinedViaTournamentId` schema、`joinGroupViaTournament` service、emulator validator | complete | with 4 | - | [phase-1-auto-join-data-layer.plan.md](../plans/completed/phase-1-auto-join-data-layer.plan.md) ／ [実装レポート](../reports/phase-1-auto-join-data-layer-report.md) |
 | 2 | 受付フロー統合 | `receipt.ts` の 4 経路に自動所属を接続、完了画面フィードバック、group コンテキスト反映 | complete | with 4 | 1 | [phase-2-receipt-flow-integration.plan.md](../plans/completed/phase-2-receipt-flow-integration.plan.md) ／ [実装レポート](../reports/phase-2-receipt-flow-integration-report.md) |
-| 3 | 受付画面の新規登録タブ | `/join/[tid]` にメール新規登録タブを追加し、自動所属と接続 | pending | - | 2 | - |
+| 3 | 受付画面の新規登録タブ | `/join/[tid]` にメール新規登録タブを追加し、自動所属と接続 | complete | - | 2 | [phase-3-join-register-tab.plan.md](../plans/completed/phase-3-join-register-tab.plan.md) ／ [実装レポート](../reports/phase-3-join-register-tab-report.md) |
 | 4 | メンバー除名 UI | オーナーがメンバーを除名できる service + サークル詳細 UI（rule 変更なし） | in-progress | with 1, 2 | - | [phase-4-member-removal-ui.plan.md](../plans/phase-4-member-removal-ui.plan.md) |
 
 ### Phase Details
@@ -210,6 +210,8 @@ When **会場で受付をするとき**, I want to **QR を 1 枚読むだけで
 | 除名 UI | 本 PRD に含める（Phase 4） | 別 PRD に切る | ユーザー回答 Q4(a)。自動所属の許容条件（Q7「後で削除できれば問題なし」）そのもの |
 | 招待コード導線 | 残す | 廃止する | ユーザー回答 Q5(a)。トーナメント外での加入・運営スタッフ招集に必要 |
 | 受付画面の新規メール登録 | タブを追加する | Google のみで済ませる | ユーザー回答 Q3(a)。Google を持たない参加者の受け皿 |
+| 受付画面と `/login` の登録フォーム共通化（Phase 3） | 共通コンポーネント抽出（`DisplayNameField` / `EmailPasswordFields`） | 受付画面専用の簡易フォーム | 入力欄の重複が 3 callsite に及ぶため。外側レイアウトは抽出せず `/login` の見た目を等価に保つことで回帰リスクを抑える |
+| 受付画面の既定タブ（Phase 3） | ゲストのまま | 新規登録を既定にする | 当日の最速動線（匿名受付）を維持し、既存 UX / E2E を非回帰にする。新規登録は 1 タップで到達できる |
 | 集約方式 | クライアント直書き + Security Rules 防御 | Cloud Functions 化 | 既存方針踏襲（PRD 07 と同じ）。将来課題 |
 
 ---

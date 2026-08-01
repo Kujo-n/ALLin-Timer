@@ -136,8 +136,9 @@ emulator validation: [scripts/test-rules-tournament-join.mjs](../../scripts/test
 
 **アプリ側の呼出経路（Phase 2）**: `joinGroupViaTournament`（services/auto-group-join.ts）を
 呼ぶのは [receipt.ts](../../src/lib/services/receipt.ts) の内部 helper `receiveEntry` **のみ**。
-`joinAsExistingUser` / `joinViaGoogle` / `joinAsCurrentUser` の 3 経路がこれを通り、
-**`joinAsGuest`（匿名）だけが通らない**（rule の `isSignedInNotAnon()` と併せた二重防御）。
+`joinAsExistingUser` / `joinViaGoogle` / `joinAsCurrentUser` / `joinAsNewUser`（Phase 3）の
+4 経路がこれを通り、**`joinAsGuest`（匿名）だけが通らない**
+（rule の `isSignedInNotAnon()` と併せた二重防御）。
 
 - **順序**: `ensurePlayerCreated`（player doc 作成）→ `joinGroupViaTournament`。
   rule の `hasTournamentEntryProof` が player doc の存在を前提にするため逆順は必ず deny
@@ -148,8 +149,30 @@ emulator validation: [scripts/test-rules-tournament-join.mjs](../../scripts/test
   `setCurrentGroupId` + `refreshGroups` で group コンテキストへ即反映する
   （`already-member` でも `refreshGroups` のみ実行 — `users/{uid}.groupIds` の補修を一覧へ反映するため）
 
-⚠ DRIFT WARNING: 受付経路を追加する場合（Phase 3 の新規メール登録タブなど）は、
-**`receiveEntry` を経由させる**こと。`ensurePlayerCreated` を直接呼ぶと自動所属が抜ける。
+⚠ DRIFT WARNING: 受付経路を追加する場合は **`receiveEntry` を経由させる**こと。
+`ensurePlayerCreated` を直接呼ぶと自動所属が抜ける。
+Phase 3 の新規登録タブ（`joinAsNewUser` = `registerWithEmail` → `receiveEntry`）が
+この規約に沿った先例。
+
+### 受付画面（`/join/[tid]`）の認証タブ表示条件（Phase 3 レビュー M-1 / M-4）
+
+「ゲスト」「ログイン」「新規登録」タブはいずれも **現在の Firebase Auth セッションを
+差し替える**（`signInAnonymously` / `signInWithEmailAndPassword` /
+`createUserWithEmailAndPassword` はどれも link ではなく再サインイン）。
+uid が変わると `players/{uid}` が別 doc として作られるため、**同一人物が参加者一覧に
+二重で並ぶ**。これを UI 側で抑止する規約:
+
+| 認証状態 | 表示するタブ | 補足 |
+| --- | --- | --- |
+| 未サインイン | ゲスト / ログイン / 新規登録 | 既定は「ゲスト」（当日の最速動線） |
+| 匿名（ゲスト受付済みを含む） | 3 つすべて | ログイン / 新規登録タブ選択時に「別の参加者として受付されます」と警告する |
+| 通常アカウントでサインイン済み | **ゲストのみ** | ログイン / 新規登録は畳む。別アカウントを使う場合はログアウトが正規手順 |
+
+匿名でタブを残すのは「ゲスト受付した人が後からアカウントへ移行したい」需要があるため。
+根本解決（匿名セッションの `linkWithCredential` への移行）は別 PRD 課題。
+
+⚠ DRIFT WARNING: 受付画面に認証タブを追加する場合は上表の分岐に必ず載せること。
+`user` の匿名判定を落とすと二重登録の導線が復活する。
 
 ## ロール定義（Phase 4.6）
 
