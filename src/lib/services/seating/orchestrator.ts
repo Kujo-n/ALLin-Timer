@@ -16,7 +16,12 @@ import {
 import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
 import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
 import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
-import { loadTournamentInTx, playerFromSnap } from "@/lib/firebase/tx-helpers";
+import {
+  checkPlayerMoveGuard,
+  expectedLastMovedAtMs,
+  loadTournamentInTx,
+  playerFromSnap,
+} from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { MAX_SEATS_PER_TABLE } from "@/lib/limits";
 import { logger } from "@/lib/logger";
@@ -711,31 +716,13 @@ async function applyCascadeMoves(
           })),
         );
         for (const { move, snap } of freshCascade) {
-          const fresh = playerFromSnap(snap);
-          if (!fresh) {
-            skipReason = `missing:${move.playerId}`;
-            return;
-          }
-          if (fresh.isBusted) {
-            skipReason = `busted:${move.playerId}`;
-            return;
-          }
-          if (
-            fresh.tableNum !== move.from.tableNum ||
-            fresh.seatNum !== move.from.seatNum
-          ) {
-            skipReason = `moved:${move.playerId}`;
-            return;
-          }
-          const expected = players.find((p) => p.id === move.playerId);
-          const expectedMs = expected?.lastMovedAt
-            ? expected.lastMovedAt.toMillis()
-            : null;
-          const actualMs = fresh.lastMovedAt
-            ? fresh.lastMovedAt.toMillis()
-            : null;
-          if (actualMs !== expectedMs) {
-            skipReason = `race:${move.playerId}`;
+          const guard = checkPlayerMoveGuard(
+            snap,
+            move.from,
+            expectedLastMovedAtMs(players, move.playerId),
+          );
+          if (!guard.ok) {
+            skipReason = `${guard.reason}:${move.playerId}`;
             return;
           }
         }
@@ -793,10 +780,7 @@ async function applySingleMove(
   // 手動 D&D は「想定外を是正」する自由移動なので diff 検証はしない。
   verifyBalancingDiff: boolean = true,
 ): Promise<ApplyBalancingResult> {
-  const expected = players.find((p) => p.id === move.playerId);
-  const expectedLastMovedAtMs = expected?.lastMovedAt
-    ? expected.lastMovedAt.toMillis()
-    : null;
+  const expectedMs = expectedLastMovedAtMs(players, move.playerId);
 
   // 移動先卓の既存プレイヤー ID（H2 と同じ seat 占有再検証）。
   const targetTableExistingIds = players
@@ -820,23 +804,9 @@ async function applySingleMove(
         await loadTournamentInTx(tx, tid, userGroupIds);
 
         const pRef = doc(playersRef(tid), move.playerId);
-        const pSnap = await tx.get(pRef);
-        const p = playerFromSnap(pSnap);
-        if (!p) {
-          skipReason = "missing";
-          return;
-        }
-        if (p.isBusted) {
-          skipReason = "busted";
-          return;
-        }
-        if (p.tableNum !== move.from.tableNum || p.seatNum !== move.from.seatNum) {
-          skipReason = "moved";
-          return;
-        }
-        const actualMs = p.lastMovedAt ? p.lastMovedAt.toMillis() : null;
-        if (actualMs !== expectedLastMovedAtMs) {
-          skipReason = "race";
+        const guard = checkPlayerMoveGuard(await tx.get(pRef), move.from, expectedMs);
+        if (!guard.ok) {
+          skipReason = guard.reason;
           return;
         }
 
@@ -939,24 +909,13 @@ async function applyTableBreak(
           }),
         );
         for (const { move, snap } of freshPlayers) {
-          const fresh = playerFromSnap(snap);
-          if (!fresh) {
-            skipReason = `missing:${move.playerId}`;
-            return;
-          }
-          if (fresh.isBusted) {
-            skipReason = `busted:${move.playerId}`;
-            return;
-          }
-          if (fresh.tableNum !== move.from.tableNum || fresh.seatNum !== move.from.seatNum) {
-            skipReason = `moved:${move.playerId}`;
-            return;
-          }
-          const expected = players.find((p) => p.id === move.playerId);
-          const expectedMs = expected?.lastMovedAt ? expected.lastMovedAt.toMillis() : null;
-          const actualMs = fresh.lastMovedAt ? fresh.lastMovedAt.toMillis() : null;
-          if (actualMs !== expectedMs) {
-            skipReason = `race:${move.playerId}`;
+          const guard = checkPlayerMoveGuard(
+            snap,
+            move.from,
+            expectedLastMovedAtMs(players, move.playerId),
+          );
+          if (!guard.ok) {
+            skipReason = `${guard.reason}:${move.playerId}`;
             return;
           }
         }
