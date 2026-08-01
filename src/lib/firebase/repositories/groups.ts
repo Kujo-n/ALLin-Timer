@@ -228,6 +228,42 @@ export async function removeMemberSelf(gid: string, uid: string): Promise<void> 
 }
 
 /**
+ * Phase 4 (08-auto-group-join-on-entry): owner が**他メンバー**を除外する。
+ *
+ * `removeMemberSelf`（自己脱退）と対になる owner-update 経路の書込。
+ *   - rule 側は `groups/{gid}` の owner-update ブランチ（`isSignedIn()` +
+ *     `auth.uid in resource.data.ownerUids` + `ownerUids.size() >= 1` +
+ *     `createdAt` 不変）だけで成立する。**新ブランチ・新フィールドは不要**。
+ *   - `ownerUids` からも外すのは invariant（ownerUids ⊆ organizerUids ⊆ memberUids）
+ *     を保つため。対象が最後の owner の場合は rule の `ownerUids.size() >= 1` で
+ *     deny されるが、その前に service (`removeMemberByOwner`) が弾く二重防御。
+ *   - `arrayRemove` は対象が配列に含まれない場合 no-op なので、role によらず 3 本
+ *     まとめて外してよい（`removeMemberSelf` と同じ考え方）。
+ *   - `memberDisplayNames[targetUid]` も `deleteField()` で同時に消す。残すと
+ *     除外済みの人の表示名がメンバー一覧の裏側に残留する。
+ *
+ * ⚠ 除外対象の `users/{uid}.groupIds` は**本人以外書き換えられない**（rule の
+ *   `users/{uid}` は self-only）。stale な gid は対象者側の `GroupProvider` が
+ *   `listMyGroups` の `failedGids` 経由で自己修復する（services/current-group.tsx）。
+ */
+export async function removeOtherMember(gid: string, targetUid: string): Promise<void> {
+  await wrapFirestoreWrite(
+    "firestore/write_failed",
+    "メンバーの除外に失敗しました",
+    async () => {
+      await updateDoc(groupDocRef(gid), {
+        memberUids: arrayRemove(targetUid),
+        organizerUids: arrayRemove(targetUid),
+        ownerUids: arrayRemove(targetUid),
+        [`memberDisplayNames.${targetUid}`]: deleteField(),
+      });
+    },
+    { gid, targetUid },
+  );
+  logger.info("group remove other member ok", { gid, targetUid });
+}
+
+/**
  * Phase 4.7: サインイン中のユーザーが自分の `memberDisplayNames[uid]` を書き込む。
  * `updateDisplayName` からの propagate と join flow の両方で利用する。
  * Rule 側は map の `auth.uid` キーのみ変更を許可（他フィールドは immutable）。

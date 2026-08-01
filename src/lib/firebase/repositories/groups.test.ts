@@ -23,6 +23,7 @@ vi.mock("firebase/firestore", async () => {
     deleteDoc: vi.fn(),
     arrayRemove: vi.fn((...args: unknown[]) => ({ __op: "arrayRemove", args })),
     arrayUnion: vi.fn((...args: unknown[]) => ({ __op: "arrayUnion", args })),
+    deleteField: vi.fn(() => ({ __op: "deleteField" })),
     serverTimestamp: vi.fn(() => ({ __op: "serverTimestamp" })),
   };
 });
@@ -31,7 +32,14 @@ vi.mock("@/lib/firebase/converters", () => ({
   zodConverter: vi.fn(() => ({})),
 }));
 
-import { addDoc, arrayRemove, arrayUnion, getDoc, updateDoc } from "firebase/firestore";
+import {
+  addDoc,
+  arrayRemove,
+  arrayUnion,
+  deleteField,
+  getDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
@@ -41,6 +49,7 @@ import {
   createGroup,
   getGroupIfMember,
   removeMemberSelf,
+  removeOtherMember,
   updateAudioSettings,
   updateDefaultSeatsPerTable,
   updateFinishedTournamentCount,
@@ -57,6 +66,7 @@ beforeEach(() => {
   vi.mocked(updateDoc).mockReset();
   vi.mocked(getDoc).mockReset();
   vi.mocked(arrayRemove).mockReset();
+  vi.mocked(deleteField).mockReset();
   vi.mocked(arrayUnion)
     .mockReset()
     .mockImplementation((...args: unknown[]) => ({ __op: "arrayUnion", args }) as never);
@@ -220,15 +230,12 @@ describe("updateDefaultSeatsPerTable", () => {
     expect(patch).toEqual({ defaultSeatsPerTable: 6 });
   });
 
-  it.each([2, 10])(
-    "accepts boundary value %p",
-    async (value) => {
-      vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
-      await updateDefaultSeatsPerTable("g1", value);
-      const [, patch] = vi.mocked(updateDoc).mock.calls[0];
-      expect(patch).toEqual({ defaultSeatsPerTable: value });
-    },
-  );
+  it.each([2, 10])("accepts boundary value %p", async (value) => {
+    vi.mocked(updateDoc).mockResolvedValueOnce(undefined as never);
+    await updateDefaultSeatsPerTable("g1", value);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({ defaultSeatsPerTable: value });
+  });
 
   it.each([1, 11, 0, -1, 5.5, NaN, Infinity])(
     "rejects %p with validation/default-seats-invalid",
@@ -266,9 +273,9 @@ describe("updateSeasonPointsRule (Phase E)", () => {
   });
 
   it("rejects empty base array (length < 1)", async () => {
-    await expect(
-      updateSeasonPointsRule("g1", { base: [], baseline: 8 }),
-    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    await expect(updateSeasonPointsRule("g1", { base: [], baseline: 8 })).rejects.toMatchObject({
+      code: "validation/season-points-rule-invalid",
+    });
     expect(updateDoc).not.toHaveBeenCalled();
   });
 
@@ -299,21 +306,18 @@ describe("updateSeasonPointsRule (Phase E)", () => {
     expect(updateDoc).not.toHaveBeenCalled();
   });
 
-  it.each([1, 11, 8.5, 0, -1])(
-    "rejects baseline %p as out of range or non-int",
-    async (bad) => {
-      await expect(
-        updateSeasonPointsRule("g1", { base: [10], baseline: bad as number }),
-      ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
-      expect(updateDoc).not.toHaveBeenCalled();
-    },
-  );
+  it.each([1, 11, 8.5, 0, -1])("rejects baseline %p as out of range or non-int", async (bad) => {
+    await expect(
+      updateSeasonPointsRule("g1", { base: [10], baseline: bad as number }),
+    ).rejects.toMatchObject({ code: "validation/season-points-rule-invalid" });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
 
   it("wraps Firestore reject as firestore/write_failed", async () => {
     vi.mocked(updateDoc).mockRejectedValueOnce(new Error("perm") as never);
-    await expect(
-      updateSeasonPointsRule("g1", { base: [10], baseline: 8 }),
-    ).rejects.toMatchObject({ code: "firestore/write_failed" });
+    await expect(updateSeasonPointsRule("g1", { base: [10], baseline: 8 })).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
   });
 });
 
@@ -359,9 +363,7 @@ describe("validateCardBackground (Phase A.1)", () => {
         storageAssetId: null,
         textTheme: "light",
       }),
-    ).toThrowError(
-      expect.objectContaining({ code: "validation/card-background-invalid" }),
-    );
+    ).toThrowError(expect.objectContaining({ code: "validation/card-background-invalid" }));
   });
 
   it("rejects imageUrl null but storageAssetId set (asymmetric)", () => {
@@ -371,9 +373,7 @@ describe("validateCardBackground (Phase A.1)", () => {
         storageAssetId: "asset-1",
         textTheme: "light",
       }),
-    ).toThrowError(
-      expect.objectContaining({ code: "validation/card-background-invalid" }),
-    );
+    ).toThrowError(expect.objectContaining({ code: "validation/card-background-invalid" }));
   });
 
   it("rejects unknown textTheme value", () => {
@@ -384,9 +384,7 @@ describe("validateCardBackground (Phase A.1)", () => {
         // @ts-expect-error — verifying runtime rejection of an out-of-enum value
         textTheme: "auto",
       }),
-    ).toThrowError(
-      expect.objectContaining({ code: "validation/card-background-invalid" }),
-    );
+    ).toThrowError(expect.objectContaining({ code: "validation/card-background-invalid" }));
   });
 });
 
@@ -581,5 +579,49 @@ describe("removeMemberSelf", () => {
       organizerUids: { __op: "arrayRemove", args: ["u-leaver"] },
       ownerUids: { __op: "arrayRemove", args: ["u-leaver"] },
     });
+  });
+});
+
+/**
+ * Phase 4 (08-auto-group-join-on-entry): owner による他メンバー除外の書込形。
+ *
+ * `removeMemberSelf`（自己脱退）と対になるが、**dotted path での
+ * `memberDisplayNames.<uid>` 削除**を伴う点だけが違う。ここを取りこぼすと
+ * 除外済みメンバーの表示名が map に残留するため、patch の形を固定する。
+ */
+describe("removeOtherMember", () => {
+  it("removes the target from all 3 role arrays and deletes its display name in one update", async () => {
+    vi.mocked(updateDoc).mockResolvedValue(undefined as never);
+    vi.mocked(arrayRemove).mockImplementation(
+      (...args: unknown[]) => ({ __op: "arrayRemove", args }) as never,
+    );
+    vi.mocked(deleteField).mockImplementation(() => ({ __op: "deleteField" }) as never);
+
+    await removeOtherMember("g1", "u-target");
+
+    // 3 配列 + displayName 削除を **1 回の updateDoc** で atomic に当てる
+    // （複数 update に割ると invariant ownerUids ⊆ organizerUids ⊆ memberUids が
+    //   一時的に破れる）。
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const [, patch] = vi.mocked(updateDoc).mock.calls[0];
+    expect(patch).toEqual({
+      memberUids: { __op: "arrayRemove", args: ["u-target"] },
+      organizerUids: { __op: "arrayRemove", args: ["u-target"] },
+      ownerUids: { __op: "arrayRemove", args: ["u-target"] },
+      // dotted path。map 全体の置換ではなく該当キーだけを消す。
+      "memberDisplayNames.u-target": { __op: "deleteField" },
+    });
+  });
+
+  it("wraps Firestore errors with firestore/write_failed code", async () => {
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.mocked(updateDoc).mockRejectedValue(new Error("boom") as never);
+
+    await expect(removeOtherMember("g1", "u-target")).rejects.toMatchObject({
+      code: "firestore/write_failed",
+    });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
   });
 });
