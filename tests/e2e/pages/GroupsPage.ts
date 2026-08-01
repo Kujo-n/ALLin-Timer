@@ -111,6 +111,33 @@ export class GroupDetailPage extends BasePage {
     await expect(this.seasonRankingEmptyMessage).toBeVisible({ timeout: 15_000 });
   }
 
+  // === Phase 4 (08-auto-group-join-on-entry): メンバー除外 ===
+  // MemberRoleList は <ul><li> で 1 行 1 メンバーを描画する。行の特定は表示名で行う。
+  memberRow(displayName: string): Locator {
+    return this.page.getByRole("listitem").filter({ hasText: displayName });
+  }
+
+  /**
+   * 行ごとの「除外」ボタン。accessibleName は `${displayName} を除外` 規約
+   * （MemberRoleList.tsx と手動同期。複数メンバー時の strict-mode violation を避けるため
+   *  ボタン内テキスト「除外」ではなく aria-label で引く）。
+   */
+  removeMemberButton(displayName: string): Locator {
+    return this.page.getByRole("button", { name: `${displayName} を除外` });
+  }
+
+  /** 確認ダイアログの確定ボタン。 */
+  readonly confirmRemoveMemberButton: Locator = this.page.getByRole("button", {
+    name: /^除外する$/,
+  });
+
+  /** 「除外」→ 確認ダイアログ確定 → 対象行が一覧から消えるまでを 1 操作にまとめる。 */
+  async removeMember(displayName: string): Promise<void> {
+    await this.removeMemberButton(displayName).click();
+    await this.confirmRemoveMemberButton.click();
+    await expect(this.memberRow(displayName)).toHaveCount(0, { timeout: 15_000 });
+  }
+
   // === サウンド設定 Card 内 locator（PRD 02 polish で旧 AudioSettingsPage.ts から移行）===
   // 「設定」タブ内の `<Card aria-label="audio-settings-card">` に scope を絞り、
   // 同タブ内の `defaultTableLabelsSaveButton` (`name=/^保存$/`) と衝突しないようにする。
