@@ -17,7 +17,7 @@ import {
 
 import { AppError, getErrorCode } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
-import { zodConverter } from "@/lib/firebase/converters";
+import { tournamentsCollectionRef } from "@/lib/firebase/refs";
 import { groupDocRef } from "@/lib/firebase/repositories/groups";
 import { listPlayers } from "@/lib/firebase/repositories/players";
 import {
@@ -25,11 +25,10 @@ import {
   seasonStatsRawDocRef,
 } from "@/lib/firebase/repositories/seasonStats";
 import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/firebase/schemas/group";
-import {
-  tournamentBodySchema,
-  type CreateTournamentInput,
-  type TournamentDoc,
-  type UpdateTournamentInput,
+import type {
+  CreateTournamentInput,
+  TournamentDoc,
+  UpdateTournamentInput,
 } from "@/lib/firebase/schemas/tournament";
 import { loadTournamentInTx } from "@/lib/firebase/tx-helpers";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
@@ -64,9 +63,10 @@ import {
 
 import type { Level } from "@/lib/firebase/schemas/structure";
 
-const tournamentsRef = collection(firestore, "tournaments").withConverter(
-  zodConverter(tournamentBodySchema, "tournaments"),
-);
+// ref factory は @/lib/firebase/refs に集約済み（architect-refactor 20260801 finding-6）。
+// 本 module 内の `doc(tournamentsRef, tid)` 呼出が多数あるため、module-level に
+// 1 度だけ束縛して差分と評価回数を抑える。
+const tournamentsRef = tournamentsCollectionRef();
 
 /**
  * Phase E: `finishTournament` の tx 内で converter 抜きに読む `groups/{gid}` の raw doc ref。

@@ -1,18 +1,9 @@
-import {
-  collection,
-  doc,
-  type DocumentSnapshot,
-  type Transaction,
-} from "firebase/firestore";
+import { type DocumentSnapshot, type Transaction } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
-import { firestore } from "@/lib/firebase/client";
-import { zodConverter } from "@/lib/firebase/converters";
+import { tournamentDocRef } from "@/lib/firebase/refs";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
-import {
-  tournamentBodySchema,
-  type TournamentDoc,
-} from "@/lib/firebase/schemas/tournament";
+import type { TournamentDoc } from "@/lib/firebase/schemas/tournament";
 
 /**
  * `PlayerDoc` から `id` を除いた本体型。orchestrator の `playersRef` は
@@ -22,18 +13,6 @@ import {
  * 「`id` が重複指定」の TS2783 になる。
  */
 type PlayerBody = Omit<PlayerDoc, "id">;
-
-/**
- * tournaments collection ref を内部で組み立てる private helper。
- * orchestrator.ts / repositories/tournaments.ts で重複していた `tournamentRef`
- * の実装と一致させる（converter 込み）。
- */
-function tournamentDocRef(tid: string) {
-  const col = collection(firestore, "tournaments").withConverter(
-    zodConverter(tournamentBodySchema, "tournaments"),
-  );
-  return doc(col, tid);
-}
 
 /**
  * Phase 4 architect-refactor 後の Phase 5.x で `orchestrator.ts` に 6 箇所、

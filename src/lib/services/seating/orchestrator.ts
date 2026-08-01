@@ -1,21 +1,15 @@
-import {
-  collection,
-  doc,
-  runTransaction,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
-import { zodConverter } from "@/lib/firebase/converters";
+import { playersRef, tablesRef, tournamentDocRef } from "@/lib/firebase/refs";
 import { groupDocRef } from "@/lib/firebase/repositories/groups";
 import {
   bustPlayer as bustPlayerWrite,
   unbustPlayer as unbustPlayerWrite,
 } from "@/lib/firebase/repositories/players";
-import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
-import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
-import { tournamentBodySchema } from "@/lib/firebase/schemas/tournament";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
 import {
   checkPlayerMoveGuard,
   expectedLastMovedAtMs,
@@ -50,27 +44,6 @@ import { planPlayingDealerShift } from "./pd";
  *  - engine error は AppError("seating/...") にラップして投げ直す
  */
 
-function tournamentRef(tid: string) {
-  return doc(
-    collection(firestore, "tournaments").withConverter(
-      zodConverter(tournamentBodySchema, "tournaments"),
-    ),
-    tid,
-  );
-}
-
-function playersRef(tid: string) {
-  return collection(firestore, "tournaments", tid, "players").withConverter(
-    zodConverter(playerBodySchema, `tournaments/${tid}/players`),
-  );
-}
-
-function tablesRef(tid: string) {
-  return collection(firestore, "tournaments", tid, "tables").withConverter(
-    zodConverter(tableBodySchema, `tournaments/${tid}/tables`),
-  );
-}
-
 /**
  * 初回席決め: 渡された未配席（または再配席対象）プレイヤーに対して
  *  1) tournament を transaction で setup or seating ガード（state 不一致なら no-op）
@@ -97,7 +70,7 @@ export async function commitInitialSeating(
   try {
     const plannedTableCount = await runTransaction<number>(firestore, async (tx) => {
       const t = await loadTournamentInTx(tx, tid, userGroupIds);
-      const tRef = tournamentRef(tid);
+      const tRef = tournamentDocRef(tid);
       if (t.state !== "setup" && t.state !== "seating") {
         throw new AppError(
           "初回席決めは setup / seating 中のみ可能です",

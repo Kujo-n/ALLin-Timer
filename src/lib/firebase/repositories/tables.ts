@@ -1,5 +1,4 @@
 import {
-  collection,
   doc,
   getDocs,
   onSnapshot,
@@ -13,17 +12,11 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
-import { zodConverter } from "@/lib/firebase/converters";
-import { tableBodySchema, type TableDoc } from "@/lib/firebase/schemas/table";
+import { tablesRef } from "@/lib/firebase/refs";
+import type { TableDoc } from "@/lib/firebase/schemas/table";
 import { TABLE_LABEL_MAX_LENGTH } from "@/lib/limits";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { logger } from "@/lib/logger";
-
-function tablesRef(tid: string) {
-  return collection(firestore, "tournaments", tid, "tables").withConverter(
-    zodConverter(tableBodySchema, `tournaments/${tid}/tables`),
-  );
-}
 
 export async function listTables(tid: string): Promise<TableDoc[]> {
   return wrapFirestoreRead(

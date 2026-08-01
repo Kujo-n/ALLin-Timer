@@ -1,5 +1,4 @@
 import {
-  collection,
   deleteDoc,
   doc,
   getDoc,
@@ -15,17 +14,11 @@ import {
 
 import { AppError } from "@/lib/errors";
 import { firestore } from "@/lib/firebase/client";
-import { zodConverter } from "@/lib/firebase/converters";
-import { playerBodySchema, type PlayerDoc } from "@/lib/firebase/schemas/player";
+import { playersRef } from "@/lib/firebase/refs";
+import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import { wrapFirestoreRead, wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import { MAX_CLONE_PLAYERS } from "@/lib/limits";
 import { logger } from "@/lib/logger";
-
-function playersRef(tid: string) {
-  return collection(firestore, "tournaments", tid, "players").withConverter(
-    zodConverter(playerBodySchema, `tournaments/${tid}/players`),
-  );
-}
 
 /**
  * 新規 player doc 本体の単一真実源。
