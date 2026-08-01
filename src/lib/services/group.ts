@@ -45,7 +45,6 @@ import { listTournamentsByGroup } from "@/lib/firebase/repositories/tournaments"
 import { wrapFirestoreWrite } from "@/lib/firebase/wrap";
 import {
   createJoinCode,
-  defaultExpiresAt,
   deleteJoinCode,
   getJoinCode,
   isJoinCodeUsable,
@@ -268,9 +267,9 @@ export async function generateJoinCode({
   if (!Number.isInteger(expiresInDays) || expiresInDays <= 0) {
     throw new AppError("expiresInDays must be a positive integer", "validation/invalid-input");
   }
+  // 呼び出し側の override が無ければ default 引数の 7 日が使われる
+  // （repositories/groupJoinCodes.ts の `defaultExpiresAt` と同じ既定値）。
   const expiresAt = Timestamp.fromDate(new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000));
-  // default の場合は 7 日：呼び出し側からの override が無ければ defaultExpiresAt と一致
-  void defaultExpiresAt;
 
   // 1. group を read（assertOrganizer + prev コード ID 把握）
   const group = await getGroup(gid);
