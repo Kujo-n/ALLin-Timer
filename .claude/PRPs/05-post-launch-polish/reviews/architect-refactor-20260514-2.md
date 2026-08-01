@@ -113,6 +113,6 @@
 
 ## 関連リンク
 
-- 計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/architect-refactor-20260514-2.plan.md)
+- 計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/completed/architect-refactor-20260514-2.plan.md)
 - 前サイクル review: [architect-refactor-20260514.md](architect-refactor-20260514.md)
 - 前サイクル report: [../reports/architect-refactor-20260514.md](../reports/architect-refactor-20260514.md)

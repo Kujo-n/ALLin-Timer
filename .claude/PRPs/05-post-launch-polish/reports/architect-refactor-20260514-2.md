@@ -11,7 +11,7 @@ Phase 5 で flagged された baseline 由来の E2E test drift 2 件を最優�
 - 作業ブランチ: `refactor/architect-refactor-20260514-2`
 - 所属 PRD: `05-post-launch-polish`
 - 監査結果: [.claude/PRPs/05-post-launch-polish/reviews/architect-refactor-20260514-2.md](../reviews/architect-refactor-20260514-2.md)
-- 実施計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/architect-refactor-20260514-2.plan.md)
+- 実施計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/completed/architect-refactor-20260514-2.plan.md)
 - 前サイクル: [completed/architect-refactor-20260514.plan.md](../plans/completed/architect-refactor-20260514.plan.md) / [report](architect-refactor-20260514.md)
 - diff 規模: 4 files / +69 / -67 行（src/ + tests/）
 
@@ -140,7 +140,7 @@ inline 維持の 4 callsite（`onIssueCode` / `onRename` / `onLeave` / `onDelete
 ## 関連リンク
 
 - 監査結果: [.claude/PRPs/05-post-launch-polish/reviews/architect-refactor-20260514-2.md](../reviews/architect-refactor-20260514-2.md)
-- 実施計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/architect-refactor-20260514-2.plan.md)
+- 実施計画: [.claude/PRPs/05-post-launch-polish/plans/architect-refactor-20260514-2.plan.md](../plans/completed/architect-refactor-20260514-2.plan.md)
 - 元 PRD: [.claude/PRPs/05-post-launch-polish/prds/05-post-launch-polish.prd.md](../prds/05-post-launch-polish.prd.md)
 - 前サイクル report: [architect-refactor-20260514.md](architect-refactor-20260514.md)
 - レンズ: [`web_architect.md`](../../../skills/architect-refactor/references/web_architect.md) / [`security_specialist.md`](../../../skills/architect-refactor/references/security_specialist.md)

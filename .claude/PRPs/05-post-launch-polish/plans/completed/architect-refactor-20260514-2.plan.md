@@ -3,8 +3,8 @@
 ## 所属
 
 - PRD: `05-post-launch-polish`（前サイクル 20260514 の follow-up）
-- 監査結果: [.claude/PRPs/05-post-launch-polish/reviews/architect-refactor-20260514-2.md](../reviews/architect-refactor-20260514-2.md)
-- 前サイクル: [completed/architect-refactor-20260514.plan.md](completed/architect-refactor-20260514.plan.md) / [report](../reports/architect-refactor-20260514.md)
+- 監査結果: [.claude/PRPs/05-post-launch-polish/reviews/architect-refactor-20260514-2.md](../../reviews/architect-refactor-20260514-2.md)
+- 前サイクル: [architect-refactor-20260514.plan.md](architect-refactor-20260514.plan.md) / [report](../../reports/architect-refactor-20260514.md)
 - 作業ブランチ: `refactor/architect-refactor-20260514-2`
 
 ## 不変条件
