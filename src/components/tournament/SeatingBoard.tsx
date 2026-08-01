@@ -4,8 +4,6 @@ import {
   DndContext,
   PointerSensor,
   TouchSensor,
-  useDraggable,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -13,16 +11,11 @@ import {
 } from "@dnd-kit/core";
 import { useCallback, useMemo, useState } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AppError, formatErrorForDisplay } from "@/lib/errors";
 import type { PlayerDoc } from "@/lib/firebase/schemas/player";
 import type { TableDoc } from "@/lib/firebase/schemas/table";
-import { logger } from "@/lib/logger";
-import { formatTableLabel } from "@/lib/services/format-table-label";
 import { liveTableNums } from "@/lib/services/seating/engine";
-import { cn } from "@/lib/utils";
 
-import { TableLabelEditPopover } from "./_table-label-edit/TableLabelEditPopover";
+import { TableCard } from "./_seating-board/TableCard";
 
 interface Props {
   players: PlayerDoc[];
@@ -100,6 +93,11 @@ interface Props {
  *    - 空席（非閉鎖卓）→ 単純 1 件 move
  *    - 同卓 drag 中の他占有席（非 PD）→ cascade（target → source 方向に shift）
  *    - 卓間 drag は空席のみ受け付け（cascade across tables 非対応）
+ *
+ * architect-refactor 20260801 (finding-7): 626 行に同居していた内部 component
+ * （TableCard / SeatRow / PlainSeat / DnDSeat / PdCheckbox）を `_seating-board/` へ分離し、
+ * 本 file は「卓の集約・DnDContext・drag state」だけを持つ orchestrator に絞った。
+ * `_timer-controls/` / `_table-label-edit/` と同じ co-location 規約に従う。
  */
 export function SeatingBoard({
   players,
@@ -202,124 +200,28 @@ export function SeatingBoard({
 
   const board = (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {sortedTables.map((table) => {
-        const tableSeated = seatedByTable.get(table.tableNum) ?? [];
-        const seatMap = new Map<number, PlayerDoc>();
-        for (const p of tableSeated) {
-          if (p.seatNum !== null) seatMap.set(p.seatNum, p);
-        }
-        const tablePd = tableSeated.find((p) => p.isPlayingDealer);
-        // Phase 3: 手動卓閉鎖で残卓が seatsPerTable を一時的に超える（最大 MAX_SEATS_PER_TABLE）。
-        // 描画行数を「seatsPerTable と実在最大席番号の大きい方」に広げ、定員引き上げ後も全員を可視化する。
-        const maxOccupiedSeat = tableSeated.reduce(
-          (max, p) => (p.seatNum !== null && p.seatNum > max ? p.seatNum : max),
-          0,
-        );
-        const renderSeatCount = Math.max(seatsPerTable, maxOccupiedSeat);
-        return (
-          <Card
-            key={table.id}
-            className={cn("overflow-hidden", table.isBroken && "opacity-60")}
-            aria-label={`table-${table.tableNum}`}
-            // Phase C improvement (02-02): 旧 6px 左帯では色とテーブルの紐付きが弱かったため、
-            // 上端 8px 帯 + ヘッダ左の丸ドットの二重表現に変更。border-top は Tailwind class
-            // で width 8px の JIT 組合せが少ないため inline style で指定。
-            style={
-              table.color
-                ? {
-                    borderTopWidth: 8,
-                    borderTopStyle: "solid",
-                    borderTopColor: table.color,
-                  }
-                : undefined
-            }
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2">
-                  {table.color ? (
-                    <span
-                      aria-hidden
-                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
-                      style={{ backgroundColor: table.color }}
-                    />
-                  ) : null}
-                  <span>
-                    {formatTableLabel(table)}（{tableSeated.length} 人）
-                  </span>
-                </span>
-                <span className="flex items-center gap-2">
-                  {table.isBroken ? (
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs">
-                      閉鎖
-                    </span>
-                  ) : null}
-                  {canEditTableLabel && onSaveTableLabel ? (
-                    <TableLabelEditPopover
-                      table={table}
-                      onSave={(patch) =>
-                        onSaveTableLabel(table.tableNum, patch)
-                      }
-                      onError={onError}
-                    />
-                  ) : null}
-                  {/* Phase 3: 任意卓を閉じる。生存卓 2 つ以上・非閉鎖卓のときのみ表示。 */}
-                  {canCloseTable &&
-                  onCloseTable &&
-                  !table.isBroken &&
-                  liveTableCount > 1 ? (
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
-                      onClick={() => onCloseTable(table.tableNum)}
-                      data-testid={`close-table-${table.tableNum}`}
-                      aria-label={`${formatTableLabel(table)} を閉じる`}
-                    >
-                      閉じる
-                    </button>
-                  ) : null}
-                  {/* Phase 4: 閉鎖卓を再開。canCloseTable（卓管理権限）+ isBroken のときのみ表示。
-                      close ボタン（!isBroken）と排他で、同じ卓に両方は出ない。 */}
-                  {canCloseTable && onReopenTable && table.isBroken ? (
-                    <button
-                      type="button"
-                      className="rounded border px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-                      onClick={() => onReopenTable(table.tableNum)}
-                      disabled={reopenBusy}
-                      data-testid={`reopen-table-${table.tableNum}`}
-                      aria-label={`${formatTableLabel(table)} を再開`}
-                    >
-                      再開
-                    </button>
-                  ) : null}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1 text-xs font-mono">
-                {Array.from({ length: renderSeatCount }, (_, i) => i + 1).map(
-                  (seatNum) => (
-                    <SeatRow
-                      key={seatNum}
-                      table={table}
-                      seatNum={seatNum}
-                      player={seatMap.get(seatNum)}
-                      currentUid={currentUid ?? null}
-                      tablePd={tablePd}
-                      showPd={showPd}
-                      onTogglePd={onTogglePd}
-                      onError={onError}
-                      enableDnd={enableDnd}
-                      dndBusy={dndBusy}
-                      draggedPlayer={draggedPlayer}
-                    />
-                  ),
-                )}
-              </ul>
-            </CardContent>
-          </Card>
-        );
-      })}
+      {sortedTables.map((table) => (
+        <TableCard
+          key={table.id}
+          table={table}
+          tableSeated={seatedByTable.get(table.tableNum) ?? []}
+          seatsPerTable={seatsPerTable}
+          currentUid={currentUid ?? null}
+          showPd={showPd}
+          onTogglePd={onTogglePd}
+          onError={onError}
+          enableDnd={enableDnd}
+          dndBusy={dndBusy}
+          draggedPlayer={draggedPlayer}
+          canEditTableLabel={canEditTableLabel}
+          onSaveTableLabel={onSaveTableLabel}
+          canCloseTable={canCloseTable}
+          onCloseTable={onCloseTable}
+          onReopenTable={onReopenTable}
+          reopenBusy={reopenBusy}
+          liveTableCount={liveTableCount}
+        />
+      ))}
     </div>
   );
 
@@ -333,294 +235,5 @@ export function SeatingBoard({
     >
       {board}
     </DndContext>
-  );
-}
-
-interface SeatRowProps {
-  table: TableDoc;
-  seatNum: number;
-  player: PlayerDoc | undefined;
-  currentUid: string | null;
-  tablePd: PlayerDoc | undefined;
-  showPd: boolean;
-  onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
-  onError?: (message: string) => void;
-  enableDnd: boolean;
-  dndBusy: boolean;
-  draggedPlayer: PlayerDoc | null;
-}
-
-function SeatRow({
-  table,
-  seatNum,
-  player,
-  currentUid,
-  tablePd,
-  showPd,
-  onTogglePd,
-  onError,
-  enableDnd,
-  dndBusy,
-  draggedPlayer,
-}: SeatRowProps) {
-  const isOccupied = !!player;
-  const isMe =
-    isOccupied && currentUid !== null && player!.uid === currentUid;
-  const isPd = player?.isPlayingDealer ?? false;
-  const checkboxDisabled = !!tablePd && !isPd && !table.isBroken;
-
-  const isOwnSeat = isOccupied && draggedPlayer?.id === player!.id;
-  const isSameTableDrag =
-    draggedPlayer !== null && draggedPlayer.tableNum === table.tableNum;
-
-  // Drop target conditions:
-  //   - DnD enabled
-  //   - 卓は閉鎖されていない
-  //   - 自席（drag source 自身）ではない
-  //   - PD ではない（cascade で PD を弾き飛ばさない）
-  //   - 空席 OR 同卓 drag 中の他占有席（cascade target）
-  const isDropTarget =
-    enableDnd &&
-    !table.isBroken &&
-    !isOwnSeat &&
-    !isPd &&
-    (!isOccupied || isSameTableDrag);
-
-  // Drag source: 占有 + 非 PD + 非 busted + 非閉鎖卓。busy 中は disabled。
-  const isDragSource =
-    enableDnd &&
-    !dndBusy &&
-    isOccupied &&
-    !isPd &&
-    !player!.isBusted &&
-    !table.isBroken;
-
-  if (!enableDnd) {
-    return (
-      <PlainSeat
-        seatNum={seatNum}
-        player={player}
-        isMe={isMe}
-        isPd={isPd}
-        showPd={showPd}
-        checkboxDisabled={checkboxDisabled}
-        onTogglePd={onTogglePd}
-        onError={onError}
-        tableBroken={table.isBroken}
-      />
-    );
-  }
-
-  return (
-    <DnDSeat
-      tableNum={table.tableNum}
-      seatNum={seatNum}
-      player={player}
-      isMe={isMe}
-      isPd={isPd}
-      showPd={showPd}
-      checkboxDisabled={checkboxDisabled}
-      onTogglePd={onTogglePd}
-      onError={onError}
-      tableBroken={table.isBroken}
-      isDragSource={isDragSource}
-      isDropTarget={isDropTarget}
-    />
-  );
-}
-
-interface PlainSeatProps {
-  seatNum: number;
-  player: PlayerDoc | undefined;
-  isMe: boolean;
-  isPd: boolean;
-  showPd: boolean;
-  checkboxDisabled: boolean;
-  onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
-  onError?: (message: string) => void;
-  tableBroken: boolean;
-}
-
-function PlainSeat({
-  seatNum,
-  player,
-  isMe,
-  isPd,
-  showPd,
-  checkboxDisabled,
-  onTogglePd,
-  onError,
-  tableBroken,
-}: PlainSeatProps) {
-  return (
-    <li className="flex items-center gap-2">
-      <span className="w-6 text-muted-foreground">{seatNum}:</span>
-      <span className={cn("flex-1 truncate", isMe && "font-bold")}>
-        {player ? player.displayName : "—"}
-      </span>
-      {isMe ? <span aria-label="self">★</span> : null}
-      {isPd ? <span aria-label="pd-badge">◎</span> : null}
-      {showPd && player && !player.isBusted && !tableBroken ? (
-        <PdCheckbox
-          player={player}
-          isPd={isPd}
-          disabled={checkboxDisabled}
-          onTogglePd={onTogglePd}
-          onError={onError}
-        />
-      ) : null}
-    </li>
-  );
-}
-
-interface DnDSeatProps {
-  tableNum: number;
-  seatNum: number;
-  player: PlayerDoc | undefined;
-  isMe: boolean;
-  isPd: boolean;
-  showPd: boolean;
-  checkboxDisabled: boolean;
-  onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
-  onError?: (message: string) => void;
-  tableBroken: boolean;
-  isDragSource: boolean;
-  isDropTarget: boolean;
-}
-
-function DnDSeat({
-  tableNum,
-  seatNum,
-  player,
-  isMe,
-  isPd,
-  showPd,
-  checkboxDisabled,
-  onTogglePd,
-  onError,
-  tableBroken,
-  isDragSource,
-  isDropTarget,
-}: DnDSeatProps) {
-  const dropId = `table-${tableNum}-seat-${seatNum}`;
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: dropId,
-    disabled: !isDropTarget,
-  });
-  // 空席行も draggable hook を呼んで hooks rules 違反を回避。disabled で no-op。
-  const dragId = player?.id ?? `_empty_${dropId}`;
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    transform,
-    isDragging,
-  } = useDraggable({ id: dragId, disabled: !isDragSource });
-
-  const dragStyle: React.CSSProperties | undefined = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        zIndex: 50,
-      }
-    : undefined;
-
-  return (
-    <li
-      ref={setDropRef}
-      className={cn(
-        "flex items-center gap-2 rounded transition-colors",
-        isOver &&
-          isDropTarget &&
-          "bg-blue-100 ring-2 ring-blue-400 dark:bg-blue-950/40",
-        isDragging && "opacity-50",
-      )}
-      aria-label={
-        !player && isDropTarget
-          ? `droppable-${tableNum}-${seatNum}`
-          : undefined
-      }
-    >
-      <span className="w-6 text-muted-foreground">{seatNum}:</span>
-      {player ? (
-        <span
-          ref={isDragSource ? setDragRef : undefined}
-          {...(isDragSource ? attributes : {})}
-          {...(isDragSource ? listeners : {})}
-          style={isDragSource ? dragStyle : undefined}
-          className={cn(
-            "flex-1 truncate",
-            isMe && "font-bold",
-            isDragSource && "cursor-grab select-none touch-none",
-          )}
-          aria-label={
-            isDragSource ? `drag-${player.displayName}` : undefined
-          }
-        >
-          {player.displayName}
-        </span>
-      ) : (
-        <span className="flex-1 truncate text-muted-foreground">—</span>
-      )}
-      {isMe ? <span aria-label="self">★</span> : null}
-      {isPd ? <span aria-label="pd-badge">◎</span> : null}
-      {showPd && player && !player.isBusted && !tableBroken ? (
-        <PdCheckbox
-          player={player}
-          isPd={isPd}
-          disabled={checkboxDisabled}
-          onTogglePd={onTogglePd}
-          onError={onError}
-        />
-      ) : null}
-    </li>
-  );
-}
-
-interface PdCheckboxProps {
-  player: PlayerDoc;
-  isPd: boolean;
-  disabled: boolean;
-  onTogglePd?: (player: PlayerDoc, value: boolean) => Promise<void>;
-  onError?: (message: string) => void;
-}
-
-function PdCheckbox({
-  player,
-  isPd,
-  disabled,
-  onTogglePd,
-  onError,
-}: PdCheckboxProps) {
-  return (
-    <label
-      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
-      // checkbox 領域では drag が始まらないように pointer event を吸収。
-      // @dnd-kit は activationConstraint distance:8 で短い操作は drag にしないが、
-      // 念のため stopPropagation で listener を遮断しておく。
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      <input
-        type="checkbox"
-        checked={isPd}
-        disabled={disabled}
-        onChange={(e) => {
-          if (!onTogglePd) return;
-          void onTogglePd(player, e.target.checked).catch((err) => {
-            const wrapped = AppError.from(
-              err,
-              "firestore/write_failed",
-              "PD 設定に失敗しました",
-            );
-            logger.warn(wrapped.message, {
-              code: wrapped.code,
-              pid: player.id,
-            });
-            onError?.(formatErrorForDisplay(wrapped));
-          });
-        }}
-        aria-label={`pd-${player.displayName}`}
-      />
-      <span>PD</span>
-    </label>
   );
 }
