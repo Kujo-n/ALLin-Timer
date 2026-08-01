@@ -109,6 +109,35 @@ export function JoinClient({ tid }: { tid: string }) {
    * - `already-member` でも `refreshGroups` する（前回失敗した `groupIds` の補修が
    *   走っているケースを一覧に反映するため）
    */
+  /**
+   * `setError(null)` → `setSubmitting(true)` → `try { fn() } catch { wrapError } finally
+   * { setSubmitting(false) }` の共通 boilerplate を集約する helper。
+   *
+   * 適用範囲: onLoginSubmit / onGuestSubmit / onContinueAsSignedIn / onCancelOwnEntry の
+   * 4 callsite。
+   *
+   * **inline 維持する 2 callsite**:
+   *   - `onRegisterSubmit` … `setAccountCreated(false)` の先行リセットと、
+   *     EntryFailedAfterRegister / auth/already-exists / その他の 3 分岐 catch を持つ
+   *   - `onGoogleJoin` … `AccountLinkRequired` を catch して early return する
+   * これらを helper 経由にすると catch の分岐構造が壊れるか、
+   * 引数で分岐を注入する形になって却って読みにくくなるため据え置く
+   * （group-detail-client.tsx の `runReloadRefreshAction` と同じ判断基準）。
+   *
+   * architect-refactor 20260801 (finding-8)。
+   */
+  async function runReceiptAction(fn: () => Promise<void>): Promise<void> {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await fn();
+    } catch (e) {
+      wrapError(e);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function applyReceiptOutcome(outcome: ReceiptOutcome) {
     setStatus({
       kind: "joined",
@@ -127,16 +156,10 @@ export function JoinClient({ tid }: { tid: string }) {
 
   async function onLoginSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
+    await runReceiptAction(async () => {
       const outcome = await joinAsExistingUser({ tid, email, password });
       await applyReceiptOutcome(outcome);
-    } catch (e) {
-      wrapError(e);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   async function onRegisterSubmit(e: React.FormEvent) {
@@ -190,8 +213,7 @@ export function JoinClient({ tid }: { tid: string }) {
       setError(`validation/join: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
       return;
     }
-    setSubmitting(true);
-    try {
+    await runReceiptAction(async () => {
       const outcome = await joinAsGuest({
         tid,
         displayName: parsed.data.displayName,
@@ -200,11 +222,7 @@ export function JoinClient({ tid }: { tid: string }) {
       // AuthBadge 等のヘッダ表示を即更新するために refreshUser を呼ぶ。
       refreshUser();
       await applyReceiptOutcome(outcome);
-    } catch (e) {
-      wrapError(e);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   async function onGoogleJoin() {
@@ -225,32 +243,20 @@ export function JoinClient({ tid }: { tid: string }) {
   }
 
   async function onContinueAsSignedIn() {
-    setError(null);
-    setSubmitting(true);
-    try {
+    await runReceiptAction(async () => {
       const outcome = await joinAsCurrentUser({
         tid,
         displayName: user?.displayName ?? user?.email ?? undefined,
       });
       await applyReceiptOutcome(outcome);
-    } catch (e) {
-      wrapError(e);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   async function onCancelOwnEntry() {
-    setError(null);
-    setSubmitting(true);
-    try {
+    await runReceiptAction(async () => {
       await cancelOwnEntry(tid);
       setStatus({ kind: "cancelled" });
-    } catch (e) {
-      wrapError(e);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   }
 
   if (status) {
